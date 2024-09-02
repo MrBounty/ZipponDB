@@ -1,8 +1,10 @@
 const std = @import("std");
 const UUID = @import("uuid.zig").UUID;
 const dtypes = @import("dtypes.zig");
-const Tokenizer = @import("tokenizer.zig").Tokenizer;
-const Token = @import("tokenizer.zig").Token;
+const ziqlTokenizer = @import("ziqlTokenizer.zig").Tokenizer;
+const ziqlToken = @import("ziqlTokenizer.zig").Token;
+const cliTokenizer = @import("cliTokenizer.zig").Tokenizer;
+const cliToken = @import("cliTokenizer.zig").Token;
 const Allocator = std.mem.Allocator;
 const print = std.debug.print;
 
@@ -34,38 +36,42 @@ pub fn main() !void {
 
     std.debug.print("{s}\n", .{storage.get("User").?.items[0].user.email});
 
-    // Lets get arguments and what the user want to do
-    var argsIterator = try std.process.ArgIterator.initWithAllocator(allocator);
-    defer argsIterator.deinit();
+    while (true) {
+        std.debug.print("> ", .{});
+        var line_buf: [1024]u8 = undefined;
+        const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(&line_buf, '\n');
+        if (line) |line_str| {
+            const null_term_line_str = try allocator.dupeZ(u8, line_str[0..line_str.len]);
 
-    // Skip executable
-    _ = argsIterator.next();
-
-    if (argsIterator.next()) |commandStr| {
-        const command = std.meta.stringToEnum(Commands, commandStr) orelse Commands.unknow;
-        switch (command) {
-            .run => {
-                const query = argsIterator.next();
-                var tokenizer = Tokenizer.init(query.?);
-                var token = tokenizer.next();
-                while (token.tag != Token.Tag.eof) {
-                    std.debug.print("{any}\n", .{token});
-                    token = tokenizer.next();
-                }
-            },
-            .help => {
-                std.debug.print("Welcome to ZipponDB!.", .{});
-            },
-            .describe => {
-                std.debug.print("Here the current schema:\nUser (\n\tname: str,\n\temail:str,\n\tfriend:User\n)\n", .{});
-            },
-            .unknow => {
-                std.debug.print("Unknow command, available are: run, describe, help.\n", .{});
-            },
-            else => {},
+            var cliToker = cliTokenizer.init(null_term_line_str);
+            const commandToken = cliToker.next();
+            switch (commandToken.tag) {
+                .keyword_run => {
+                    const query_token = cliToker.next();
+                    switch (query_token.tag) {
+                        .string_literal => {
+                            std.debug.print("Running query: {s}\n", .{line_str[query_token.loc.start + 1 .. query_token.loc.end - 1]});
+                        },
+                        else => {
+                            std.debug.print("After command run, need a string of a query, eg: \"GRAB User\"\n", .{});
+                            continue;
+                        },
+                    }
+                },
+                .keyword_describe => {
+                    std.debug.print("Current schema: \n\nUser (\n\tid: UUID,\n\tname; str,\n\temail: str,\n\tmessages: []Message\n)\n\nMessage (\n\tid: UUID,\n\tcontent; str,\n\tfrom: User,\n)\n", .{});
+                },
+                .keyword_help => {
+                    std.debug.print("Welcome to ZipponDB.\n\nrun\t\tTo run a query. Args: query: str, the query to execute.\ndescribe\tTo print the current schema.\nkill\t\tTo stop the process without saving\nsave\t\tSave the database to the normal files.\ndump\t\tCreate a new folder with all data as copy. Args: foldername: str, the name of the folder.\nbump\t\tReplace current data with a previous dump; Note: Save the current state with the dump command. Args: foldername: str, the name of the folder to use.\n", .{});
+                },
+                .keyword_quit => {
+                    break;
+                },
+                else => {
+                    std.debug.print("Command need to start with a keyword, including: run, describe, help and quit\n", .{});
+                },
+            }
         }
-    } else {
-        std.debug.print("No args found. Available are: run, help.\n", .{});
     }
 }
 
@@ -76,6 +82,16 @@ fn getById(array: anytype, id: UUID) !*dtypes.User {
         }
     }
     return error.UUIDNotFound;
+}
+
+fn startsWithDoubleQuote(s: []const u8) bool {
+    if (s.len < 2) return false;
+    return s[0] == '"' and s[s.len - 1] == '"';
+}
+
+fn endsWithDoubleQuote(s: []const u8) bool {
+    if (s.len < 2) return false;
+    return s[s.len - 1] == '"';
 }
 
 test "getById" {

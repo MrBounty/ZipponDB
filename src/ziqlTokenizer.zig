@@ -54,19 +54,6 @@ pub const Token = struct {
         period,
         bang_equal,
     };
-
-    pub fn lexeme(tag: Tag) ?[]const u8 {
-        return switch (tag) {
-            .invalid,
-            .identifier,
-            .string_literal,
-            .number_literal,
-            => null,
-
-            .bang => "!",
-            .pipe => "|",
-        };
-    }
 };
 
 pub const Tokenizer = struct {
@@ -355,7 +342,7 @@ pub const Tokenizer = struct {
 
 test "keywords" {
     try testTokenize("GRAB UPDATE ADD DELETE IN", &.{ .keyword_grab, .keyword_update, .keyword_add, .keyword_delete, .keyword_in });
-    std.debug.print("Keywords OK\n", .{});
+    std.debug.print("ZiQL keywords OK\n", .{});
 }
 
 test "basic query" {
@@ -364,7 +351,7 @@ test "basic query" {
     try testTokenize("GRAB User [1; name] {}", &.{ .keyword_grab, .identifier, .l_bracket, .number_literal, .semicolon, .identifier, .r_bracket, .l_brace, .r_brace });
     try testTokenize("GRAB User{}|ASCENDING name|", &.{ .keyword_grab, .identifier, .l_brace, .r_brace, .pipe, .identifier, .identifier, .pipe });
     try testTokenize("DELETE User[1]{name='Adrien'}|ASCENDING name, age|", &.{ .keyword_delete, .identifier, .l_bracket, .number_literal, .r_bracket, .l_brace, .identifier, .equal, .string_literal, .r_brace, .pipe, .identifier, .identifier, .comma, .identifier, .pipe });
-    std.debug.print("Basic query OK\n", .{});
+    std.debug.print("ZiQL query OK\n", .{});
 }
 
 fn testTokenize(source: [:0]const u8, expected_token_tags: []const Token.Tag) !void {

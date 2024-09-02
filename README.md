@@ -10,18 +10,67 @@ Zig is fast, blablabla
 
 Meme "That's the neat part..."
 
-Zippon is a strutural relational potentially in memory written entirely in Zig from stractch.
+Zippon is a strutural relational potentially in memory database written entirely in Zig from stractch.
 
-You build a binary according to your schema, you can just run it with some arguments and it will create and manage a folder 'zipponDB_DATA'.
+You build a binary according to your schema, you can just run it to acces a CLI and it will create and manage a folder 'zipponDB_DATA'.
 Then you do what you want with it, including:
-- Run it with your app as a file and folder
+- Run it with your app as a seperated process and folder
 - Create a Docker and open some port
-- Create a Docker with a small API
+- Create a Docker with a small API like flask
 - Other stuffs, Im sure some will find something nice
 
-Note that you can have multiple binary that run together. Each binary have a unique id that is use to segregate binary inside the folder 'zipponDB_DATA'
+# Integration
+
+## Python
+
+```python
+import zippondb as zdb
+
+client = zdb.newClient('path/to/binary')
+print(client.run('describe'))
+
+users = client.run('GRAB User {}')
+for user in users:
+    print(user.name)
+
+client.run('save')
+```
 
 # Benchmark
+
+I did a database with random data. The schema is like that:
+```
+User {
+    name: str,
+    email: str,
+    friends: []User.friends,
+    posts: []Post.from,
+    liked_post: []Post.like_by,
+    comments: []Comment.from,
+    liked_com: []Comment.like_by,
+}
+
+Post {
+    title: str,
+    image: str,
+    at: date,
+    from: User.posts,
+    like_by: []User.liked_post,
+    comments: []Comment.of,
+}
+
+Comment {
+    content: str,
+    at: date,
+    from: User.comments,
+    like_by: User.liked_com,
+    of: Post.comments,
+}
+```
+
+As you can see, link need to be defined in both struct. [] mean an array of value.
+For example `posts: []Post.from,` and `from: User.posts,` mean that a `User` can have multiple posts (an array of `Post`) and a post
+just one author. Both linked by the value `posts` and `from`.
 
 # Create a schema
 
@@ -83,6 +132,7 @@ ADD User ( name = 'Adrien', email = 'email', age = 40 }
 - () Are new or updated data (Not already savec)
 - || Are additional options
 - Data are in struct format and can have link
+- By default all value other than a link are return per query, to prevent recurcive return (User.friends in User.friends)
 
 
 # How it's really work
