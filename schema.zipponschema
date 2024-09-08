@@ -1,0 +1,8 @@
+User (
+  name: str,
+  email: str,
+)
+
+Message (
+  content: str,
+)

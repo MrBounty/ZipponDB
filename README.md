@@ -27,13 +27,14 @@ Then you do what you want with it, including:
 import zippondb as zdb
 
 client = zdb.newClient('path/to/binary')
-print(client.run('describe'))
+print(client.exe('describe'))
 
-users = client.run('GRAB User {}')
+# Return named tuple
+users = client.exe('GRAB User {}')
 for user in users:
     print(user.name)
 
-client.run('save')
+client.exe('save')
 ```
 
 # Benchmark

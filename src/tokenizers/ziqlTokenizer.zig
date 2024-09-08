@@ -16,6 +16,7 @@ pub const Token = struct {
         .{ "DELETE", .keyword_delete },
         .{ "ADD", .keyword_add },
         .{ "IN", .keyword_in },
+        .{ "__DESCRIBE__", .keyword__describe__ },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -31,6 +32,7 @@ pub const Token = struct {
         keyword_delete,
         keyword_add,
         keyword_in,
+        keyword__describe__,
 
         string_literal,
         number_literal,

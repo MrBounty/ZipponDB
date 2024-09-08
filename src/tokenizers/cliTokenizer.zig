@@ -14,15 +14,10 @@ pub const Token = struct {
         .{ "run", .keyword_run },
         .{ "help", .keyword_help },
         .{ "describe", .keyword_describe },
+        .{ "build", .keyword_build },
+        .{ "schema", .keyword_schema },
         .{ "quit", .keyword_quit },
     });
-
-    pub fn isKeyword(self: Token) bool {
-        switch (self.tag) {
-            .keyword_run, .keyword_describe, .keyword_help, .keyword_quit => return true,
-            else => return false,
-        }
-    }
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
         return keywords.get(bytes);
@@ -35,6 +30,8 @@ pub const Token = struct {
         keyword_run,
         keyword_help,
         keyword_describe,
+        keyword_schema,
+        keyword_build,
         keyword_quit,
 
         string_literal,
@@ -45,11 +42,6 @@ pub const Token = struct {
 pub const Tokenizer = struct {
     buffer: [:0]const u8,
     index: usize,
-
-    /// For debugging purposes.
-    pub fn dump(self: *Tokenizer, token: *const Token) void {
-        std.debug.print("{s} \"{s}\"\n", .{ @tagName(token.tag), self.buffer[token.loc.start..token.loc.end] });
-    }
 
     pub fn init(buffer: [:0]const u8) Tokenizer {
         // Skip the UTF-8 BOM if present.
