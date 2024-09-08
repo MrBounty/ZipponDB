@@ -1,6 +1,6 @@
 # ZipponDB
 
-Note: Make a stupide mascotte
+![alt text](https://github.com/MrBounty/ZipponDB/blob/main/logo.jpeg)
 
 # Written in Zig
 
