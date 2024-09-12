@@ -16,6 +16,7 @@ pub const Token = struct {
         .{ "DELETE", .keyword_delete },
         .{ "ADD", .keyword_add },
         .{ "IN", .keyword_in },
+        .{ "null", .keyword_null },
         .{ "__DESCRIBE__", .keyword__describe__ },
     });
 
@@ -32,6 +33,7 @@ pub const Token = struct {
         keyword_delete,
         keyword_add,
         keyword_in,
+        keyword_null,
         keyword__describe__,
 
         string_literal,
@@ -62,9 +64,8 @@ pub const Tokenizer = struct {
     buffer: [:0]const u8,
     index: usize,
 
-    /// For debugging purposes.
-    pub fn dump(self: *Tokenizer, token: *const Token) void {
-        std.debug.print("{s} \"{s}\"\n", .{ @tagName(token.tag), self.buffer[token.loc.start..token.loc.end] });
+    pub fn getTokenSlice(self: *Tokenizer, token: Token) []const u8 {
+        return self.buffer[token.loc.start..token.loc.end];
     }
 
     pub fn init(buffer: [:0]const u8) Tokenizer {

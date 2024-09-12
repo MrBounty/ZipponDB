@@ -143,6 +143,8 @@ pub const Parser = struct {
             }
         }
 
+        // Use @embedFile
+
         // Make the union `Type` with all different struct
         self.writeToFile("pub const Types = union {\n");
         for (struct_array.items) |struct_name| {

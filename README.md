@@ -1,25 +1,139 @@
 # ZipponDB
 
+Open-source database written 100% in zig.
+
 ![alt text](https://github.com/MrBounty/ZipponDB/blob/main/logo.jpeg)
 
-# Written in Zig
+# Introduction
 
-Zig is fast, blablabla
+ZipponDB is a relational database written entirely in Zig from stractch.  
+It use a custom query language named ZipponQL or ZiQL for short.
 
-# How it's work
+The first time you run ZipponDB, it will create a new ZipponDB directory and start the Zippon CLI.  
+From here, you can create a new engine by running `schema build`. It will get the file `schema.zipponschema` and build a custom binary
+using zig that the CLI will then use to manipulate data. You then interact with the engine by using `run "My query go here"` or
+by directly using the engine binary.
 
-Meme "That's the neat part..."
+## Why Zippon ?
 
-Zippon is a strutural relational potentially in memory database written entirely in Zig from stractch.
+I first started ZipponDB to learn, but I think that in order to learn, you need to build something real, so I chose to do a database
+as I try to become an expert in it.
 
-You build a binary according to your schema, you can just run it to acces a CLI and it will create and manage a folder 'zipponDB_DATA'.
-Then you do what you want with it, including:
-- Run it with your app as a seperated process and folder
-- Create a Docker and open some port
-- Create a Docker with a small API like flask
-- Other stuffs, Im sure some will find something nice
+Now for Zippon advantages:
+- Open-source and 100% in Zig with 0 dependencies
+- Relational database
+- Small, fast and implementable everywhere
+
+# Declare a schema
+
+ZipponDB need a schema to work. A schema is a way to define how your data will be store. Compared to SQL, you can see it as a 
+file where you declare all table name, columns name, data type and relationship. But here you declare struct. A struct have a name and
+members. A member is one data or link and have a type associated. Here a simple example for a user:
+
+```
+User (
+    name: str,
+    email: str,
+    best_friend: User,
+    friends: []User,
+)
+```
+
+In this example each user have a name and email as a string. But also one best friend as a link. [] mean that there is a 
+list of this value. Note that all value can be null exept list, they can be empty.
+
+Here a more advance example with multiple struct:
+```
+User {
+    name: str,
+    email: str,
+    friends: []User,
+    posts: []Post,
+    liked_post: []Post,
+    comments: []Comment,
+    liked_com: []Comment,
+}
+
+Post {
+    title: str,
+    image: str,
+    at: date,
+    from: User,
+    like_by: []User,
+    comments: []Comment,
+}
+
+Comment {
+    content: str,
+    at: date,
+    from: User,
+    like_by: []User,
+    of: Post,
+}
+```
+
+Note: data not yet implemented.
+
+# ZipponQL
+
+Zippon have it's own query language. Why ? Idk, I wanted to do it.
+
+The language itself is fairly easy in my opinion. Here the basic:
+
+- {} Are filters
+- [] Are how much; what data
+- () Are new or updated data (Not already in file)
+- || Are additional options
+- Link need to be specify between [] to be return, other are returned automatically
+- Data are in struct format and can have link
+
+### Some examples
+
+`GRAB User`
+Get all users
+
+`GRAB User { name = 'Adrien' }`
+Get all user named Adrien
+
+`GRAB User [1; email]`
+Get one user email
+
+`GRAB User | ASCENDING name |`
+Get all users ordered by name
+
+`GRAB User [name] { age > 10 AND name != 'Adrien' } | DECENDING age |`
+Get just the name of all users that are more than 10 years old and not named Adrien
+
+`GRAB User [1] { bestfriend = { name = 'Adrien' } }`
+Get one user that have a best friend named Adrien
+
+`GRAB User [10; friends [1]] { age > 10 } | ASC name |`
+Get one friend of the 10 first user above 10 years old in ascending name.
+
+### Not yet implemented
+
+`GRAB Message [100; comments [ date ] ] { .writter = { name = 'Adrien' }.bestfriend }`
+Get the date of 100 comments written by the best friend of a user named Adrien
+
+`GRAB User { IN Message { date > '12-01-2014' }.writter }`
+Get all users that sended a message after the 12 january 2014
+
+`GRAB User { !IN Comment { }.writter }`
+Get all user that didn't wrote a comment
+
+`GRAB User { IN User { name = 'Adrien' }.friends }`
+Get all user that are friends with an Adrien
+
+`UPDATE User [1] { name = 'Adrien' } => ( email = 'new@email.com' )`
+
+`REMOVE User { id = '000-000' }`
+
+`ADD User ( name = 'Adrien', email = 'email', age = 40 )`
+
 
 # Integration
+
+For now there is only a python intregration, but because it is just 2-3 command, it is easy to implement with other language.
 
 ## Python
 
@@ -27,120 +141,23 @@ Then you do what you want with it, including:
 import zippondb as zdb
 
 client = zdb.newClient('path/to/binary')
-print(client.exe('describe'))
+client.exe('schema build')
+print(client.exe('schema describe'))
 
-# Return named tuple
-users = client.exe('GRAB User {}')
+# Return named tuple of all users
+users = client.run('GRAB User {}')
 for user in users:
     print(user.name)
-
-client.exe('save')
 ```
 
-# Benchmark
+# Roadmap
 
-I did a database with random data. The schema is like that:
-```
-User {
-    name: str,
-    email: str,
-    friends: []User.friends,
-    posts: []Post.from,
-    liked_post: []Post.like_by,
-    comments: []Comment.from,
-    liked_com: []Comment.like_by,
-}
-
-Post {
-    title: str,
-    image: str,
-    at: date,
-    from: User.posts,
-    like_by: []User.liked_post,
-    comments: []Comment.of,
-}
-
-Comment {
-    content: str,
-    at: date,
-    from: User.comments,
-    like_by: User.liked_com,
-    of: Post.comments,
-}
-```
-
-As you can see, link need to be defined in both struct. [] mean an array of value.
-For example `posts: []Post.from,` and `from: User.posts,` mean that a `User` can have multiple posts (an array of `Post`) and a post
-just one author. Both linked by the value `posts` and `from`.
-
-# Create a schema
-
-Zippon use struct as way of saving data. A struct is a way of storing multiple data of different type.
-Very similar to a row in a table, columns being datatype and a row a single struct.
-
-The schema is directly INSIDE the binary, so each binary are per schema ! This is for effenciency, idk to be honest, I guess ? lol
-
-# Migration
-
-For now you can't migrate the data of one binary to another, so you will need to different binary.
-
-# Zippon language
-
-Ok so I went crazy on that, on have it how language. It is stupide and I love it. I wanted to do like EdgeDB but no, too simple.
-Anyway, I tried to do something different, to do something different, idk, you're the jduge of it.
-
-```
-GRAB User { name = 'Adrien' }
-Get all user named Adrien
-
-GRAB User [1; email] { }
-Get one email
-
-GRAB User {} | ASCENDING name |
-Get all users ordered by name
-
-GRAB User [name] { age > 10 AND name != 'Adrien' } | DECENDING age |
-Get just the name of all users that are 10 years old or more and not named Adrien ordered by age
-
-GRAB User { bestfriend = { name = 'Adrien' } }
-GRAB User { bestfriend = User{ name = 'Adrien' } } // Same
-Get all user that have a best friend named Adrien
-
-GRAB User [10] { IN User [1] { age > 10 } | ASC name |.friends }
-Get 10 users that are friend with the first user older than 10 years old in ascending name order
-
-GRAB Message [100; comments [ date ] ] { .writter = { name = 'Adrien' }.bestfriend }
-Get the date of 100 comments from the best friend of the writter named Adrien
-
-GRAB User { IN Message { date > '12-01-2014' }.writter }
-Get all users that sended a message after the 12 january 2014
-
-GRAB User { !IN Comment { }.writter }
-Get all user that didn't wrote a comment
-
-GRAB User { IN User { name = 'Adrien' }.friends }
-Get all user that are friends with an Adrien
-
-UPDATE User [1] { name = 'Adrien' } => ( email = 'new@email.com' )
-
-REMOVE User { id = '000-000' }
-
-ADD User ( name = 'Adrien', email = 'email', age = 40 }
-```
-
-- {} Are filters
-- [] Are how much; what data
-- () Are new or updated data (Not already savec)
-- || Are additional options
-- Data are in struct format and can have link
-- By default all value other than a link are return per query, to prevent recurcive return (User.friends in User.friends)
-
-
-# How it's really work
-
-NOTE: Do this in a separe file
-
-## Tokenizer
-
-The tokenizer of the language is 
-# ZipponDB
+[ ] Beta without link
+[ ] Relationships/links
+[ ] Multi threading
+[ ] Transaction
+[ ] Docker image
+[ ] Migration of schema
+[ ] Dump/Bump data
+[ ] In memory option
+[ ] Archives

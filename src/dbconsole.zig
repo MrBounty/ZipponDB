@@ -103,6 +103,7 @@ pub fn main() !void {
                 .keyword_quit => {
                     break;
                 },
+                .eof => {},
                 else => {
                     std.debug.print("Command need to start with a keyword, including: run, schema, help and quit\n", .{});
                 },
@@ -157,17 +158,30 @@ fn buildEngine() !void {
     for (dtypes.struct_name_list) |struct_name| {
         data_dir.makeDir(struct_name) catch |err| switch (err) {
             error.PathAlreadyExists => {},
-            else => @panic("Error other than path already exists when trying to create the a member directory.\n"),
+            else => @panic("Error other than path already exists when trying to create a struct directory.\n"),
         };
-        const dir = try data_dir.openDir(struct_name, .{});
-        _ = dir.createFile("main.zippondata", .{}) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => @panic("Error: can't create main.zippondata"),
-        };
-        _ = dir.createFile("1.zippondata", .{}) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => @panic("Error: can't create 1.zippondata"),
-        };
+        const struct_dir = try data_dir.openDir(struct_name, .{});
+
+        const member_names = dtypes.structName2structMembers(struct_name);
+        for (member_names) |member_name| {
+            struct_dir.makeDir(member_name) catch |err| switch (err) {
+                error.PathAlreadyExists => return,
+                else => @panic("Error other than path already exists when trying to create a member directory.\n"),
+            };
+            const member_dir = try struct_dir.openDir(member_name, .{});
+
+            blk: {
+                const file = member_dir.createFile("main.zippondata", .{}) catch |err| switch (err) {
+                    error.PathAlreadyExists => break :blk,
+                    else => @panic("Error: can't create main.zippondata"),
+                };
+                try file.writeAll("\n");
+            }
+            _ = member_dir.createFile("1.zippondata", .{}) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => @panic("Error: can't create 1.zippondata"),
+            };
+        }
     }
 }
 

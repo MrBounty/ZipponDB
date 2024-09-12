@@ -19,21 +19,50 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Test step
-    const cliTokenizer_tests = b.addTest(.{
+    const tests1 = b.addTest(.{
+        .root_source_file = b.path("src/parsers/data-parsing.zig"),
+        .target = target,
+        .optimize = optimize,
+        .name = "Data parsing",
+    });
+    const run_tests1 = b.addRunArtifact(tests1);
+
+    const tests2 = b.addTest(.{
         .root_source_file = b.path("src/tokenizers/cliTokenizer.zig"),
         .target = target,
         .optimize = optimize,
-        .name = "CLID Tokenizer test",
+        .name = "CLI tokenizer",
     });
-    const ziqlTokenizer_tests = b.addTest(.{
+    const run_tests2 = b.addRunArtifact(tests2);
+
+    const tests3 = b.addTest(.{
         .root_source_file = b.path("src/tokenizers/ziqlTokenizer.zig"),
         .target = target,
         .optimize = optimize,
-        .name = "ZiQL Tokenizer test",
+        .name = "ZiQL tokenizer",
     });
-    const run_cliTokenizer_tests = b.addRunArtifact(cliTokenizer_tests);
-    const run_ziqlTokenizer_tests = b.addRunArtifact(ziqlTokenizer_tests);
+    const run_tests3 = b.addRunArtifact(tests3);
+
+    const tests4 = b.addTest(.{
+        .root_source_file = b.path("src/tokenizers/schemaTokenizer.zig"),
+        .target = target,
+        .optimize = optimize,
+        .name = "Schema tokenizer",
+    });
+    const run_tests4 = b.addRunArtifact(tests4);
+
+    const tests5 = b.addTest(.{
+        .root_source_file = b.path("src/test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .name = "ADD functions",
+    });
+    const run_tests5 = b.addRunArtifact(tests5);
+
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_cliTokenizer_tests.step);
-    test_step.dependOn(&run_ziqlTokenizer_tests.step);
+    test_step.dependOn(&run_tests1.step);
+    test_step.dependOn(&run_tests2.step);
+    test_step.dependOn(&run_tests3.step);
+    test_step.dependOn(&run_tests4.step);
+    test_step.dependOn(&run_tests5.step);
 }
