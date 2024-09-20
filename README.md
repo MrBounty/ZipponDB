@@ -10,8 +10,8 @@ ZipponDB is a relational database written entirely in Zig from stractch.
 It use a custom query language named ZipponQL or ZiQL for short.
 
 The first time you run ZipponDB, it will create a new ZipponDB directory and start the Zippon CLI.  
-From here, you can create a new engine by running `schema build`. It will get the file `schema.zipponschema` and build a custom binary
-using zig that the CLI will then use to manipulate data. You then interact with the engine by using `run "My query go here"` or
+From here, you can create a new engine by running `schema build`. It will use the file `schema.zipponschema` and build a custom binary
+using zig, that the CLI will then use to manipulate data. You then interact with the engine by using `run "My query go here"` or
 by directly using the engine binary.
 
 ### Why Zippon ?
