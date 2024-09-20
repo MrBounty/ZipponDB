@@ -1,1 +1,5 @@
 .zig-cache
+ZipponDB
+engine
+engine.o
+zig-out
