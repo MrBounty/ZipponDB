@@ -1,10 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const cliTokenizer = @import("tokenizers/cliTokenizer.zig").Tokenizer;
-const cliToken = @import("tokenizers/cliTokenizer.zig").Token;
-const schemaTokenizer = @import("tokenizers/schemaTokenizer.zig").Tokenizer;
-const schemaToken = @import("tokenizers/schemaTokenizer.zig").Token;
-const schemaParser = @import("parsers/schemaParser.zig").Parser;
+const cliTokenizer = @import("cliTokenizer.zig").Tokenizer;
+const cliToken = @import("cliTokenizer.zig").Token;
+const schemaTokenizer = @import("schemaTokenizer.zig").Tokenizer;
+const schemaToken = @import("schemaTokenizer.zig").Token;
+const schemaParser = @import("schemaParser.zig").Parser;
 
 pub fn main() !void {
     checkAndCreateDirectories();
@@ -189,9 +189,10 @@ fn runCommand(null_term_query_str: [:0]const u8) void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    const argv = &[_][]const u8{ "./engine", null_term_query_str };
+    // TODO: Use the folder ENGINE
+    const args = &[_][]const u8{ "./engine", null_term_query_str };
 
-    const result = std.process.Child.run(.{ .allocator = allocator, .argv = argv }) catch |err| switch (err) {
+    const result = std.process.Child.run(.{ .allocator = allocator, .argv = args, .max_output_bytes = 4084 }) catch |err| switch (err) {
         error.FileNotFound => {
             std.debug.print("No engine found, please use `schema build` to make one.\n", .{});
             return;

@@ -1,11 +1,11 @@
 const std = @import("std");
 const dtypes = @import("dtypes.zig");
 const UUID = @import("uuid.zig").UUID;
-const ziqlTokenizer = @import("tokenizers/ziqlTokenizer.zig").Tokenizer;
-const ziqlToken = @import("tokenizers/ziqlTokenizer.zig").Token;
-const grabParser = @import("query_functions/GRAB.zig").Parser;
+const ziqlTokenizer = @import("ziqlTokenizer.zig").Tokenizer;
+const ziqlToken = @import("ziqlTokenizer.zig").Token;
+const grabParser = @import("GRAB.zig").Parser;
 const Allocator = std.mem.Allocator;
-const parseDataAndAddToFile = @import("query_functions/ADD.zig").parseDataAndAddToFile;
+const parseDataAndAddToFile = @import("ADD.zig").parseDataAndAddToFile;
 
 pub const Error = error{UUIDNotFound};
 const stdout = std.io.getStdOut().writer();
@@ -46,8 +46,8 @@ pub fn main() !void {
 
     switch (first_token.tag) {
         .keyword_grab => {
-            var parser = grabParser.init(&ziqlToker);
-            try parser.parse_additional_data();
+            var parser = grabParser.init(allocator, &ziqlToker);
+            try parser.parse();
         },
         .keyword_add => {
             if (!isStructInSchema(ziqlToker.getTokenSlice(struct_name_token))) {

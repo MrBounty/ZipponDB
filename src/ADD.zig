@@ -1,15 +1,13 @@
 const std = @import("std");
-const dtypes = @import("../dtypes.zig");
-const UUID = @import("../uuid.zig").UUID;
-const ziqlTokenizer = @import("../tokenizers/ziqlTokenizer.zig").Tokenizer;
-const ziqlToken = @import("../tokenizers/ziqlTokenizer.zig").Token;
+const dtypes = @import("dtypes.zig");
+const UUID = @import("uuid.zig").UUID;
+const ziqlTokenizer = @import("ziqlTokenizer.zig").Tokenizer;
+const ziqlToken = @import("ziqlTokenizer.zig").Token;
 const Allocator = std.mem.Allocator;
 
 const stdout = std.io.getStdOut().writer();
 
-// TODO to improve this part of the code:
-// 1. Use logging
-// 2. Create a struct that manage files with member: stdout, folder (e.g. the User folder),
+// TODO: Use a Parser struct like in GRAB
 
 // Query that need to work now
 // ADD User (name='Adrien', email='adrien.bouvais@gmail.com')                                   OK
@@ -236,7 +234,10 @@ pub fn getMapOfMember(allocator: Allocator, toker: *ziqlTokenizer) !std.StringHa
 
     std.debug.print("OK \n\n", .{});
 
-    while (token.tag != ziqlToken.Tag.eof) : (token = toker.next()) {
+    while (token.tag != ziqlToken.Tag.eof) : ({
+        token = toker.next();
+        std.debug.print("{any}", .{token});
+    }) {
         std.debug.print("{any}\n\n", .{token});
         switch (token.tag) {
             .r_paren => continue,
@@ -332,4 +333,21 @@ fn checkIfAllMemberInMap(struct_name: []const u8, map: *std.StringHashMap([]cons
     }
 
     return ((count == all_struct_member.len) and (count == map.count()));
+}
+
+test "Get map of members" {
+    // std.testing.refAllDecls(@This());
+    // _ = @import("query_functions/ADD.zig").getMapOfMember;
+
+    const allocator = std.testing.allocator;
+
+    const in = "(name='Adrien', email='adrien@gmail.com', age=26, scores=[42 100 5])";
+    const null_term_in = try allocator.dupeZ(u8, in);
+
+    var toker = ziqlTokenizer.init(null_term_in);
+
+    const member_map = try getMapOfMember(allocator, &toker);
+    std.debug.print("{s}", .{member_map.get("name").?});
+
+    allocator.free(null_term_in);
 }

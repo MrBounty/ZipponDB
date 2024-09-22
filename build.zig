@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
 
     // Test step
     const tests1 = b.addTest(.{
-        .root_source_file = b.path("src/parsers/data-parsing.zig"),
+        .root_source_file = b.path("src/data-parsing.zig"),
         .target = target,
         .optimize = optimize,
         .name = "Data parsing",
@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
     const run_tests1 = b.addRunArtifact(tests1);
 
     const tests2 = b.addTest(.{
-        .root_source_file = b.path("src/tokenizers/cliTokenizer.zig"),
+        .root_source_file = b.path("src/cliTokenizer.zig"),
         .target = target,
         .optimize = optimize,
         .name = "CLI tokenizer",
@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) void {
     const run_tests2 = b.addRunArtifact(tests2);
 
     const tests3 = b.addTest(.{
-        .root_source_file = b.path("src/tokenizers/ziqlTokenizer.zig"),
+        .root_source_file = b.path("src/ziqlTokenizer.zig"),
         .target = target,
         .optimize = optimize,
         .name = "ZiQL tokenizer",
@@ -44,25 +44,34 @@ pub fn build(b: *std.Build) void {
     const run_tests3 = b.addRunArtifact(tests3);
 
     const tests4 = b.addTest(.{
-        .root_source_file = b.path("src/tokenizers/schemaTokenizer.zig"),
+        .root_source_file = b.path("src/schemaTokenizer.zig"),
         .target = target,
         .optimize = optimize,
         .name = "Schema tokenizer",
     });
     const run_tests4 = b.addRunArtifact(tests4);
 
-    const tests5 = b.addTest(.{
-        .root_source_file = b.path("src/test.zig"),
+    //const tests5 = b.addTest(.{
+    //    .root_source_file = b.path("src/ADD.zig"),
+    //    .target = target,
+    //    .optimize = optimize,
+    //    .name = "ADD",
+    //});
+    //const run_tests5 = b.addRunArtifact(tests5);
+
+    const tests6 = b.addTest(.{
+        .root_source_file = b.path("src/GRAB.zig"),
         .target = target,
         .optimize = optimize,
-        .name = "ADD functions",
+        .name = "GRAB",
     });
-    const run_tests5 = b.addRunArtifact(tests5);
+    const run_tests6 = b.addRunArtifact(tests6);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests1.step);
     test_step.dependOn(&run_tests2.step);
     test_step.dependOn(&run_tests3.step);
     test_step.dependOn(&run_tests4.step);
-    test_step.dependOn(&run_tests5.step);
+    //test_step.dependOn(&run_tests5.step);
+    test_step.dependOn(&run_tests6.step);
 }

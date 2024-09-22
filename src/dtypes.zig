@@ -1,6 +1,6 @@
 const std = @import("std");
 const UUID = @import("uuid.zig").UUID;
-const dataParsing = @import("parsers/data-parsing.zig");
+const dataParsing = @import("data-parsing.zig");
 
 pub const parameter_max_file_size_in_bytes = 500; // THe number of bytes than each file can be before splitting
 
