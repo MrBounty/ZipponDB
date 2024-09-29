@@ -51,13 +51,13 @@ pub fn build(b: *std.Build) void {
     });
     const run_tests4 = b.addRunArtifact(tests4);
 
-    //const tests5 = b.addTest(.{
-    //    .root_source_file = b.path("src/ADD.zig"),
-    //    .target = target,
-    //    .optimize = optimize,
-    //    .name = "ADD",
-    //});
-    //const run_tests5 = b.addRunArtifact(tests5);
+    const tests5 = b.addTest(.{
+        .root_source_file = b.path("src/uuid.zig"),
+        .target = target,
+        .optimize = optimize,
+        .name = "UUID",
+    });
+    const run_tests5 = b.addRunArtifact(tests5);
 
     const tests6 = b.addTest(.{
         .root_source_file = b.path("src/GRAB.zig"),
@@ -72,6 +72,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests2.step);
     test_step.dependOn(&run_tests3.step);
     test_step.dependOn(&run_tests4.step);
-    //test_step.dependOn(&run_tests5.step);
+    test_step.dependOn(&run_tests5.step);
     test_step.dependOn(&run_tests6.step);
 }

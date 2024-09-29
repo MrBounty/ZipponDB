@@ -1,5 +1,3 @@
-# How the file system work
-
 # All class of ZipponDB
 
 ## Tokenizer

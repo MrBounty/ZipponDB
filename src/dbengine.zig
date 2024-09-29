@@ -1,11 +1,12 @@
 const std = @import("std");
 const dtypes = @import("dtypes.zig");
 const UUID = @import("uuid.zig").UUID;
-const ziqlTokenizer = @import("ziqlTokenizer.zig").Tokenizer;
-const ziqlToken = @import("ziqlTokenizer.zig").Token;
+const Tokenizer = @import("ziqlTokenizer.zig").Tokenizer;
+const Token = @import("ziqlTokenizer.zig").Token;
 const grabParser = @import("GRAB.zig").Parser;
+const addParser = @import("ADD.zig").Parser;
+const DataEngine = @import("dataEngine.zig").DataEngine;
 const Allocator = std.mem.Allocator;
-const parseDataAndAddToFile = @import("ADD.zig").parseDataAndAddToFile;
 
 pub const Error = error{UUIDNotFound};
 const stdout = std.io.getStdOut().writer();
@@ -17,22 +18,6 @@ pub fn main() !void {
     const buffer = try allocator.alloc(u8, 1024);
     defer allocator.free(buffer);
 
-    // Init the map storage string map that track all array of struct
-    var storage = std.StringHashMap(*std.ArrayList(dtypes.Types)).init(allocator);
-    defer storage.deinit();
-
-    // Create all array and put them in the main map
-    // Use MultiArrayList in the future to save memory maybe ?
-    for (dtypes.struct_name_list) |struct_name| {
-        var array = std.ArrayList(dtypes.Types).init(allocator);
-        try storage.put(struct_name, &array);
-    }
-
-    // Add user
-    //const adrien = dtypes.User.init("Adrien", "adrien@gmail.com");
-    //try storage.get("User").?.append(dtypes.Types{ .User = &adrien });
-    //const adrien_get = storage.get("User").?.items[0].User;
-
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
@@ -40,21 +25,28 @@ pub fn main() !void {
     _ = args.next();
     const null_term_query_str = args.next().?;
 
-    var ziqlToker = ziqlTokenizer.init(null_term_query_str);
-    const first_token = ziqlToker.next();
-    const struct_name_token = ziqlToker.next();
+    var toker = Tokenizer.init(null_term_query_str);
+    const first_token = toker.next();
+    const struct_name_token = toker.next();
+
+    var data_engine = DataEngine.init(allocator);
 
     switch (first_token.tag) {
         .keyword_grab => {
-            var parser = grabParser.init(allocator, &ziqlToker);
+            if (!isStructInSchema(toker.getTokenSlice(struct_name_token))) {
+                try stdout.print("Error: No struct named '{s}' in current schema.", .{toker.getTokenSlice(struct_name_token)});
+                return;
+            }
+            var parser = grabParser.init(allocator, &toker, &data_engine);
             try parser.parse();
         },
         .keyword_add => {
-            if (!isStructInSchema(ziqlToker.getTokenSlice(struct_name_token))) {
-                try stdout.print("Error: No struct named '{s}' in current schema.", .{ziqlToker.getTokenSlice(struct_name_token)});
+            if (!isStructInSchema(toker.getTokenSlice(struct_name_token))) {
+                try stdout.print("Error: No struct named '{s}' in current schema.", .{toker.getTokenSlice(struct_name_token)});
                 return;
             }
-            try parseDataAndAddToFile(allocator, ziqlToker.getTokenSlice(struct_name_token), &ziqlToker);
+            var parser = addParser.init(allocator, &toker, &data_engine);
+            try parser.parse(toker.getTokenSlice(struct_name_token));
         },
         .keyword_update => {
             try stdout.print("Not yet implemented.\n", .{});

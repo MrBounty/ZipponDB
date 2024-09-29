@@ -159,7 +159,6 @@ pub const Tokenizer = struct {
 test "Basics" {
     try testTokenize("help", &.{.keyword_help});
     try testTokenize("run \"Hello world\"", &.{ .keyword_run, .string_literal });
-    std.debug.print("CLI tokenizer OK\n", .{});
 }
 
 fn testTokenize(source: [:0]const u8, expected_token_tags: []const Token.Tag) !void {

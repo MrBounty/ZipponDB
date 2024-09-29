@@ -2,8 +2,6 @@ const std = @import("std");
 const UUID = @import("uuid.zig").UUID;
 const dataParsing = @import("data-parsing.zig");
 
-pub const parameter_max_file_size_in_bytes = 500; // THe number of bytes than each file can be before splitting
-
 pub const User = struct {
     id: UUID,
     name: []const u8,

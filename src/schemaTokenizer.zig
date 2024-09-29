@@ -157,7 +157,6 @@ pub const Tokenizer = struct {
 
 test "keywords" {
     try testTokenize("int float str date", &.{ .type_int, .type_float, .type_str, .type_date });
-    std.debug.print("Schema type OK\n", .{});
 }
 
 test "basic query" {
@@ -182,7 +181,6 @@ test "basic query" {
         .identifier,
         .r_paren,
     });
-    std.debug.print("Schema OK\n", .{});
 }
 
 fn testTokenize(source: [:0]const u8, expected_token_tags: []const Token.Tag) !void {

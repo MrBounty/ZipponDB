@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Toker = @import("tokenizers/schemaTokenizer.zig").Tokenizer;
-const Token = @import("tokenizers/schemaTokenizer.zig").Token;
+const Toker = @import("schemaTokenizer.zig").Tokenizer;
+const Token = @import("schemaTokenizer.zig").Token;
 
 pub const Parser = struct {
     file: std.fs.File,

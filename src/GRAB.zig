@@ -2,6 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Tokenizer = @import("ziqlTokenizer.zig").Tokenizer;
 const Token = @import("ziqlTokenizer.zig").Token;
+const DataEngine = @import("dataEngine.zig").DataEngine;
+const UUID = @import("uuid.zig").UUID;
 
 // To work now
 // GRAB User {}
@@ -15,11 +17,30 @@ const Token = @import("ziqlTokenizer.zig").Token;
 const stdout = std.io.getStdOut().writer();
 
 pub const Parser = struct {
+    arena: std.heap.ArenaAllocator,
     allocator: Allocator,
     toker: *Tokenizer,
+    data_engine: *DataEngine,
     state: State,
 
     additional_data: AdditionalData,
+
+    pub fn init(allocator: Allocator, toker: *Tokenizer, data_engine: *DataEngine) Parser {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        return Parser{
+            .arena = arena,
+            .allocator = arena.allocator(),
+            .toker = toker,
+            .data_engine = data_engine,
+            .state = State.start,
+            .additional_data = AdditionalData.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Parser) void {
+        self.additional_data.deinit();
+        self.arena.deinit();
+    }
 
     // This is the [] part
     pub const AdditionalData = struct {
@@ -31,7 +52,10 @@ pub const Parser = struct {
         }
 
         pub fn deinit(self: *AdditionalData) void {
-            // Get all additional data that are in the list to also deinit them
+            for (self.member_to_find.items) |elem| {
+                elem.additional_data.deinit();
+            }
+
             self.member_to_find.deinit();
         }
     };
@@ -62,20 +86,6 @@ pub const Parser = struct {
 
         expect_filter,
     };
-
-    pub fn init(allocator: Allocator, toker: *Tokenizer) Parser {
-        return Parser{
-            .allocator = allocator,
-            .toker = toker,
-            .state = State.start,
-            .additional_data = AdditionalData.init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *Parser) void {
-        // FIXME: I think additionalData inside additionalData are not deinit
-        self.additional_data.deinit();
-    }
 
     pub fn parse(self: *Parser) !void {
         var token = self.toker.next();
@@ -243,6 +253,37 @@ pub const Parser = struct {
     }
 };
 
+// TODO: Optimize. Maybe just do a new list and return it instead
+fn OR(arr1: *std.ArrayList(UUID), arr2: *std.ArrayList(UUID)) std.ArrayList(UUID) {
+    defer arr1.deinit();
+    defer arr2.deinit();
+
+    var arr = try arr1.clone();
+
+    for (0..arr2.items.len) |i| {
+        if (!arr.contains(arr2[i])) {
+            arr.append(arr2[i]);
+        }
+    }
+
+    return arr;
+}
+
+fn AND(arr1: *std.ArrayList(UUID), arr2: *std.ArrayList(UUID)) std.ArrayList(UUID) {
+    defer arr1.deinit();
+    defer arr2.deinit();
+
+    var arr = try arr1.clone();
+
+    for (0..arr1.items.len) |i| {
+        if (arr2.contains(arr1[i])) {
+            arr.append(arr1[i]);
+        }
+    }
+
+    return arr;
+}
+
 test "Test AdditionalData" {
     const allocator = std.testing.allocator;
 
@@ -251,7 +292,7 @@ test "Test AdditionalData" {
     testAdditionalData("[1]", additional_data1);
 
     var additional_data2 = Parser.AdditionalData.init(allocator);
-    defer additional_data2.deinit();
+    defer additional_data2.member_to_find.deinit();
     try additional_data2.member_to_find.append(
         Parser.AdditionalDataMember.init(
             allocator,
@@ -260,25 +301,64 @@ test "Test AdditionalData" {
     );
     testAdditionalData("[name]", additional_data2);
 
-    std.debug.print("AdditionalData Parsing OK \n", .{});
+    var additional_data3 = Parser.AdditionalData.init(allocator);
+    additional_data3.entity_count_to_find = 1;
+    defer additional_data3.member_to_find.deinit();
+    try additional_data3.member_to_find.append(
+        Parser.AdditionalDataMember.init(
+            allocator,
+            "name",
+        ),
+    );
+    testAdditionalData("[1; name]", additional_data3);
+
+    var additional_data4 = Parser.AdditionalData.init(allocator);
+    additional_data4.entity_count_to_find = 100;
+    defer additional_data4.member_to_find.deinit();
+    try additional_data4.member_to_find.append(
+        Parser.AdditionalDataMember.init(
+            allocator,
+            "friend",
+        ),
+    );
+    testAdditionalData("[100; friend [name]]", additional_data4);
 }
 
 fn testAdditionalData(source: [:0]const u8, expected_AdditionalData: Parser.AdditionalData) void {
     const allocator = std.testing.allocator;
     var tokenizer = Tokenizer.init(source);
-    var additional_data = Parser.AdditionalData.init(allocator);
+    var data_engine = DataEngine.init(allocator);
+    defer data_engine.deinit();
 
+    var parser = Parser.init(allocator, &tokenizer, &data_engine);
+
+    defer parser.deinit();
     _ = tokenizer.next();
-    var parser = Parser.init(allocator, &tokenizer);
-    parser.parse_additional_data(&additional_data) catch |err| {
+    parser.parse_additional_data(&parser.additional_data) catch |err| {
         std.debug.print("Error parsing additional data: {any}\n", .{err});
     };
 
-    std.debug.print("{any}\n\n", .{additional_data});
+    compareAdditionalData(expected_AdditionalData, parser.additional_data);
+}
 
-    std.testing.expectEqual(expected_AdditionalData, additional_data) catch {
-        std.debug.print("Additional data are not equal for: {s}\n", .{source});
+// TODO: Check AdditionalData inside AdditionalData
+fn compareAdditionalData(ad1: Parser.AdditionalData, ad2: Parser.AdditionalData) void {
+    std.testing.expectEqual(ad1.entity_count_to_find, ad2.entity_count_to_find) catch {
+        std.debug.print("Additional data entity_count_to_find are not equal.\n", .{});
     };
 
-    parser.deinit();
+    var founded = false;
+
+    for (ad1.member_to_find.items) |elem1| {
+        founded = false;
+        for (ad2.member_to_find.items) |elem2| {
+            if (std.mem.eql(u8, elem1.name, elem2.name)) {
+                compareAdditionalData(elem1.additional_data, elem2.additional_data);
+                founded = true;
+                break;
+            }
+        }
+
+        if (!founded) @panic("Member not found");
+    }
 }
