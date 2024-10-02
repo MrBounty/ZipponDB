@@ -113,8 +113,8 @@ Zippon have it's own query language. Here the keys point to remember:
 | GRAB User | Get all users |
 | GRAB User { name = 'Adrien' } | Get all users named Adrien |
 | GRAB User [1; email] | Get one user's email |
-| GRAB User | ASCENDING name | | Get all users ordered by name |
-| GRAB User [name] { age > 10 AND name != 'Adrien' } | DECENDING age | | Get just the name of all users that are more than 10 years old and not named Adrien |
+| GRAB User \| ASCENDING name \| | Get all users ordered by name |
+| GRAB User [name] { age > 10 AND name != 'Adrien' } \| DECENDING age \| | Get just the name of all users that are more than 10 years old and not named Adrien |
 | GRAB User [1] { bestfriend = { name = 'Adrien' } } | Get one user that has a best friend named Adrien |
 | GRAB User [10; friends [1]] { age > 10 } | ASC name | | Get one friend of the 10th user above 10 years old in ascending name |
 
@@ -128,7 +128,6 @@ Zippon have it's own query language. Here the keys point to remember:
 | UPDATE User [1] { name = 'Adrien' } => ( email = 'new@email.com' ) | Update a user's email |
 | REMOVE User { id = '000-000' } | Remove a user by ID |
 | ADD User ( name = 'Adrien', email = 'email', age = 40 ) | Add a new user |
-Let me know if you'd like me to make any further changes!
 
 # Integration
 
