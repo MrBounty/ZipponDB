@@ -1,7 +1,3 @@
-# ZipponDB
-
-Open-source database written 100% in zig.
-
 ![alt text](https://github.com/MrBounty/ZipponDB/blob/main/banner.png)
 
 # Introduction
