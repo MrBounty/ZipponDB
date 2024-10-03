@@ -1,5 +1,5 @@
 const std = @import("std");
-const dtypes = @import("dtypes.zig");
+const metadata = @import("metadata.zig");
 const UUID = @import("uuid.zig").UUID;
 const Tokenizer = @import("ziqlTokenizer.zig").Tokenizer;
 const Token = @import("ziqlTokenizer.zig").Token;
@@ -25,144 +25,56 @@ const stdout = std.io.getStdOut().writer();
 /// If no file is found, a new one is created.
 /// Take the main.zippondata file, the index of the file where the data is saved and the string to add at the end of the line
 pub const Parser = struct {
-    arena: std.heap.ArenaAllocator,
     allocator: Allocator,
-
     toker: *Tokenizer,
-    data_engine: *DataEngine,
 
-    pub fn init(allocator: Allocator, toker: *Tokenizer, data_engine: *DataEngine) Parser {
-        var arena = std.heap.ArenaAllocator.init(allocator);
+    pub fn init(allocator: Allocator, toker: *Tokenizer) Parser {
         return Parser{
-            .arena = arena,
-            .allocator = arena.allocator(),
+            .allocator = allocator,
             .toker = toker,
-            .data_engine = data_engine,
         };
     }
 
-    pub fn deinit(self: *Parser) void {
-        self.arena.deinit();
-    }
+    pub fn parse(self: *Parser) !void {
+        var data_engine = DataEngine.init(self.allocator, null);
+        defer data_engine.deinit();
 
-    pub fn parse(self: *Parser, struct_name: []const u8) !void {
+        var struct_name_token = self.toker.next();
+        const struct_name = self.toker.getTokenSlice(struct_name_token);
+
+        if (!metadata.isStructNameExists(struct_name)) self.print_error("Struct not found in current schema", &struct_name_token);
+
         var token = self.toker.next();
         switch (token.tag) {
             .l_paren => {},
             else => {
-                try self.print_error("Error: Expected (", &token);
+                self.print_error("Error: Expected (", &token);
             },
         }
 
-        const buffer = try self.allocator.alloc(u8, 1024 * 100);
-        defer self.allocator.free(buffer);
+        var data_map = self.parseData(struct_name);
+        defer data_map.deinit();
 
-        var data = self.parseData(); // data is a map with key as member name and value as str of the value inserted in the query. So age = 12 is the string 12 here
-        defer data.deinit();
-
-        if (!self.checkIfAllMemberInMap(struct_name, &data)) return;
-
-        const entity = try dtypes.createEntityFromMap(self.allocator, struct_name, data);
-        const uuid_str = entity.User.*.id.format_uuid();
-        defer stdout.print("Added new {s} successfully using UUID: {s}\n", .{
-            struct_name,
-            uuid_str,
-        }) catch {};
-
-        const member_names = dtypes.structName2structMembers(struct_name);
-        for (member_names) |member_name| {
-            var file_map = self.data_engine.getFilesStat(struct_name, member_name) catch {
-                try stdout.print("Error: File stat error", .{});
-                return;
-            };
-            const potential_file_name_to_use = self.data_engine.getFirstUsableFile(file_map);
-            if (potential_file_name_to_use) |file_name| {
-                const file_index = self.data_engine.fileName2Index(file_name);
-                try stdout.print("Using file: {s} with a size of {d}\n", .{ file_name, file_map.get(file_name).?.size });
-
-                const path = try std.fmt.bufPrint(buffer, "ZipponDB/DATA/{s}/{s}/{s}", .{
-                    struct_name,
-                    member_name,
-                    file_name,
-                });
-
-                var file = std.fs.cwd().openFile(path, .{
-                    .mode = .read_write,
-                }) catch {
-                    try stdout.print("Error opening data file.", .{});
-                    return;
-                };
-                defer file.close();
-
-                try file.seekFromEnd(0);
-                try file.writer().print("{s} {s}\n", .{ uuid_str, data.get(member_name).? });
-
-                const path_to_main = try std.fmt.bufPrint(buffer, "ZipponDB/DATA/{s}/{s}/main.zippondata", .{
-                    struct_name,
-                    member_name,
-                });
-
-                var file_main = std.fs.cwd().openFile(path_to_main, .{
-                    .mode = .read_write,
-                }) catch {
-                    try stdout.print("Error opening data file.", .{});
-                    return;
-                };
-                defer file_main.close();
-
-                try self.data_engine.appendToLineAtIndex(file_main, file_index, &uuid_str);
-            } else {
-                const max_index = self.data_engine.maxFileIndex(file_map);
-
-                const new_file_path = try std.fmt.bufPrint(buffer, "ZipponDB/DATA/{s}/{s}/{d}.zippondata", .{
-                    struct_name,
-                    member_name,
-                    max_index + 1,
-                });
-
-                try stdout.print("new file path: {s}\n", .{new_file_path});
-
-                // TODO: Create new file and save the data inside
-                const new_file = std.fs.cwd().createFile(new_file_path, .{}) catch @panic("Error creating new data file");
-                defer new_file.close();
-
-                try new_file.writer().print("{s} {s}\n", .{ &uuid_str, data.get(member_name).? });
-
-                const path_to_main = try std.fmt.bufPrint(buffer, "ZipponDB/DATA/{s}/{s}/main.zippondata", .{
-                    struct_name,
-                    member_name,
-                });
-
-                var file_main = std.fs.cwd().openFile(path_to_main, .{
-                    .mode = .read_write,
-                }) catch {
-                    try stdout.print("Error opening data file.", .{});
-                    @panic("");
-                };
-                defer file_main.close();
-
-                try file_main.seekFromEnd(0);
-                try file_main.writeAll("\n ");
-                try file_main.seekTo(0);
-                try self.data_engine.appendToLineAtIndex(file_main, max_index + 1, &uuid_str);
-            }
-        }
+        if (self.checkIfAllMemberInMap(struct_name, &data_map)) {
+            try data_engine.writeEntity(struct_name, data_map);
+        } else |_| {}
     }
 
     /// Take the tokenizer and return a map of the query for the ADD command.
     /// Keys are the member name and value are the string of the value in the query. E.g. 'Adrien' or '10'
-    pub fn parseData(self: *Parser) std.StringHashMap([]const u8) {
+    /// TODO: Make it clean using a State like other parser
+    pub fn parseData(self: *Parser, struct_name: []const u8) std.StringHashMap([]const u8) {
         var token = self.toker.next();
 
-        var member_map = std.StringHashMap([]const u8).init(
-            self.allocator,
-        );
+        var member_map = std.StringHashMap([]const u8).init(self.allocator);
 
         while (token.tag != Token.Tag.eof) : (token = self.toker.next()) {
             switch (token.tag) {
                 .r_paren => continue,
                 .identifier => {
                     const member_name_str = self.toker.getTokenSlice(token);
+
+                    if (!metadata.isMemberNameInStruct(struct_name, member_name_str)) self.print_error("Member not found in struct.", &token);
                     token = self.toker.next();
                     switch (token.tag) {
                         .equal => {
@@ -170,22 +82,23 @@ pub const Parser = struct {
                             switch (token.tag) {
                                 .string_literal, .number_literal => {
                                     const value_str = self.toker.getTokenSlice(token);
-                                    member_map.put(member_name_str, value_str) catch @panic("Could not add member name and value to map in getMapOfMember");
+                                    member_map.put(member_name_str, value_str) catch self.print_error("Could not add member name and value to map in getMapOfMember", &token);
                                     token = self.toker.next();
                                     switch (token.tag) {
                                         .comma, .r_paren => continue,
-                                        else => self.print_error("Error: Expected , after string or number. E.g. ADD User (name='bob', age=10)", &token) catch {},
+                                        else => self.print_error("Error: Expected , after string or number. E.g. ADD User (name='bob', age=10)", &token),
                                     }
                                 },
                                 .keyword_null => {
                                     const value_str = "null";
-                                    member_map.put(member_name_str, value_str) catch self.print_error("Error: 001", &token) catch {};
+                                    member_map.put(member_name_str, value_str) catch self.print_error("Error: 001", &token);
                                     token = self.toker.next();
                                     switch (token.tag) {
                                         .comma, .r_paren => continue,
-                                        else => self.print_error("Error: Expected , after string or number. E.g. ADD User (name='bob', age=10)", &token) catch {},
+                                        else => self.print_error("Error: Expected , after string or number. E.g. ADD User (name='bob', age=10)", &token),
                                     }
                                 },
+                                // Create a tag to prevent creating an array then join them. Instead just read the buffer from [ to ] in the tekenizer itself
                                 .l_bracket => {
                                     var array_values = std.ArrayList([]const u8).init(self.allocator);
                                     token = self.toker.next();
@@ -193,60 +106,78 @@ pub const Parser = struct {
                                         switch (token.tag) {
                                             .string_literal, .number_literal => {
                                                 const value_str = self.toker.getTokenSlice(token);
-                                                array_values.append(value_str) catch @panic("Could not add value to array in getMapOfMember");
+                                                array_values.append(value_str) catch self.print_error("Could not add value to array in getMapOfMember", &token);
                                             },
-                                            else => self.print_error("Error: Expected string or number in array. E.g. ADD User (scores=[10 20 30])", &token) catch {},
+                                            else => self.print_error("Error: Expected string or number in array. E.g. ADD User (scores=[10 20 30])", &token),
                                         }
                                     }
                                     // Maybe change that as it just recreate a string that is already in the buffer
-                                    const array_str = std.mem.join(self.allocator, " ", array_values.items) catch @panic("Couln't join the value of array");
-                                    member_map.put(member_name_str, array_str) catch @panic("Could not add member name and value to map in getMapOfMember");
+                                    const array_str = std.mem.join(self.allocator, " ", array_values.items) catch {
+                                        self.print_error("Couln't join the value of array", &token);
+                                        @panic("=)");
+                                    };
+                                    member_map.put(member_name_str, array_str) catch self.print_error("Could not add member name and value to map in getMapOfMember", &token);
+
+                                    token = self.toker.next();
+                                    switch (token.tag) {
+                                        .comma, .r_paren => continue,
+                                        else => self.print_error("Error: Expected , after string or number. E.g. ADD User (name='bob', age=10)", &token),
+                                    }
                                 },
-                                else => self.print_error("Error: Expected string or number after =. E.g. ADD User (name='bob')", &token) catch {},
+                                else => self.print_error("Error: Expected string or number after =. E.g. ADD User (name='bob')", &token),
                             }
                         },
-                        else => self.print_error("Error: Expected = after a member declaration. E.g. ADD User (name='bob')", &token) catch {},
+                        else => self.print_error("Error: Expected = after a member declaration. E.g. ADD User (name='bob')", &token),
                     }
                 },
-                else => self.print_error("Error: Unknow token. This should be the name of a member. E.g. name in ADD User (name='bob')", &token) catch {},
+                else => self.print_error("Error: Unknow token. This should be the name of a member. E.g. name in ADD User (name='bob')", &token),
             }
         }
 
         return member_map;
     }
 
-    fn checkIfAllMemberInMap(_: *Parser, struct_name: []const u8, map: *std.StringHashMap([]const u8)) bool {
-        const all_struct_member = dtypes.structName2structMembers(struct_name);
+    const AddError = error{NotAllMemberInMap};
+
+    fn checkIfAllMemberInMap(_: *Parser, struct_name: []const u8, map: *std.StringHashMap([]const u8)) !void {
+        const all_struct_member = metadata.structName2structMembers(struct_name);
         var count: u16 = 0;
+        var started_printing = false;
 
         for (all_struct_member) |key| {
-            if (map.contains(key)) count += 1 else stdout.print("Error: ADD query of struct: {s}; missing member: {s}\n", .{
-                struct_name,
-                key,
-            }) catch {};
+            if (map.contains(key)) count += 1 else {
+                if (!started_printing) {
+                    try stdout.print("Error: ADD query of struct: {s}; missing member: {s}", .{ struct_name, key });
+                    started_printing = true;
+                } else {
+                    try stdout.print(" {s}", .{key});
+                }
+            }
         }
 
-        return ((count == all_struct_member.len) and (count == map.count()));
+        if (started_printing) try stdout.print("\n", .{});
+
+        if (!((count == all_struct_member.len) and (count == map.count()))) return error.NotAllMemberInMap;
     }
 
-    fn print_error(self: *Parser, message: []const u8, token: *Token) !void {
-        try stdout.print("\n", .{});
-        try stdout.print("{s}\n", .{self.toker.buffer});
+    fn print_error(self: *Parser, message: []const u8, token: *Token) void {
+        stdout.print("\n", .{}) catch {};
+        stdout.print("{s}\n", .{self.toker.buffer}) catch {};
 
         // Calculate the number of spaces needed to reach the start position.
         var spaces: usize = 0;
         while (spaces < token.loc.start) : (spaces += 1) {
-            try stdout.print(" ", .{});
+            stdout.print(" ", .{}) catch {};
         }
 
         // Print the '^' characters for the error span.
         var i: usize = token.loc.start;
         while (i < token.loc.end) : (i += 1) {
-            try stdout.print("^", .{});
+            stdout.print("^", .{}) catch {};
         }
-        try stdout.print("    \n", .{}); // Align with the message
+        stdout.print("    \n", .{}) catch {}; // Align with the message
 
-        try stdout.print("{s}\n", .{message});
+        stdout.print("{s}\n", .{message}) catch {};
 
         @panic("");
     }

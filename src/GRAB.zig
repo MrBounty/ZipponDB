@@ -1,4 +1,5 @@
 const std = @import("std");
+const metadata = @import("metadata.zig");
 const Allocator = std.mem.Allocator;
 const Tokenizer = @import("ziqlTokenizer.zig").Tokenizer;
 const Token = @import("ziqlTokenizer.zig").Token;
@@ -20,18 +21,16 @@ pub const Parser = struct {
     arena: std.heap.ArenaAllocator,
     allocator: Allocator,
     toker: *Tokenizer,
-    data_engine: *DataEngine,
     state: State,
 
     additional_data: AdditionalData,
 
-    pub fn init(allocator: Allocator, toker: *Tokenizer, data_engine: *DataEngine) Parser {
+    pub fn init(allocator: Allocator, toker: *Tokenizer) Parser {
         var arena = std.heap.ArenaAllocator.init(allocator);
         return Parser{
             .arena = arena,
             .allocator = arena.allocator(),
             .toker = toker,
-            .data_engine = data_engine,
             .state = State.start,
             .additional_data = AdditionalData.init(allocator),
         };
@@ -52,8 +51,9 @@ pub const Parser = struct {
         }
 
         pub fn deinit(self: *AdditionalData) void {
-            for (self.member_to_find.items) |elem| {
-                elem.additional_data.deinit();
+            for (0..self.member_to_find.items.len) |i| {
+                std.debug.print("{d}\n", .{i});
+                self.member_to_find.items[i].additional_data.deinit();
             }
 
             self.member_to_find.deinit();
@@ -77,31 +77,83 @@ pub const Parser = struct {
         invalid,
         end,
 
-        // For the additional data
+        // For the main parse function
+        expect_filter,
+
+        // For the additional data parser
         expect_count_of_entity_to_find,
         expect_semicolon_OR_right_bracket,
         expect_member,
         next_member_OR_end_OR_new_additional_data,
         next_member_OR_end,
 
-        expect_filter,
+        // For the filter parser
+        expect_condition,
     };
 
     pub fn parse(self: *Parser) !void {
+        var data_engine = DataEngine.init(self.allocator, null);
+        defer data_engine.deinit();
+
+        var struct_name_token = self.toker.next();
+        if (!self.isStructInSchema(self.toker.getTokenSlice(struct_name_token))) {
+            try self.printError("Error: Struct name not in current shema.", &struct_name_token);
+            return;
+        }
+
         var token = self.toker.next();
-        while (self.state != State.end) : (token = self.toker.next()) {
+        var keep_next = false;
+
+        while (self.state != State.end) : ({
+            token = if (!keep_next) self.toker.next() else token;
+            keep_next = false;
+        }) {
             switch (self.state) {
                 .start => {
                     switch (token.tag) {
                         .l_bracket => {
-                            try self.parse_additional_data(&self.additional_data);
+                            try self.parseAdditionalData(&self.additional_data);
+                            self.state = State.expect_filter;
+                        },
+                        .l_brace => {
+                            self.state = State.expect_filter;
+                            keep_next = true;
                         },
                         else => {
-                            try stdout.print("Found {any}\n", .{token.tag});
-
+                            try self.printError("Error: Expected filter starting with {} or what to return starting with []", &token);
                             return;
                         },
                     }
+                },
+                .expect_filter => {
+                    var array = std.ArrayList(UUID).init(self.allocator);
+                    try self.parseFilter(&array, struct_name_token);
+                    self.state = State.end;
+                },
+                else => return,
+            }
+        }
+    }
+
+    fn parseFilter(self: *Parser, left_array: *std.ArrayList(UUID), struct_name_token: Token) !void {
+        const right_array = std.ArrayList(UUID).init(self.allocator);
+        var token = self.toker.next();
+        var keep_next = false;
+        self.state = State.expect_member;
+
+        _ = right_array;
+        _ = left_array;
+
+        while (self.state != State.end) : ({
+            token = if (!keep_next) self.toker.next() else token;
+            keep_next = false;
+        }) {
+            switch (self.state) {
+                .expect_member => {
+                    if (!self.isMemberPartOfStruct(self.toker.getTokenSlice(struct_name_token), self.toker.getTokenSlice(token))) {
+                        try self.printError("Error: Member not part of struct.", &token);
+                    }
+                    self.state = State.expect_condition;
                 },
                 else => return,
             }
@@ -110,24 +162,21 @@ pub const Parser = struct {
 
     /// When this function is call, the tokenizer last token retrieved should be [.
     /// Check if an int is here -> check if ; is here -> check if member is here -> check if [ is here -> loop
-    pub fn parse_additional_data(self: *Parser, additional_data: *AdditionalData) !void {
+    pub fn parseAdditionalData(self: *Parser, additional_data: *AdditionalData) !void {
         var token = self.toker.next();
-        var skip_next = false;
+        var keep_next = false;
         self.state = State.expect_count_of_entity_to_find;
 
         while (self.state != State.end) : ({
-            token = if (!skip_next) self.toker.next() else token;
-            skip_next = false;
+            token = if (!keep_next) self.toker.next() else token;
+            keep_next = false;
         }) {
             switch (self.state) {
                 .expect_count_of_entity_to_find => {
                     switch (token.tag) {
                         .number_literal => {
                             const count = std.fmt.parseInt(usize, self.toker.getTokenSlice(token), 10) catch {
-                                try stdout.print(
-                                    "Error parsing query: {s} need to be a number.",
-                                    .{self.toker.getTokenSlice(token)},
-                                );
+                                try self.printError("Error while transforming this into a integer.", &token);
                                 self.state = .invalid;
                                 continue;
                             };
@@ -136,7 +185,7 @@ pub const Parser = struct {
                         },
                         else => {
                             self.state = .expect_member;
-                            skip_next = true;
+                            keep_next = true;
                         },
                     }
                 },
@@ -149,7 +198,7 @@ pub const Parser = struct {
                             return;
                         },
                         else => {
-                            try self.print_error(
+                            try self.printError(
                                 "Error: Expect ';' or ']'.",
                                 &token,
                             );
@@ -171,7 +220,7 @@ pub const Parser = struct {
                             self.state = .next_member_OR_end_OR_new_additional_data;
                         },
                         else => {
-                            try self.print_error(
+                            try self.printError(
                                 "Error: A member name should be here.",
                                 &token,
                             );
@@ -187,13 +236,13 @@ pub const Parser = struct {
                             return;
                         },
                         .l_bracket => {
-                            try self.parse_additional_data(
+                            try self.parseAdditionalData(
                                 &additional_data.member_to_find.items[additional_data.member_to_find.items.len - 1].additional_data,
                             );
                             self.state = .next_member_OR_end;
                         },
                         else => {
-                            try self.print_error(
+                            try self.printError(
                                 "Error: Expected a comma ',' or the end or a new list of member to return.",
                                 &token,
                             );
@@ -203,15 +252,14 @@ pub const Parser = struct {
                 .next_member_OR_end => {
                     switch (token.tag) {
                         .comma => {
-                            try stdout.print("Expected new member\n", .{});
                             self.state = .expect_member;
                         },
                         .r_bracket => {
                             return;
                         },
                         else => {
-                            try self.print_error(
-                                "Error: Expected a new member name or the end of the list of member name to return.",
+                            try self.printError(
+                                "Error: Expected a comma or the end of the list of member name to return.",
                                 &token,
                             );
                         },
@@ -221,7 +269,7 @@ pub const Parser = struct {
                     @panic("=)");
                 },
                 else => {
-                    try self.print_error(
+                    try self.printError(
                         "Error: Unknow state.",
                         &token,
                     );
@@ -230,7 +278,7 @@ pub const Parser = struct {
         }
     }
 
-    fn print_error(self: *Parser, message: []const u8, token: *Token) !void {
+    fn printError(self: *Parser, message: []const u8, token: *Token) !void {
         try stdout.print("\n", .{});
         try stdout.print("{s}\n", .{self.toker.buffer});
 
@@ -250,6 +298,27 @@ pub const Parser = struct {
         try stdout.print("{s}\n", .{message});
 
         @panic("");
+    }
+
+    /// Take a struct name and a member name and return true if the member name is part of the struct
+    fn isMemberPartOfStruct(_: *Parser, struct_name: []const u8, member_name: []const u8) bool {
+        const all_struct_member = metadata.structName2structMembers(struct_name);
+
+        for (all_struct_member) |key| {
+            if (std.mem.eql(u8, key, member_name)) return true;
+        }
+
+        return false;
+    }
+
+    /// Check if a string is a name of a struct in the currently use engine
+    fn isStructInSchema(_: *Parser, struct_name_to_check: []const u8) bool {
+        for (metadata.struct_name_list) |struct_name| {
+            if (std.mem.eql(u8, struct_name_to_check, struct_name)) {
+                return true;
+            }
+        }
+        return false;
     }
 };
 
@@ -292,7 +361,7 @@ test "Test AdditionalData" {
     testAdditionalData("[1]", additional_data1);
 
     var additional_data2 = Parser.AdditionalData.init(allocator);
-    defer additional_data2.member_to_find.deinit();
+    defer additional_data2.deinit();
     try additional_data2.member_to_find.append(
         Parser.AdditionalDataMember.init(
             allocator,
@@ -303,7 +372,7 @@ test "Test AdditionalData" {
 
     var additional_data3 = Parser.AdditionalData.init(allocator);
     additional_data3.entity_count_to_find = 1;
-    defer additional_data3.member_to_find.deinit();
+    defer additional_data3.deinit();
     try additional_data3.member_to_find.append(
         Parser.AdditionalDataMember.init(
             allocator,
@@ -314,7 +383,7 @@ test "Test AdditionalData" {
 
     var additional_data4 = Parser.AdditionalData.init(allocator);
     additional_data4.entity_count_to_find = 100;
-    defer additional_data4.member_to_find.deinit();
+    defer additional_data4.deinit();
     try additional_data4.member_to_find.append(
         Parser.AdditionalDataMember.init(
             allocator,

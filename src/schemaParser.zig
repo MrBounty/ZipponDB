@@ -32,6 +32,7 @@ pub const Parser = struct {
         _ = bytes_written;
     }
 
+    // TODO: Pass that to the DataEngine and do the metadata.zig file instead
     pub fn parse(self: *Parser, toker: *Toker, buffer: []u8) void {
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
         const allocator = gpa.allocator();
@@ -39,9 +40,9 @@ pub const Parser = struct {
 
         var state: State = .start;
 
-        std.fs.cwd().deleteFile("src/dtypes.zig") catch {};
+        std.fs.cwd().deleteFile("src/metadata.zig") catch {};
 
-        self.file = std.fs.cwd().createFile("src/dtypes.zig", .{}) catch |err| {
+        self.file = std.fs.cwd().createFile("src/metadata.zig", .{}) catch |err| {
             std.debug.print("Error when writing dtypes.zig: {}", .{err});
             return;
         };

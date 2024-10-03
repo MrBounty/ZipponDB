@@ -116,7 +116,7 @@ Zippon have it's own query language. Here the keys point to remember:
 | GRAB User \| ASCENDING name \| | Get all users ordered by name |
 | GRAB User [name] { age > 10 AND name != 'Adrien' } \| DECENDING age \| | Get just the name of all users that are more than 10 years old and not named Adrien |
 | GRAB User [1] { bestfriend = { name = 'Adrien' } } | Get one user that has a best friend named Adrien |
-| GRAB User [10; friends [1]] { age > 10 } | ASC name | | Get one friend of the 10th user above 10 years old in ascending name |
+| GRAB User [10; friends [1]] { age > 10 } | Get one friend of the 10th user above 10 years old |
 
 ### Not yet implemented
 | Command | Description |

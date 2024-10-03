@@ -152,37 +152,7 @@ fn buildEngine() !void {
     try child.spawn();
     _ = try child.wait();
 
-    const dtypes = @import("dtypes.zig");
-
-    const data_dir = try std.fs.cwd().openDir("ZipponDB/DATA", .{});
-    for (dtypes.struct_name_list) |struct_name| {
-        data_dir.makeDir(struct_name) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => @panic("Error other than path already exists when trying to create a struct directory.\n"),
-        };
-        const struct_dir = try data_dir.openDir(struct_name, .{});
-
-        const member_names = dtypes.structName2structMembers(struct_name);
-        for (member_names) |member_name| {
-            struct_dir.makeDir(member_name) catch |err| switch (err) {
-                error.PathAlreadyExists => return,
-                else => @panic("Error other than path already exists when trying to create a member directory.\n"),
-            };
-            const member_dir = try struct_dir.openDir(member_name, .{});
-
-            blk: {
-                const file = member_dir.createFile("main.zippondata", .{}) catch |err| switch (err) {
-                    error.PathAlreadyExists => break :blk,
-                    else => @panic("Error: can't create main.zippondata"),
-                };
-                try file.writeAll("\n");
-            }
-            _ = member_dir.createFile("1.zippondata", .{}) catch |err| switch (err) {
-                error.PathAlreadyExists => {},
-                else => @panic("Error: can't create 1.zippondata"),
-            };
-        }
-    }
+    runCommand("__INIT__");
 }
 
 fn runCommand(null_term_query_str: [:0]const u8) void {
@@ -192,7 +162,7 @@ fn runCommand(null_term_query_str: [:0]const u8) void {
     // TODO: Use the folder ENGINE
     const args = &[_][]const u8{ "./engine", null_term_query_str };
 
-    const result = std.process.Child.run(.{ .allocator = allocator, .argv = args, .max_output_bytes = 4084 }) catch |err| switch (err) {
+    const result = std.process.Child.run(.{ .allocator = allocator, .argv = args }) catch |err| switch (err) {
         error.FileNotFound => {
             std.debug.print("No engine found, please use `schema build` to make one.\n", .{});
             return;
