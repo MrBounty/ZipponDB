@@ -19,6 +19,10 @@ pub const Token = struct {
         .{ "null", .keyword_null },
         .{ "__DESCRIBE__", .keyword__describe__ },
         .{ "__INIT__", .keyword__init__ },
+        .{ "true", .bool_literal_true },
+        .{ "false", .bool_literal_false },
+        .{ "AND", .keyword_and },
+        .{ "OR", .keyword_or },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -35,30 +39,35 @@ pub const Token = struct {
         keyword_add,
         keyword_in,
         keyword_null,
+        keyword_and,
+        keyword_or,
         keyword__describe__,
         keyword__init__,
 
         string_literal,
-        number_literal,
+        int_literal,
+        float_literal,
+        bool_literal_true,
+        bool_literal_false,
         identifier,
         equal,
-        bang,
-        pipe,
-        l_paren,
-        r_paren,
-        l_bracket,
-        r_bracket,
-        l_brace,
-        r_brace,
-        semicolon,
-        comma,
-        angle_bracket_left,
-        angle_bracket_right,
-        angle_bracket_left_equal,
-        angle_bracket_right_equal,
-        equal_angle_bracket_right,
-        period,
-        bang_equal,
+        bang, // !
+        pipe, // |
+        l_paren, // (
+        r_paren, // )
+        l_bracket, // [
+        r_bracket, // ]
+        l_brace, // {
+        r_brace, // }
+        semicolon, // ;
+        comma, // ,
+        angle_bracket_left, // <
+        angle_bracket_right, // >
+        angle_bracket_left_equal, // <=
+        angle_bracket_right_equal, // >=
+        equal_angle_bracket_right, // =>
+        period, // .
+        bang_equal, // !=
     };
 };
 
@@ -89,7 +98,6 @@ pub const Tokenizer = struct {
         angle_bracket_right,
         string_literal_backslash,
         int_exponent,
-        int_period,
         float,
         float_exponent,
         int,
@@ -187,13 +195,12 @@ pub const Tokenizer = struct {
                         break;
                     },
                     '.' => {
-                        result.tag = .period;
-                        self.index += 1;
-                        break;
+                        state = .float;
+                        result.tag = .float_literal;
                     },
                     '0'...'9' => {
                         state = .int;
-                        result.tag = .number_literal;
+                        result.tag = .int_literal;
                     },
                     else => {
                         state = .invalid;
@@ -210,6 +217,8 @@ pub const Tokenizer = struct {
                     else => {
                         if (Token.getKeyword(self.buffer[result.loc.start..self.index])) |tag| {
                             result.tag = tag;
+                        } else {
+                            result.tag = .identifier;
                         }
                         break;
                     },
@@ -301,40 +310,44 @@ pub const Tokenizer = struct {
                 },
 
                 .int => switch (c) {
-                    '.' => state = .int_period,
-                    '_', 'a'...'d', 'f'...'o', 'q'...'z', 'A'...'D', 'F'...'O', 'Q'...'Z', '0'...'9' => continue,
-                    'e', 'E', 'p', 'P' => state = .int_exponent,
+                    '.' => {
+                        state = .float;
+                        result.tag = .float_literal;
+                    },
+                    'e', 'E' => {
+                        state = .int_exponent;
+                        result.tag = .float_literal;
+                    },
+                    '_', '0'...'9' => continue,
                     else => break,
                 },
                 .int_exponent => switch (c) {
-                    '-', '+' => {
+                    '+', '-', '0'...'9' => {
                         state = .float;
                     },
-                    else => {
-                        self.index -= 1;
-                        state = .int;
-                    },
-                },
-                .int_period => switch (c) {
-                    '_', 'a'...'d', 'f'...'o', 'q'...'z', 'A'...'D', 'F'...'O', 'Q'...'Z', '0'...'9' => {
-                        state = .float;
-                    },
-                    'e', 'E', 'p', 'P' => state = .float_exponent,
                     else => {
                         self.index -= 1;
                         break;
                     },
                 },
                 .float => switch (c) {
-                    '_', 'a'...'d', 'f'...'o', 'q'...'z', 'A'...'D', 'F'...'O', 'Q'...'Z', '0'...'9' => continue,
-                    'e', 'E', 'p', 'P' => state = .float_exponent,
-                    else => break,
+                    'e', 'E' => {
+                        state = .float_exponent;
+                    },
+                    '_', '0'...'9' => {
+                        continue;
+                    },
+                    else => {
+                        break;
+                    },
                 },
                 .float_exponent => switch (c) {
-                    '-', '+' => state = .float,
+                    '+', '-', '0'...'9' => {
+                        continue;
+                    },
                     else => {
                         self.index -= 1;
-                        state = .float;
+                        break;
                     },
                 },
             }
@@ -352,9 +365,11 @@ test "keywords" {
 test "basic query" {
     try testTokenize("GRAB User {}", &.{ .keyword_grab, .identifier, .l_brace, .r_brace });
     try testTokenize("GRAB User { name = 'Adrien'}", &.{ .keyword_grab, .identifier, .l_brace, .identifier, .equal, .string_literal, .r_brace });
-    try testTokenize("GRAB User [1; name] {}", &.{ .keyword_grab, .identifier, .l_bracket, .number_literal, .semicolon, .identifier, .r_bracket, .l_brace, .r_brace });
+    try testTokenize("GRAB User { age = 1.5}", &.{ .keyword_grab, .identifier, .l_brace, .identifier, .equal, .float_literal, .r_brace });
+    try testTokenize("GRAB User { admin = true}", &.{ .keyword_grab, .identifier, .l_brace, .identifier, .equal, .bool_literal_true, .r_brace });
+    try testTokenize("GRAB User [1; name] {}", &.{ .keyword_grab, .identifier, .l_bracket, .int_literal, .semicolon, .identifier, .r_bracket, .l_brace, .r_brace });
     try testTokenize("GRAB User{}|ASCENDING name|", &.{ .keyword_grab, .identifier, .l_brace, .r_brace, .pipe, .identifier, .identifier, .pipe });
-    try testTokenize("DELETE User[1]{name='Adrien'}|ASCENDING name, age|", &.{ .keyword_delete, .identifier, .l_bracket, .number_literal, .r_bracket, .l_brace, .identifier, .equal, .string_literal, .r_brace, .pipe, .identifier, .identifier, .comma, .identifier, .pipe });
+    try testTokenize("DELETE User[1]{name='Adrien'}|ASCENDING name, age|", &.{ .keyword_delete, .identifier, .l_bracket, .int_literal, .r_bracket, .l_brace, .identifier, .equal, .string_literal, .r_brace, .pipe, .identifier, .identifier, .comma, .identifier, .pipe });
 }
 
 fn testTokenize(source: [:0]const u8, expected_token_tags: []const Token.Tag) !void {

@@ -1,13 +1,16 @@
 const std = @import("std");
-const dataParsing = @import("data-parsing.zig");
-const metadata = @import("metadata.zig");
+const dataParsing = @import("dataParser.zig");
+const schemaEngine = @import("schemaEngine.zig");
 const Allocator = std.mem.Allocator;
-const UUID = @import("uuid.zig").UUID;
+const UUID = @import("types/uuid.zig").UUID;
+const DataType = @import("types/dataType.zig").DataType;
 const stdout = std.io.getStdOut().writer();
+
+//TODO: Create a union class and chose between file and memory
 
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
-pub const DataEngine = struct {
+pub const FileEngine = struct {
     allocator: Allocator,
     dir: std.fs.Dir, // The path to the DATA folder
     max_file_size: usize = 1e+8, // 100mb
@@ -31,18 +34,6 @@ pub const DataEngine = struct {
         inferior_or_equal,
     };
 
-    /// Suported dataType for the DB
-    const DataType = enum {
-        int,
-        float,
-        str,
-        bool_,
-        int_array,
-        float_array,
-        str_array,
-        bool_array,
-    };
-
     const ComparisonValue = union {
         int: i64,
         float: f64,
@@ -58,31 +49,41 @@ pub const DataEngine = struct {
     /// An Operation from equal, different, superior, superior_or_equal, ...
     /// The DataType from int, float and str
     /// TODO: Change the value to be the right type and not just a string all the time
-    const Condition = struct {
+    pub const Condition = struct {
         struct_name: []const u8,
-        member_name: []const u8,
-        value: []const u8,
-        operation: Operation,
-        data_type: DataType,
+        member_name: []const u8 = undefined,
+        value: []const u8 = undefined,
+        operation: Operation = undefined,
+        data_type: DataType = undefined,
+
+        pub fn init(struct_name: []const u8) Condition {
+            return Condition{ .struct_name = struct_name };
+        }
     };
 
-    pub fn init(allocator: Allocator, DATA_path: ?[]const u8) DataEngine {
+    pub fn init(allocator: Allocator, DATA_path: ?[]const u8) FileEngine {
         const path = DATA_path orelse "ZipponDB/DATA";
         const dir = std.fs.cwd().openDir(path, .{}) catch @panic("Error opening ZipponDB/DATA");
-        return DataEngine{
+        return FileEngine{
             .allocator = allocator,
             .dir = dir,
         };
     }
 
-    pub fn deinit(self: *DataEngine) void {
+    pub fn deinit(self: *FileEngine) void {
         self.dir.close();
     }
 
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
-    pub fn getUUIDListUsingCondition(self: *DataEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
-        const file_names = self.getFilesNames(condition.struct_name, condition.member_name) catch @panic("Can't get list of files");
-        defer self.deinitFilesNames(&file_names);
+    pub fn getUUIDListUsingCondition(self: *FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
+        var file_names = std.ArrayList([]const u8).init(self.allocator);
+        self.getFilesNames(condition.struct_name, condition.member_name, &file_names) catch @panic("Can't get list of files");
+        defer {
+            for (file_names.items) |elem| {
+                self.allocator.free(elem);
+            }
+            file_names.deinit();
+        }
 
         const sub_path = std.fmt.allocPrint(
             self.allocator,
@@ -92,7 +93,6 @@ pub const DataEngine = struct {
         defer self.allocator.free(sub_path);
 
         var file = self.dir.openFile(sub_path, .{}) catch @panic("Can't open first file to init a data iterator");
-        // defer self.allocator.free(sub_path);
 
         var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in files
         var output_fbs = std.io.fixedBufferStream(&output);
@@ -108,11 +108,20 @@ pub const DataEngine = struct {
             .int => compare_value = ComparisonValue{ .int = dataParsing.parseInt(condition.value) },
             .str => compare_value = ComparisonValue{ .str = condition.value },
             .float => compare_value = ComparisonValue{ .float = dataParsing.parseFloat(condition.value) },
-            .bool_ => compare_value = ComparisonValue{ .bool_ = dataParsing.parseBool(condition.value) },
+            .bool => compare_value = ComparisonValue{ .bool_ = dataParsing.parseBool(condition.value) },
             .int_array => compare_value = ComparisonValue{ .int_array = dataParsing.parseArrayInt(self.allocator, condition.value) },
             .str_array => compare_value = ComparisonValue{ .str_array = dataParsing.parseArrayStr(self.allocator, condition.value) },
             .float_array => compare_value = ComparisonValue{ .float_array = dataParsing.parseArrayFloat(self.allocator, condition.value) },
             .bool_array => compare_value = ComparisonValue{ .bool_array = dataParsing.parseArrayBool(self.allocator, condition.value) },
+        }
+        defer {
+            switch (condition.data_type) {
+                .int_array => compare_value.int_array.deinit(),
+                .str_array => compare_value.str_array.deinit(),
+                .float_array => compare_value.float_array.deinit(),
+                .bool_array => compare_value.bool_array.deinit(),
+                else => {},
+            }
         }
 
         while (true) {
@@ -143,7 +152,7 @@ pub const DataEngine = struct {
                         .int => if (compare_value.int == dataParsing.parseInt(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         .float => if (compare_value.float == dataParsing.parseFloat(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         .str => if (std.mem.eql(u8, compare_value.str, output_fbs.getWritten()[38 .. output_fbs.getWritten().len - 1])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
-                        .bool_ => if (compare_value.bool_ == dataParsing.parseBool(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
+                        .bool => if (compare_value.bool_ == dataParsing.parseBool(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         // TODO: Implement for array too
                         else => {},
                     }
@@ -153,7 +162,7 @@ pub const DataEngine = struct {
                         .int => if (compare_value.int != dataParsing.parseInt(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         .float => if (compare_value.float != dataParsing.parseFloat(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         .str => if (!std.mem.eql(u8, compare_value.str, output_fbs.getWritten()[38 .. output_fbs.getWritten().len - 1])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
-                        .bool_ => if (compare_value.bool_ != dataParsing.parseBool(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
+                        .bool => if (compare_value.bool_ != dataParsing.parseBool(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         // TODO: Implement for array too
                         else => {},
                     }
@@ -195,14 +204,14 @@ pub const DataEngine = struct {
     }
 
     // TODO: Test leak on that
-    pub fn writeEntity(self: *DataEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !void {
+    pub fn writeEntity(self: *FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !void {
         const uuid_str = UUID.init().format_uuid();
         defer stdout.print("Added new {s} successfully using UUID: {s}\n", .{
             struct_name,
             uuid_str,
         }) catch {};
 
-        const member_names = metadata.structName2structMembers(struct_name);
+        const member_names = schemaEngine.structName2structMembers(struct_name);
         for (member_names) |member_name| {
             const potential_file_name_to_use = try self.getFirstUsableFile(struct_name, member_name);
 
@@ -252,10 +261,10 @@ pub const DataEngine = struct {
                     member_name,
                     max_index + 1,
                 });
+                defer self.allocator.free(new_file_path);
 
                 try stdout.print("new file path: {s}\n", .{new_file_path});
 
-                // TODO: Create new file and save the data inside
                 const new_file = self.dir.createFile(new_file_path, .{}) catch @panic("Error creating new data file");
                 defer new_file.close();
 
@@ -284,7 +293,7 @@ pub const DataEngine = struct {
     }
 
     /// Use a filename in the format 1.zippondata and return the 1
-    fn fileName2Index(_: *DataEngine, file_name: []const u8) usize {
+    fn fileName2Index(_: *FileEngine, file_name: []const u8) usize {
         var iter_file_name = std.mem.tokenize(u8, file_name, ".");
         const num_str = iter_file_name.next().?;
         const num: usize = std.fmt.parseInt(usize, num_str, 10) catch @panic("Couln't parse the int of a zippondata file.");
@@ -293,7 +302,7 @@ pub const DataEngine = struct {
 
     /// Add an UUID at a specific index of a file
     /// Used when some data are deleted from previous zippondata files and are now bellow the file size limit
-    fn addUUIDToMainFile(_: *DataEngine, file: std.fs.File, index: usize, uuid_str: []const u8) !void {
+    fn addUUIDToMainFile(_: *FileEngine, file: std.fs.File, index: usize, uuid_str: []const u8) !void {
         var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in files
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
@@ -320,35 +329,26 @@ pub const DataEngine = struct {
         }
     }
 
-    fn getFilesNames(self: *DataEngine, struct_name: []const u8, member_name: []const u8) !std.ArrayList([]const u8) {
+    fn getFilesNames(self: *FileEngine, struct_name: []const u8, member_name: []const u8, file_names: *std.ArrayList([]const u8)) !void {
         const sub_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ struct_name, member_name });
-
-        var file_names = std.ArrayList([]const u8).init(self.allocator);
-
-        const member_dir = self.dir.openDir(sub_path, .{ .iterate = true }) catch @panic("Error opening member directory");
         defer self.allocator.free(sub_path);
+
+        var member_dir = try self.dir.openDir(sub_path, .{ .iterate = true });
+        defer member_dir.close();
 
         var iter = member_dir.iterate();
         while (try iter.next()) |entry| {
             if ((entry.kind != std.fs.Dir.Entry.Kind.file) or (std.mem.eql(u8, "main.zippondata", entry.name))) continue;
-            try file_names.append(try self.allocator.dupe(u8, entry.name));
+            try file_names.*.append(try self.allocator.dupe(u8, entry.name));
         }
-
-        return file_names;
-    }
-
-    fn deinitFilesNames(self: *DataEngine, array: *const std.ArrayList([]const u8)) void {
-        for (array.items) |elem| {
-            self.allocator.free(elem);
-        }
-        array.deinit();
     }
 
     /// Use the map of file stat to find the first file with under the bytes limit.
     /// return the name of the file. If none is found, return null.
-    fn getFirstUsableFile(self: *DataEngine, struct_name: []const u8, member_name: []const u8) !?[]const u8 {
+    fn getFirstUsableFile(self: *FileEngine, struct_name: []const u8, member_name: []const u8) !?[]const u8 {
         const sub_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ struct_name, member_name });
         defer self.allocator.free(sub_path);
+
         var member_dir = try self.dir.openDir(sub_path, .{ .iterate = true });
         defer member_dir.close();
 
@@ -364,7 +364,7 @@ pub const DataEngine = struct {
 
     /// Iter over all file and get the max name and return the value of it as usize
     /// So for example if there is 1.zippondata and 2.zippondata it return 2.
-    fn maxFileIndex(self: *DataEngine, struct_name: []const u8, member_name: []const u8) !usize {
+    fn maxFileIndex(self: *FileEngine, struct_name: []const u8, member_name: []const u8) !usize {
         const buffer = try self.allocator.alloc(u8, 1024); // Adjust the size as needed
         defer self.allocator.free(buffer);
 
@@ -381,21 +381,23 @@ pub const DataEngine = struct {
     }
 
     // TODO: Give the option to keep , dump or erase the data
-    pub fn initDataFolder(self: *DataEngine) !void {
-        for (metadata.struct_name_list) |struct_name| {
+    pub fn initDataFolder(self: *FileEngine) !void {
+        for (schemaEngine.struct_name_list) |struct_name| {
             self.dir.makeDir(struct_name) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
                 else => return DataEngineError.ErrorCreateStructFolder,
             };
             const struct_dir = try self.dir.openDir(struct_name, .{});
+            defer struct_dir.close();
 
-            const member_names = metadata.structName2structMembers(struct_name);
+            const member_names = schemaEngine.structName2structMembers(struct_name);
             for (member_names) |member_name| {
                 struct_dir.makeDir(member_name) catch |err| switch (err) {
                     error.PathAlreadyExists => continue,
                     else => return DataEngineError.ErrorCreateMemberFolder,
                 };
                 const member_dir = try struct_dir.openDir(member_name, .{});
+                defer member_dir.close();
 
                 blk: {
                     const file = member_dir.createFile("main.zippondata", .{}) catch |err| switch (err) {
@@ -413,15 +415,13 @@ pub const DataEngine = struct {
     }
 };
 
-test "File iterator" {
+test "Get list of UUID using condition" {
     const allocator = std.testing.allocator;
-    var data_engine = DataEngine.init(allocator, null);
+    var data_engine = FileEngine.init(allocator, null);
 
     var uuid_array = std.ArrayList(UUID).init(allocator);
     defer uuid_array.deinit();
 
-    const condition = DataEngine.Condition{ .struct_name = "User", .member_name = "email", .value = "adrien@mail.com", .operation = .equal, .data_type = .str };
+    const condition = FileEngine.Condition{ .struct_name = "User", .member_name = "email", .value = "adrien@mail.com", .operation = .equal, .data_type = .str };
     try data_engine.getUUIDListUsingCondition(condition, &uuid_array);
-
-    std.debug.print("Found {d} uuid with first as {any}\n\n", .{ uuid_array.items.len, uuid_array.items[0] });
 }
