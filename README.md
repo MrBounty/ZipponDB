@@ -129,56 +129,57 @@ Zippon have it's own query language. Here the keys point to remember:
 
 # Roadmap
 
-v 0.1 - Base  
-[X] UUID  
-[X] CLI  
-[X] Tokenizers  
-[ ] Schema management  
-[ ] File management  
-[ ] Loging  
-[ ] Base Parser  
+#### v0.1 - Base  
+- [X] UUID  
+- [X] CLI  
+- [X] Tokenizers  
+- [ ] ZiQL parser
+- [ ] Schema management  
+- [X] File management  
+- [ ] Loging  
+- [ ] Base Parser  
 
-v 0.2 - Usable  
-[ ] B-Tree  
-[ ] Relationships  
-[ ] Date  
-[ ] Docker  
+#### v0.2 - Usable  
+- [ ] B-Tree  
+- [ ] Relationships  
+- [ ] Date  
+- [ ] Docker  
 
-v 0.3 - QoL  
-[ ] Schema migration   
-[ ] Dump/Bump data  
-[ ] Recovery
+#### v0.3 - QoL  
+- [ ] Schema migration   
+- [ ] Dump/Bump data  
+- [ ] Recovery
 
-v 0.4 - Usability  
-[ ] Server  
-[ ] Python interface  
-[ ] Go interface  
+#### v0.4 - Usability  
+- [ ] Server  
+- [ ] Python interface  
+- [ ] Go interface  
 
-v 0.5 - In memory  
-[ ] In memory option  
-[ ] Cache
+#### v0.5 - In memory  
+- [ ] In memory option  
+- [ ] Cache
 
-v 0.6 - Performance  
-[ ] Transaction  
-[ ] Lock manager  
-[ ] Multi threading  
+#### v0.6 - Performance  
+- [ ] Transaction  
+- [ ] Lock manager  
+- [ ] Multi threading  
 
-v 0.7 - Safety  
-[ ] Auth  
-[ ] Metrics  
+#### v0.7 - Safety  
+- [ ] Auth  
+- [ ] Metrics  
 
-v 0.8 - Advanced  
-[ ] Query optimizer  
+#### v0.8 - Advanced  
+- [ ] Query optimizer  
 
-v 0.9 - Docs  
-[ ] ZiQL tuto  
-[ ] Deployment tuto  
-[ ] Code docs  
+#### v0.9 - Docs  
+- [ ] ZiQL tuto  
+- [ ] Deployment tuto  
+- [ ] Code docs  
 
-v 1.0 - Web interface  
-[ ] Query builder  
-[ ] Tables  
-[ ] Schema visualization  
-[ ] Dashboard metrics  
+#### v1.0 - Web interface  
+- [ ] Query builder  
+- [ ] Tables  
+- [ ] Schema visualization  
+- [ ] Dashboard metrics  
 
-Let's see where it start explode ;)
+Let's see where it (or my brain) start explode ;)
