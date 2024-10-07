@@ -24,6 +24,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .name = "Data parsing",
+        .test_runner = b.path("test_runner.zig"),
     });
     const run_tests1 = b.addRunArtifact(tests1);
 
@@ -32,6 +33,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .name = "CLI tokenizer",
+        .test_runner = b.path("test_runner.zig"),
     });
     const run_tests2 = b.addRunArtifact(tests2);
 
@@ -40,6 +42,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .name = "ZiQL tokenizer",
+        .test_runner = b.path("test_runner.zig"),
     });
     const run_tests3 = b.addRunArtifact(tests3);
 
@@ -48,6 +51,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .name = "Schema tokenizer",
+        .test_runner = b.path("test_runner.zig"),
     });
     const run_tests4 = b.addRunArtifact(tests4);
 
@@ -56,6 +60,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .name = "UUID",
+        .test_runner = b.path("test_runner.zig"),
     });
     const run_tests5 = b.addRunArtifact(tests5);
 
@@ -64,6 +69,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .name = "File Engine",
+        .test_runner = b.path("test_runner.zig"),
     });
     const run_tests6 = b.addRunArtifact(tests6);
 
@@ -72,7 +78,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .name = "ZiQL parser",
-        //.test_runner = b.path("test_runner.zig"),
+        .test_runner = b.path("test_runner.zig"),
     });
     const run_tests7 = b.addRunArtifact(tests7);
 
