@@ -149,6 +149,7 @@ Zippon have it's own query language. Here the keys point to remember:
 - [ ] Schema migration   
 - [ ] Dump/Bump data  
 - [ ] Recovery
+- [ ] Better CLI
 
 #### v0.4 - Usability  
 - [ ] Server  
@@ -175,6 +176,7 @@ Zippon have it's own query language. Here the keys point to remember:
 - [ ] ZiQL tuto  
 - [ ] Deployment tuto  
 - [ ] Code docs  
+- [ ] CLI help
 
 #### v1.0 - Web interface  
 - [ ] Query builder  
