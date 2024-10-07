@@ -154,7 +154,7 @@ v 0.1 - Base
 [ ] Base Parser  
 
 v 0.2 - Usable  
-[ ] B-Tree
+[ ] B-Tree  
 [ ] Relationships  
 [ ] Date  
 [ ] Docker  
@@ -175,8 +175,8 @@ v 0.5 - In memory
 
 v 0.6 - Performance  
 [ ] Transaction  
-[ ] Lock manager
-[ ] Multi threading 
+[ ] Lock manager  
+[ ] Multi threading  
 
 v 0.7 - Safety  
 [ ] Auth  
