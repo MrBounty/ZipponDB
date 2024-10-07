@@ -5,17 +5,17 @@
 const std = @import("std");
 const DataType = @import("types/dataType.zig").DataType;
 
-const struct_name_list: [2][]const u8 = .{
+pub const struct_name_list: [2][]const u8 = .{
     "User",
     "Message",
 };
 
-const struct_member_list: [2][]const []const u8 = .{
+pub const struct_member_list: [2][]const []const u8 = .{
     &[_][]const u8{ "name", "email", "age", "scores", "friends" },
     &[_][]const u8{"content"},
 };
 
-const struct_type_list: [2][]const DataType = .{
+pub const struct_type_list: [2][]const DataType = .{
     &[_]DataType{ .str, .str, .int, .int_array, .bool_array },
     &[_]DataType{.str},
 };
@@ -93,7 +93,7 @@ pub fn checkIfAllMemberInMap(struct_name: []const u8, map: *std.StringHashMap([]
     var count: u16 = 0;
 
     for (all_struct_member) |key| {
-        if (map.contains(key)) count += 1;
+        if (map.contains(key)) count += 1 else std.debug.print("Missing: {s}\n", .{key});
     }
 
     return ((count == all_struct_member.len) and (count == map.count()));

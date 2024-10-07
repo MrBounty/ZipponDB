@@ -17,8 +17,6 @@ pub const Token = struct {
         .{ "ADD", .keyword_add },
         .{ "IN", .keyword_in },
         .{ "null", .keyword_null },
-        .{ "__DESCRIBE__", .keyword__describe__ },
-        .{ "__INIT__", .keyword__init__ },
         .{ "true", .bool_literal_true },
         .{ "false", .bool_literal_false },
         .{ "AND", .keyword_and },
@@ -41,8 +39,6 @@ pub const Token = struct {
         keyword_null,
         keyword_and,
         keyword_or,
-        keyword__describe__,
-        keyword__init__,
 
         string_literal,
         int_literal,

@@ -1,12 +1,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const DataEngine = @import("fileEngine.zig").FileEngine;
 const cliTokenizer = @import("tokenizers/cli.zig").Tokenizer;
 const cliToken = @import("tokenizers/cli.zig").Token;
 const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("tokenizers/ziql.zig").Token;
 const ziqlParser = @import("ziqlParser.zig").Parser;
-
-const stdout = std.io.getStdOut().writer();
 
 pub fn main() !void {
     // TODO: Use an environment variable for the path of the DB
@@ -28,6 +27,7 @@ pub fn main() !void {
     const line_buf = try allocator.alloc(u8, 1024 * 50);
     defer allocator.free(line_buf);
 
+    // TODO: Use a State to prevent first_token and second_token
     while (true) {
         std.debug.print("> ", .{});
         const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(line_buf, '\n');
@@ -47,7 +47,7 @@ pub fn main() !void {
                             defer allocator.free(null_term_query_str);
                             try runCommand(null_term_query_str);
                         },
-                        .keyword_help => std.debug.print("The run command will take a ZiQL query between \" and run it. eg: run \"GRAB User\"\n"),
+                        .keyword_help => std.debug.print("The run command will take a ZiQL query between \" and run it. eg: run \"GRAB User\"\n", .{}),
                         else => std.debug.print("After command run, need a string of a query, eg: \"GRAB User\"\n", .{}),
                     }
                 },
@@ -55,8 +55,20 @@ pub fn main() !void {
                     const second_token = cliToker.next();
 
                     switch (second_token.tag) {
-                        .keyword_describe => try runCommand("__DESCRIBE__"),
-                        .keyword_build => std.debug.print("Need to do the SchemaEngine tu update and migrate the schema"),
+                        .keyword_describe => std.debug.print("{s}\n", .{ // TODO: Change that to use the SchemaEngine
+                            \\User (
+                            \\  name: str,
+                            \\  email: str,
+                            \\)
+                            \\
+                            \\Message (
+                            \\  content: str,
+                            \\)
+                        }),
+                        .keyword_build => { // Maybe rename that in init now that I dont build binary anymore
+                            const data_engine = DataEngine.init(allocator, null);
+                            try data_engine.initDataFolder();
+                        },
                         .keyword_help => {
                             std.debug.print("{s}", .{
                                 \\Here are all available options to use with the schema command:
@@ -75,8 +87,7 @@ pub fn main() !void {
                         \\
                         \\run       To run a query. Args => query: str, the query to execute.
                         \\schema    Build a new engine and print current schema.
-                        \\kill      To stop the process without saving
-                        \\save      Save the database to the normal files.
+                        \\quit      To stop the process without saving
                         \\dump      Create a new folder with all data as copy. Args => foldername: str, the name of the folder.
                         \\bump      Replace current data with a previous dump. Args => foldername: str, the name of the folder.
                         \\
@@ -115,7 +126,12 @@ fn checkAndCreateDirectories() void {
         else => @panic("Error other than path already exists when trying to create the DATA directory.\n"),
     };
 
-    cwd.makeDir("ZipponDB/ENGINE") catch |err| switch (err) {
+    cwd.makeDir("ZipponDB/BACKUP") catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => @panic("Error other than path already exists when trying to create the ENGINE directory.\n"),
+    };
+
+    cwd.makeDir("ZipponDB/LOG") catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => @panic("Error other than path already exists when trying to create the ENGINE directory.\n"),
     };

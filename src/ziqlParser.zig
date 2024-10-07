@@ -9,36 +9,33 @@ const Allocator = std.mem.Allocator;
 
 pub const Parser = struct {
     allocator: Allocator,
-    toker: *Tokenizer,
     state: State,
-    data_engine: *DataEngine,
+    toker: *Tokenizer,
+    data_engine: DataEngine,
     additional_data: AdditionalData,
     struct_name: []const u8 = undefined,
 
-    action: Action = undefined,
+    action: enum { GRAB, ADD, UPDATE, DELETE } = undefined,
 
     pub fn init(allocator: Allocator, toker: *Tokenizer) Parser {
-        var data_engine = DataEngine.init(allocator, null);
+        // Do I need to init a DataEngine at each Parser, can't I put it in the CLI parser instead ?
+        const data_engine = DataEngine.init(allocator, null);
         return Parser{
             .allocator = allocator,
             .toker = toker,
             .state = State.start,
-            .data_engine = &data_engine,
+            .data_engine = data_engine,
             .additional_data = AdditionalData.init(allocator),
         };
     }
 
     pub fn deinit(self: *Parser) void {
         self.additional_data.deinit();
-        //self.allocator.free(self.struct_name);
-        //self.data_engine.deinit();
     }
 
-    const Action = enum {
-        GRAB,
-        ADD,
-        UPDATE,
-        DELETE,
+    const Options = struct {
+        members_for_ordering: std.ArrayList([]const u8), // The list in the right order of member name to use to order the result
+        sense_for_ordering: enum { ASC, DESC },
     };
 
     const State = enum {
@@ -123,28 +120,20 @@ pub const Parser = struct {
                 .start => {
                     switch (token.tag) {
                         .keyword_grab => {
-                            self.action = Action.GRAB;
+                            self.action = .GRAB;
                             self.state = State.expect_struct_name;
                         },
                         .keyword_add => {
-                            self.action = Action.ADD;
+                            self.action = .ADD;
                             self.state = State.expect_struct_name;
                         },
                         .keyword_update => {
-                            self.action = Action.UPDATE;
+                            self.action = .UPDATE;
                             self.state = State.expect_struct_name;
                         },
                         .keyword_delete => {
-                            self.action = Action.DELETE;
+                            self.action = .DELETE;
                             self.state = State.expect_struct_name;
-                        },
-                        .keyword__describe__ => {
-                            std.debug.print("{s}", .{@embedFile("schema.zipponschema")});
-                            self.state = State.end;
-                        },
-                        .keyword__init__ => {
-                            try self.data_engine.initDataFolder();
-                            self.state = State.end;
                         },
                         else => {
                             self.printError("Error: Expected action keyword. Available: GRAB ADD DELETE UPDATE", &token);
@@ -176,7 +165,7 @@ pub const Parser = struct {
                 .filter_and_send => {
                     var array = std.ArrayList(UUID).init(self.allocator);
                     defer array.deinit();
-                    try self.parseFilter(&array);
+                    try self.parseFilter(&array, self.struct_name, true);
                     self.sendEntity(array.items);
                     self.state = State.end;
                 },
@@ -192,10 +181,12 @@ pub const Parser = struct {
                 .parse_new_data_and_add_data => {
                     switch (self.action) {
                         .ADD => {
-                            const data_map = std.StringHashMap([]const u8).init(self.allocator);
+                            var data_map = std.StringHashMap([]const u8).init(self.allocator);
                             defer data_map.deinit();
                             self.parseNewData(&data_map);
-                            if (!schemaEngine.checkIfAllMemberInMap(self.struct_name, data_map)) {}
+
+                            // TODO: Print the list of missing
+                            if (!schemaEngine.checkIfAllMemberInMap(self.struct_name, &data_map)) self.printError("Error: Missing member", &token);
                             try self.data_engine.writeEntity(self.struct_name, data_map);
                             self.state = State.end;
                         },
@@ -214,7 +205,13 @@ pub const Parser = struct {
     fn sendEntity(self: *Parser, uuid_array: []UUID) void {
         _ = self;
 
-        std.debug.print("Number of uuid to send: {d}", .{uuid_array.len});
+        std.debug.print("Number of uuid to send: {d}\n", .{uuid_array.len});
+    }
+
+    // TODO: The parser that check what is between ||
+    // For now only |ASC name, age|
+    fn parseOptions(self: *Parser) void {
+        _ = self;
     }
 
     /// Take an array of UUID and populate it to be the array that represent filter between {}
@@ -234,9 +231,10 @@ pub const Parser = struct {
         }) {
             switch (self.state) {
                 .expect_left_condition => {
-                    self.parseCondition(&left_condition, &token);
+                    token = self.parseCondition(&left_condition, &token);
                     try self.data_engine.getUUIDListUsingCondition(left_condition, left_array);
                     self.state = State.expect_ANDOR_OR_end;
+                    keep_next = true;
                 },
                 .expect_ANDOR_OR_end => {
                     switch (token.tag) {
@@ -274,7 +272,8 @@ pub const Parser = struct {
                         .identifier => {
                             var right_condition = Condition.init(struct_name);
 
-                            self.parseCondition(&right_condition, &token);
+                            token = self.parseCondition(&right_condition, &token);
+                            keep_next = true;
                             try self.data_engine.getUUIDListUsingCondition(right_condition, &right_array);
                         }, // Create a new condition and compare it
                         else => self.printError("Error: Expecting ( or member name.", &token),
@@ -288,6 +287,7 @@ pub const Parser = struct {
                             try OR(left_array, &right_array);
                         },
                     }
+                    std.debug.print("Token here {any}\n", .{token});
                     self.state = .expect_ANDOR_OR_end;
                 },
                 else => unreachable,
@@ -295,7 +295,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseCondition(self: *Parser, condition: *Condition, token_ptr: *Token) void {
+    fn parseCondition(self: *Parser, condition: *Condition, token_ptr: *Token) Token {
         var keep_next = false;
         self.state = State.expect_member;
         var token = token_ptr.*;
@@ -406,6 +406,7 @@ pub const Parser = struct {
                 else => unreachable,
             }
         }
+        return token;
     }
 
     /// When this function is call, the tokenizer last token retrieved should be [.
@@ -653,6 +654,7 @@ pub const Parser = struct {
         }
     }
 
+    // TODO: Stop panicking !
     fn printError(self: *Parser, message: []const u8, token: *Token) void {
         std.debug.print("\n", .{});
         std.debug.print("{s}\n", .{self.toker.buffer});
@@ -768,18 +770,6 @@ fn compareUUIDArray(arr1: std.ArrayList(UUID), arr2: std.ArrayList(UUID)) bool {
     return true;
 }
 
-test "Parse filter" {
-    const allocator = std.testing.allocator;
-    var tokenizer = Tokenizer.init("{name = 'Adrien'}");
-    var parser = Parser.init(allocator, &tokenizer);
-    _ = tokenizer.next();
-
-    var uuid_array = std.ArrayList(UUID).init(allocator);
-    defer uuid_array.deinit();
-
-    try parser.parseFilter(&uuid_array, "User", true);
-}
-
 test "Parse condition" {
     const condition1 = Condition{ .data_type = .int, .member_name = "age", .operation = .superior_or_equal, .struct_name = "User", .value = "26" };
     try testConditionParsing("age >= 26", condition1);
@@ -798,7 +788,7 @@ fn testConditionParsing(source: [:0]const u8, expected_condition: Condition) !vo
     var token = tokenizer.next();
 
     var condition = Condition.init("User");
-    parser.parseCondition(&condition, &token);
+    _ = parser.parseCondition(&condition, &token);
 
     try std.testing.expect(compareCondition(expected_condition, condition));
 }
@@ -806,8 +796,6 @@ fn testConditionParsing(source: [:0]const u8, expected_condition: Condition) !vo
 fn compareCondition(c1: Condition, c2: Condition) bool {
     return ((std.mem.eql(u8, c1.value, c2.value)) and (std.mem.eql(u8, c1.struct_name, c2.struct_name)) and (std.mem.eql(u8, c1.member_name, c2.member_name)) and (c1.operation == c2.operation) and (c1.data_type == c2.data_type));
 }
-
-// TODO: Test Filter parser
 
 test "Parse new data" {
     const allocator = std.testing.allocator;
@@ -862,6 +850,20 @@ fn testNewDataParsing(source: [:0]const u8, expected_member_map: std.StringHashM
     }
 
     if ((error_found) or (expected_total_count != found_count)) @panic("=(");
+}
+
+test "Parse filter" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = Tokenizer.init("{name = 'Adrien'}");
+    var parser = Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+    _ = tokenizer.next(); // Start at name
+
+    var uuid_array = std.ArrayList(UUID).init(allocator);
+    defer uuid_array.deinit();
+
+    try parser.parseFilter(&uuid_array, "User", true);
 }
 
 test "Parse additional data" {

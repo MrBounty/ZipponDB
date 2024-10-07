@@ -4,7 +4,6 @@ const schemaEngine = @import("schemaEngine.zig");
 const Allocator = std.mem.Allocator;
 const UUID = @import("types/uuid.zig").UUID;
 const DataType = @import("types/dataType.zig").DataType;
-const stdout = std.io.getStdOut().writer();
 
 //TODO: Create a union class and chose between file and memory
 
@@ -12,26 +11,15 @@ const stdout = std.io.getStdOut().writer();
 /// Or even get stats, whatever. If it touch files, it's here
 pub const FileEngine = struct {
     allocator: Allocator,
-    dir: std.fs.Dir, // The path to the DATA folder
-    max_file_size: usize = 1e+8, // 100mb
-    //
+    path_to_DATA_dir: []const u8, // The path to the DATA folder
+    max_file_size: usize = 1e+7, // 10mb
+
     const DataEngineError = error{
         ErrorCreateDataFolder,
         ErrorCreateStructFolder,
         ErrorCreateMemberFolder,
         ErrorCreateMainFile,
         ErrorCreateDataFile,
-    };
-
-    /// Suported operation for the filter
-    /// TODO: Add more operation, like IN for array and LIKE for regex
-    const Operation = enum {
-        equal,
-        different,
-        superior,
-        superior_or_equal,
-        inferior,
-        inferior_or_equal,
     };
 
     const ComparisonValue = union {
@@ -48,12 +36,11 @@ pub const FileEngine = struct {
     /// use to parse file. It take a struct name and member name to know what to parse.
     /// An Operation from equal, different, superior, superior_or_equal, ...
     /// The DataType from int, float and str
-    /// TODO: Change the value to be the right type and not just a string all the time
     pub const Condition = struct {
         struct_name: []const u8,
         member_name: []const u8 = undefined,
         value: []const u8 = undefined,
-        operation: Operation = undefined,
+        operation: enum { equal, different, superior, superior_or_equal, inferior, inferior_or_equal } = undefined, // Add more stuff like IN
         data_type: DataType = undefined,
 
         pub fn init(struct_name: []const u8) Condition {
@@ -62,20 +49,15 @@ pub const FileEngine = struct {
     };
 
     pub fn init(allocator: Allocator, DATA_path: ?[]const u8) FileEngine {
-        const path = DATA_path orelse "ZipponDB/DATA";
-        const dir = std.fs.cwd().openDir(path, .{}) catch @panic("Error opening ZipponDB/DATA");
+        // I think use env variable for the path, idk, something better at least than just that 😕
         return FileEngine{
             .allocator = allocator,
-            .dir = dir,
+            .path_to_DATA_dir = DATA_path orelse "ZipponDB/DATA",
         };
     }
 
-    pub fn deinit(self: *FileEngine) void {
-        self.dir.close();
-    }
-
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
-    pub fn getUUIDListUsingCondition(self: *FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
+    pub fn getUUIDListUsingCondition(self: FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
         var file_names = std.ArrayList([]const u8).init(self.allocator);
         self.getFilesNames(condition.struct_name, condition.member_name, &file_names) catch @panic("Can't get list of files");
         defer {
@@ -85,14 +67,11 @@ pub const FileEngine = struct {
             file_names.deinit();
         }
 
-        const sub_path = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/{s}/{s}",
-            .{ condition.struct_name, condition.member_name, file_names.items[0] },
-        ) catch @panic("Can't create sub_path for init a DataIterator");
+        const sub_path = std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{s}", .{ self.path_to_DATA_dir, condition.struct_name, condition.member_name, file_names.items[0] }) catch @panic("Can't create sub_path for init a DataIterator");
         defer self.allocator.free(sub_path);
 
-        var file = self.dir.openFile(sub_path, .{}) catch @panic("Can't open first file to init a data iterator");
+        var file = std.fs.cwd().openFile(sub_path, .{}) catch @panic("Can't open first file to init a data iterator");
+        defer file.close();
 
         var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in files
         var output_fbs = std.io.fixedBufferStream(&output);
@@ -133,7 +112,8 @@ pub const FileEngine = struct {
 
                     if (file_index == file_names.items.len) break;
 
-                    // TODO: Update the file and reader to be the next file of the list
+                    // FIXME: Update the file and reader to be the next file of the list
+                    std.debug.print("End of stream\n", .{});
 
                     break;
                 }, // file read till the end
@@ -151,7 +131,7 @@ pub const FileEngine = struct {
                     switch (condition.data_type) {
                         .int => if (compare_value.int == dataParsing.parseInt(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         .float => if (compare_value.float == dataParsing.parseFloat(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
-                        .str => if (std.mem.eql(u8, compare_value.str, output_fbs.getWritten()[38 .. output_fbs.getWritten().len - 1])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
+                        .str => if (std.mem.eql(u8, compare_value.str, output_fbs.getWritten()[37..output_fbs.getWritten().len])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         .bool => if (compare_value.bool_ == dataParsing.parseBool(output_fbs.getWritten()[37..])) try uuid_array.append(try UUID.parse(output_fbs.getWritten()[0..36])),
                         // TODO: Implement for array too
                         else => {},
@@ -203,13 +183,15 @@ pub const FileEngine = struct {
         }
     }
 
-    // TODO: Test leak on that
-    pub fn writeEntity(self: *FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !void {
+    // TODO: Clean a bit the code
+    // Do I need multiple files too ? I mean it duplicate UUID a lot, if it's just to save a name like 'Bob', storing a long UUID is overkill
+    // I could just use a tabular data format with separator using space
+    pub fn writeEntity(self: FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !void {
         const uuid_str = UUID.init().format_uuid();
-        defer stdout.print("Added new {s} successfully using UUID: {s}\n", .{
+        defer std.debug.print("Added new {s} successfully using UUID: {s}\n", .{
             struct_name,
             uuid_str,
-        }) catch {};
+        });
 
         const member_names = schemaEngine.structName2structMembers(struct_name);
         for (member_names) |member_name| {
@@ -218,122 +200,48 @@ pub const FileEngine = struct {
             if (potential_file_name_to_use) |file_name| {
                 defer self.allocator.free(file_name);
 
-                const file_index = self.fileName2Index(file_name);
-
-                const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}", .{
-                    struct_name,
-                    member_name,
-                    file_name,
-                });
+                const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{s}", .{ self.path_to_DATA_dir, struct_name, member_name, file_name });
                 defer self.allocator.free(path);
 
-                var file = self.dir.openFile(path, .{
+                var file = std.fs.cwd().openFile(path, .{
                     .mode = .read_write,
                 }) catch {
-                    try stdout.print("Error opening data file.", .{});
+                    std.debug.print("Error opening data file.", .{});
                     return;
                 };
                 defer file.close();
 
                 try file.seekFromEnd(0);
                 try file.writer().print("{s} {s}\n", .{ uuid_str, data_map.get(member_name).? });
-
-                const path_to_main = try std.fmt.allocPrint(self.allocator, "{s}/{s}/main.zippondata", .{
-                    struct_name,
-                    member_name,
-                });
-                defer self.allocator.free(path_to_main);
-
-                var file_main = self.dir.openFile(path_to_main, .{
-                    .mode = .read_write,
-                }) catch {
-                    try stdout.print("Error opening data file.", .{});
-                    return;
-                };
-                defer file_main.close();
-
-                try self.addUUIDToMainFile(file_main, file_index + 1, &uuid_str);
             } else {
                 const max_index = try self.maxFileIndex(struct_name, member_name);
 
-                const new_file_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{d}.zippondata", .{
-                    struct_name,
-                    member_name,
-                    max_index + 1,
-                });
+                const new_file_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{d}.zippondata", .{ self.path_to_DATA_dir, struct_name, member_name, max_index + 1 });
                 defer self.allocator.free(new_file_path);
 
-                try stdout.print("new file path: {s}\n", .{new_file_path});
+                std.debug.print("new file path: {s}\n", .{new_file_path});
 
-                const new_file = self.dir.createFile(new_file_path, .{}) catch @panic("Error creating new data file");
+                const new_file = std.fs.cwd().createFile(new_file_path, .{}) catch @panic("Error creating new data file");
                 defer new_file.close();
 
                 try new_file.writer().print("{s} {s}\n", .{ &uuid_str, data_map.get(member_name).? });
-
-                const path_to_main = try std.fmt.allocPrint(self.allocator, "ZipponDB/DATA/{s}/{s}/main.zippondata", .{
-                    struct_name,
-                    member_name,
-                });
-                defer self.allocator.free(path_to_main);
-
-                var file_main = self.dir.openFile(path_to_main, .{
-                    .mode = .read_write,
-                }) catch {
-                    try stdout.print("Error opening data file.", .{});
-                    @panic("");
-                };
-                defer file_main.close();
-
-                try file_main.seekFromEnd(0);
-                try file_main.writeAll("\n ");
-                try file_main.seekTo(0);
-                try self.addUUIDToMainFile(file_main, max_index + 1, &uuid_str);
             }
         }
     }
 
     /// Use a filename in the format 1.zippondata and return the 1
-    fn fileName2Index(_: *FileEngine, file_name: []const u8) usize {
+    fn fileName2Index(_: FileEngine, file_name: []const u8) usize {
         var iter_file_name = std.mem.tokenize(u8, file_name, ".");
         const num_str = iter_file_name.next().?;
         const num: usize = std.fmt.parseInt(usize, num_str, 10) catch @panic("Couln't parse the int of a zippondata file.");
         return num;
     }
 
-    /// Add an UUID at a specific index of a file
-    /// Used when some data are deleted from previous zippondata files and are now bellow the file size limit
-    fn addUUIDToMainFile(_: *FileEngine, file: std.fs.File, index: usize, uuid_str: []const u8) !void {
-        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in files
-        var output_fbs = std.io.fixedBufferStream(&output);
-        const writer = output_fbs.writer();
+    fn getFilesNames(self: FileEngine, struct_name: []const u8, member_name: []const u8, file_names: *std.ArrayList([]const u8)) !void {
+        const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}", .{ self.path_to_DATA_dir, struct_name, member_name });
+        defer self.allocator.free(path);
 
-        var reader = file.reader();
-
-        var line_num: usize = 1;
-        while (true) {
-            output_fbs.reset();
-            reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) { // Maybe do a better error handeling. Because if an error happend here, data are already written in files but not in main
-                error.EndOfStream => {
-                    output_fbs.reset(); // clear buffer before exit
-                    break;
-                }, // file read till the end
-                else => break,
-            };
-
-            if (line_num == index) {
-                try file.seekBy(-1);
-                try file.writer().print("{s}  ", .{uuid_str});
-                return;
-            }
-            line_num += 1;
-        }
-    }
-
-    fn getFilesNames(self: *FileEngine, struct_name: []const u8, member_name: []const u8, file_names: *std.ArrayList([]const u8)) !void {
-        const sub_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ struct_name, member_name });
-        defer self.allocator.free(sub_path);
-
-        var member_dir = try self.dir.openDir(sub_path, .{ .iterate = true });
+        var member_dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
         defer member_dir.close();
 
         var iter = member_dir.iterate();
@@ -345,11 +253,11 @@ pub const FileEngine = struct {
 
     /// Use the map of file stat to find the first file with under the bytes limit.
     /// return the name of the file. If none is found, return null.
-    fn getFirstUsableFile(self: *FileEngine, struct_name: []const u8, member_name: []const u8) !?[]const u8 {
-        const sub_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ struct_name, member_name });
-        defer self.allocator.free(sub_path);
+    fn getFirstUsableFile(self: FileEngine, struct_name: []const u8, member_name: []const u8) !?[]const u8 {
+        const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}", .{ self.path_to_DATA_dir, struct_name, member_name });
+        defer self.allocator.free(path);
 
-        var member_dir = try self.dir.openDir(sub_path, .{ .iterate = true });
+        var member_dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
         defer member_dir.close();
 
         var iter = member_dir.iterate();
@@ -364,12 +272,11 @@ pub const FileEngine = struct {
 
     /// Iter over all file and get the max name and return the value of it as usize
     /// So for example if there is 1.zippondata and 2.zippondata it return 2.
-    fn maxFileIndex(self: *FileEngine, struct_name: []const u8, member_name: []const u8) !usize {
-        const buffer = try self.allocator.alloc(u8, 1024); // Adjust the size as needed
-        defer self.allocator.free(buffer);
+    fn maxFileIndex(self: FileEngine, struct_name: []const u8, member_name: []const u8) !usize {
+        const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}", .{ self.path_to_DATA_dir, struct_name, member_name });
+        defer self.allocator.free(path);
 
-        const sub_path = try std.fmt.bufPrint(buffer, "{s}/{s}", .{ struct_name, member_name });
-        const member_dir = try self.dir.openDir(sub_path, .{ .iterate = true });
+        const member_dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
         var count: usize = 0;
 
         var iter = member_dir.iterate();
@@ -381,14 +288,16 @@ pub const FileEngine = struct {
     }
 
     // TODO: Give the option to keep , dump or erase the data
-    pub fn initDataFolder(self: *FileEngine) !void {
+    pub fn initDataFolder(self: FileEngine) !void {
+        var data_dir = try std.fs.cwd().openDir(self.path_to_DATA_dir, .{});
+        defer data_dir.close();
+
         for (schemaEngine.struct_name_list) |struct_name| {
-            self.dir.makeDir(struct_name) catch |err| switch (err) {
+            data_dir.makeDir(struct_name) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
                 else => return DataEngineError.ErrorCreateStructFolder,
             };
-            const struct_dir = try self.dir.openDir(struct_name, .{});
-            defer struct_dir.close();
+            const struct_dir = try data_dir.openDir(struct_name, .{});
 
             const member_names = schemaEngine.structName2structMembers(struct_name);
             for (member_names) |member_name| {
@@ -397,15 +306,7 @@ pub const FileEngine = struct {
                     else => return DataEngineError.ErrorCreateMemberFolder,
                 };
                 const member_dir = try struct_dir.openDir(member_name, .{});
-                defer member_dir.close();
 
-                blk: {
-                    const file = member_dir.createFile("main.zippondata", .{}) catch |err| switch (err) {
-                        error.PathAlreadyExists => break :blk,
-                        else => return DataEngineError.ErrorCreateMainFile,
-                    };
-                    try file.writeAll("\n");
-                }
                 _ = member_dir.createFile("0.zippondata", .{}) catch |err| switch (err) {
                     error.PathAlreadyExists => {},
                     else => return DataEngineError.ErrorCreateDataFile,
@@ -424,4 +325,10 @@ test "Get list of UUID using condition" {
 
     const condition = FileEngine.Condition{ .struct_name = "User", .member_name = "email", .value = "adrien@mail.com", .operation = .equal, .data_type = .str };
     try data_engine.getUUIDListUsingCondition(condition, &uuid_array);
+}
+
+test "Open dir" {
+    const dir = std.fs.cwd();
+    const sub_dir = try dir.openDir("src/types", .{});
+    _ = sub_dir;
 }
