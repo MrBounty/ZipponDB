@@ -150,7 +150,7 @@ v 0.1 - Base
 [X] UUID  
 [X] CLI  
 [X] Tokenizers  
-[ ] File management
+[ ] File management  
 [ ] Base Parser  
 
 v 0.2 - Usable  
@@ -179,14 +179,16 @@ v 0.6 - Performance
 [ ] Multi threading 
 
 v 0.7 - Safety  
-[ ] Auth
-[ ] Metrics
+[ ] Auth  
+[ ] Metrics  
 
 v 0.6 - Advanced  
-[ ] Query optimizer
+[ ] Query optimizer  
 
-v 1.0 - Web interface
-[ ] Query builder
-[ ] Tables
-[ ] Schema visualization
-[ ] Dashboard metrics
+v 1.0 - Web interface  
+[ ] Query builder  
+[ ] Tables  
+[ ] Schema visualization  
+[ ] Dashboard metrics  
+
+Let's see where it start explode ;)
