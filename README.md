@@ -125,31 +125,13 @@ Zippon have it's own query language. Here the keys point to remember:
 | REMOVE User { id = '000-000' } | Remove a user by ID |
 | ADD User ( name = 'Adrien', email = 'email', age = 40 ) | Add a new user |
 
-# Integration
-
-For now there is only a python intregration, but because it is just 2-3 command, it is easy to implement with other language.
-
-### Python
-
-```python
-import zippondb as zdb
-
-client = zdb.newClient('path/to/binary')
-client.exe('schema build')
-print(client.exe('schema describe'))
-
-# Return named tuple of all users
-users = client.run('GRAB User {}')
-for user in users:
-    print(user.name)
-```
-
 # Roadmap
 
 v 0.1 - Base  
 [X] UUID  
 [X] CLI  
 [X] Tokenizers  
+[ ] Schema management  
 [ ] File management  
 [ ] Base Parser  
 
@@ -182,8 +164,13 @@ v 0.7 - Safety
 [ ] Auth  
 [ ] Metrics  
 
-v 0.6 - Advanced  
+v 0.8 - Advanced  
 [ ] Query optimizer  
+
+v 0.9 - Docs  
+[ ] ZiQL tuto  
+[ ] Deployment tuto  
+[ ] Code docs  
 
 v 1.0 - Web interface  
 [ ] Query builder  
