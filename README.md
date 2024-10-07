@@ -146,14 +146,47 @@ for user in users:
 
 # Roadmap
 
+v 0.1 - Base  
+[X] UUID  
 [X] CLI  
-[ ] Parser basic
-[ ] Relationships/links  
-[ ] Multi threading  
-[ ] Transaction  
-[ ] Docker image  
-[ ] Migration of schema  
+[X] Tokenizers  
+[ ] File management
+[ ] Base Parser  
+
+v 0.2 - Usable  
+[ ] B-Tree
+[ ] Relationships  
+[ ] Date  
+[ ] Docker  
+
+v 0.3 - QoL  
+[ ] Schema migration   
 [ ] Dump/Bump data  
+[ ] Recovery
+
+v 0.4 - Usability  
+[ ] Server  
+[ ] Python interface  
+[ ] Go interface  
+
+v 0.5 - In memory  
 [ ] In memory option  
-[ ] Archives  
-[ ] Date value type  
+[ ] Cache
+
+v 0.6 - Performance  
+[ ] Transaction  
+[ ] Lock manager
+[ ] Multi threading 
+
+v 0.7 - Safety  
+[ ] Auth
+[ ] Metrics
+
+v 0.6 - Advanced  
+[ ] Query optimizer
+
+v 1.0 - Web interface
+[ ] Query builder
+[ ] Tables
+[ ] Schema visualization
+[ ] Dashboard metrics
