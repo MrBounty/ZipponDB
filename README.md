@@ -2,16 +2,14 @@
 
 # Introduction
 
-ZipponDB is a relational database written entirely in Zig from stractch.  
+ZipponDB is a relational database written entirely in Zig from stractch with 0 dependency.  
 It use a custom query language named ZipponQL or ZiQL for short.
-
-The first time you run ZipponDB, it will create a new ZipponDB directory and start the Zippon CLI.  
-From here, you can update the schema by running `schema update`, that use `schema.zipponschema` by default.
 
 ### Why Zippon ?
 
 - Open-source and written 100% in Zig with 0 dependency
 - Relational database
+- Simple and minimal query language
 - Small, fast and implementable everywhere
 
 # Declare a schema
@@ -30,7 +28,7 @@ User (
 )
 ```
 
-In this example each user have a name and email as a string. But also one best friend as a link. 
+Note that the best friend is a link to another User.
 
 Here a more advance example with multiple struct:
 ```
@@ -122,6 +120,12 @@ Zippon have it's own query language. Here the keys point to remember:
 | UPDATE User [1] { name = 'Adrien' } => ( email = 'new@email.com' ) | Update a user's email |
 | REMOVE User { id = '000-000' } | Remove a user by ID |
 | ADD User ( name = 'Adrien', email = 'email', age = 40 ) | Add a new user |
+
+# Lexique
+
+- **Struct:** A struct is the schema of how to store data. E.g. `User`
+- **Entity:** An entity is one instance of a struct. E.g. one user
+- **Member:** A member is one variable saved in a struct. E.g. `name` in `User`
 
 # Roadmap
 
