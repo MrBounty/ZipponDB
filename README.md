@@ -91,16 +91,86 @@ Note: [] are list of value.
 
 # ZipponQL
 
-ZipponDB use it's own query language, ZipponQL or ZiQL. Here the keys point to remember:
+ZipponDB use it's own query language, ZipponQL or ZiQL for short. Here the keys point to remember:
 
+- 4 actions available: `GRAB` `ADD` `UPDATE` `DELETE`
+- All query start with an action then a struct name
 - {} Are filters
 - [] Are how much; what data
-- () Are new or updated data (Not already in file); Or to link condition between {}
+- () Are new or updated data (Not already in file)
 - || Are additional options
 - By default all member that are not link are return
 - To return link or just some member, specify them between []
 
-## Examples
+## GRAB
+
+The main action is `GRAB`, this will parse files and return data. Here how it's work:
+
+```
+GRAB StructName [number_of_entity_max; member_name1, member_name2] { member_name1 = value1}
+```
+
+Note that `[]` and `{}` are both optional.  
+So this will work and return all User without any filtering:
+```
+GRAB User
+```
+
+Here a simple example where to get all User above 18 years old:
+```
+GRAB User {age > 18}
+```
+
+To just return the name of User:
+```
+GRAB User [name] {age > 18}
+```
+
+To return the 10 first User:
+```
+GRAB User [10] {age > 18}
+```
+
+You can use both:
+```
+GRAB User [10; name] {age > 18}
+```
+
+To order it using the name:
+```
+GRAB User [10; name] {age > 10} |ASC name|
+```
+
+## ADD
+
+The `ADD` action will add one entity into the database (batch are comming).  
+The synthax is similare but use `()`, this mean that the data is not yet in the database if between `()`.
+
+Here an example:
+```
+ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82])
+```
+
+You need to specify all member when adding an entity (default value are comming).
+
+## DELETE
+
+Similare to `GRAB` but delete all entity found using the filter and return the list of UUID deleted.
+```
+DELETE User {name = 'Bob'}
+```
+
+## UPDATE
+
+A mix of `GRAB` and `ADD`. This take a filter first, then the new data.  
+Here we update the 5 first User named `adrien` to add a capital and become `Adrien`.
+```
+UPDATE User [5] {name='adrien'} => (name = 'Adrien')
+```
+
+Note that compared to `ADD`, you don't need to specify all member between `()`. Only the one specify will be updated.
+
+## Examples list
 | Command | Description |
 | --- | --- |
 | GRAB User | Get all users |
@@ -116,13 +186,31 @@ ZipponDB use it's own query language, ZipponQL or ZiQL. Here the keys point to r
 ### Not yet implemented
 | Command | Description |
 | --- | --- |
-| GRAB User { age > 10 AND name IN ['Adrien' 'Bob']} | Use multiple condition |
-| GRAB User [1] { bestfriend = { name = 'Adrien' } } | Get one user that has a best friend named Adrien |
+| GRAB User { age > 10 AND name IN ['Adrien' 'Bob']} | In comparison |
+| GRAB User [1] { bestfriend IN { name = 'Adrien' } } | Get one user that has a best friend named Adrien |
 | GRAB User [10; friends [1]] { age > 10 } | Get one friend of the 10th user above 10 years old |
-| GRAB Message [100; comments [ date ] ] { .writter = { name = 'Adrien' }.bestfriend } | Get the date of 100 comments written by the best friend of a user named Adrien |
+| GRAB Message [100; comments [ date ] ] { writter IN { name = 'Adrien' }.bestfriend } | Get the date of 100 comments written by the best friend of a user named Adrien |
 | GRAB User { IN Message { date > '12-01-2014' }.writter } | Get all users that sent a message after the 12th January 2014 |
 | GRAB User { !IN Comment { }.writter } | Get all users that didn't write a comment |
 | GRAB User { IN User { name = 'Adrien' }.friends } | Get all users that are friends with an Adrien |
+
+# Data types
+
+Their is 5 data type for the moment:
+- `int`: 64 bit integer
+- `float`: 64 bit float
+- `bool`: Boolean, can be `true` or `false`
+- `string`: Character array between `''`
+- `uuid`: Id in the UUID format, used for relationship, ect. All struct have an id member.
+
+Comming soon:
+- `date`: A date in yyyy/mm/dd
+- `datetime`: A date time in yyyy/mm/dd/hh/mm/ss
+- `time`: A time in hh/mm/ss
+
+All data type can be an array of those type using [] in front of it. So []int is an array of integer.
+
+All data type can also be `null`. Expect array that can only be empty.
 
 # Lexique
 
@@ -137,8 +225,8 @@ ZipponDB use it's own query language, ZipponQL or ZiQL. Here the keys point to r
 - [X] CLI  
 - [X] Tokenizers  
 - [ ] ZiQL parser
-- [ ] Schema management  
-- [X] File management  
+- [ ] Schema engine  
+- [X] File engine  
 - [ ] Loging 
 
 #### v0.2 - Usable  
