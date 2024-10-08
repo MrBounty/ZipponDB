@@ -198,7 +198,7 @@ Note that compared to `ADD`, you don't need to specify all member between `()`. 
 
 Their is 5 data type for the moment:
 - `int`: 64 bit integer
-- `float`: 64 bit float
+- `float`: 64 bit float. Need to have a dot, `1.` is a float `1` is an integer.
 - `bool`: Boolean, can be `true` or `false`
 - `string`: Character array between `''`
 - `uuid`: Id in the UUID format, used for relationship, ect. All struct have an id member.
