@@ -1,4 +1,5 @@
 .zig-cache
+.venv
 ZipponDB
 engine
 engine.o

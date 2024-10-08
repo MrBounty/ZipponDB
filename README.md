@@ -143,7 +143,7 @@ GRAB User [10; name] {age > 10} |ASC name|
 
 ## ADD
 
-The `ADD` action will add one entity into the database (batch are comming).  
+The `ADD` action will add one entity into the database.  
 The synthax is similare but use `()`, this mean that the data is not yet in the database if between `()`.
 
 Here an example:
@@ -152,6 +152,18 @@ ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82
 ```
 
 You need to specify all member when adding an entity (default value are comming).
+
+#### Not implemented
+
+And you can also add them in batch 
+```
+ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82]) (name = 'Bob2', age = 33, email = 'bob2@email.com', scores = [])
+```
+
+You don't need to specify the member in the second entity as long as the order is respected
+```
+ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82]) ('Bob2', 33, 'bob2@email.com', [])
+```
 
 ## DELETE
 
@@ -231,7 +243,6 @@ TODO: Create a tech doc of what is happening inside.
 - [ ] ZiQL parser
 - [ ] Schema engine  
 - [X] File engine  
-- [ ] Loging 
 
 #### v0.2 - Usable  
 - [ ] B-Tree  
