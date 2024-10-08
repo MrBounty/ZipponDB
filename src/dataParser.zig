@@ -49,6 +49,7 @@ pub fn parseArrayBool(allocator: std.mem.Allocator, array_str: []const u8) std.A
     return array;
 }
 
+// FIXME: This will not work if their is a space in one string. E.g ['Hello world'] will be split between Hello and world but it shouldn't
 pub fn parseArrayStr(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList([]const u8) {
     var array = std.ArrayList([]const u8).init(allocator);
 
@@ -85,24 +86,26 @@ test "Data parsing" {
         try std.testing.expect(parseFloat(value) == expected_out3[i]);
     }
 
-    // Int array
+    // Float array
     const in4 = "[1.5 14.3 44.9999 42 hello]";
     const out4 = parseArrayFloat(allocator, in4);
     defer out4.deinit();
     const expected_out4: [5]f64 = .{ 1.5, 14.3, 44.9999, 42, 0 };
     try std.testing.expect(std.mem.eql(f64, out4.items, &expected_out4));
 
-    // Float
+    // Bool
     const in5: [3][]const u8 = .{ "1", "Hello", "0" };
     const expected_out5: [3]bool = .{ true, true, false };
     for (in5, 0..) |value, i| {
         try std.testing.expect(parseBool(value) == expected_out5[i]);
     }
 
-    // Int array
+    // Bool array
     const in6 = "[1 0 0 1 1]";
     const out6 = parseArrayBool(allocator, in6);
     defer out6.deinit();
     const expected_out6: [5]bool = .{ true, false, false, true, true };
     try std.testing.expect(std.mem.eql(bool, out6.items, &expected_out6));
+
+    // TODO: Test the string array
 }
