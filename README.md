@@ -218,6 +218,10 @@ All data type can also be `null`. Expect array that can only be empty.
 - **Entity:** An entity is one instance of a struct.
 - **Member:** A member is one data saved in a struct. E.g. `name` in `User`
 
+# How does it work ?
+
+TODO: Create a tech doc of what is happening inside.
+
 # Roadmap
 
 #### v0.1 - Base  
