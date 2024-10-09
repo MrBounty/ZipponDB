@@ -12,7 +12,7 @@ const DataType = @import("types/dataType.zig").DataType;
 pub const FileEngine = struct {
     allocator: Allocator,
     path_to_DATA_dir: []const u8, // The path to the DATA folder
-    max_file_size: usize = 1e+7, // 10mb
+    max_file_size: usize = 5e+4, // 50kb TODO: Change
 
     const DataEngineError = error{
         ErrorCreateDataFolder,
@@ -57,30 +57,25 @@ pub const FileEngine = struct {
     }
 
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
-    pub fn getUUIDListUsingCondition(self: FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
+    pub fn getUUIDListUsingCondition(self: *FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
         var file_names = std.ArrayList([]const u8).init(self.allocator);
         self.getFilesNames(condition.struct_name, condition.member_name, &file_names) catch @panic("Can't get list of files");
-        defer {
-            for (file_names.items) |elem| {
-                self.allocator.free(elem);
-            }
-            file_names.deinit();
-        }
+        defer file_names.deinit();
 
-        const sub_path = std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{s}", .{ self.path_to_DATA_dir, condition.struct_name, condition.member_name, file_names.items[0] }) catch @panic("Can't create sub_path for init a DataIterator");
+        var current_file = file_names.pop();
+
+        var sub_path = std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{s}", .{ self.path_to_DATA_dir, condition.struct_name, condition.member_name, current_file }) catch @panic("Can't create sub_path for init a DataIterator");
         defer self.allocator.free(sub_path);
 
         var file = std.fs.cwd().openFile(sub_path, .{}) catch @panic("Can't open first file to init a data iterator");
         defer file.close();
 
-        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in files
+        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
 
         var buffered = std.io.bufferedReader(file.reader());
         var reader = buffered.reader();
-
-        var file_index: usize = 0;
 
         var compare_value: ComparisonValue = undefined;
         switch (condition.data_type) {
@@ -108,14 +103,23 @@ pub const FileEngine = struct {
             reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) {
                 error.EndOfStream => {
                     output_fbs.reset(); // clear buffer before exit
-                    file_index += 1;
+                    self.allocator.free(current_file);
 
-                    if (file_index == file_names.items.len) break;
+                    if (file_names.items.len == 0) break;
 
-                    // FIXME: Update the file and reader to be the next file of the list
-                    std.debug.print("End of stream\n", .{});
+                    current_file = file_names.pop();
 
-                    break;
+                    // Do I leak memory here ? Do I deinit every time ?
+                    self.allocator.free(sub_path);
+                    sub_path = std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{s}", .{ self.path_to_DATA_dir, condition.struct_name, condition.member_name, current_file }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    // Same here, do I close everytime ?
+                    file.close();
+                    file = std.fs.cwd().openFile(sub_path, .{}) catch @panic("Can't open first file to init a data iterator");
+
+                    buffered = std.io.bufferedReader(file.reader());
+                    reader = buffered.reader();
+                    continue;
                 }, // file read till the end
                 else => {
                     std.debug.print("Error while reading file: {any}\n", .{err});
@@ -185,13 +189,9 @@ pub const FileEngine = struct {
 
     // TODO: Clean a bit the code
     // Do I need multiple files too ? I mean it duplicate UUID a lot, if it's just to save a name like 'Bob', storing a long UUID is overkill
-    // I could just use a tabular data format with separator using space
-    pub fn writeEntity(self: FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !void {
+    // I could just use a tabular data format with separator using space - Or maybe I encode the uuid to take a minimum space as I always know it size
+    pub fn writeEntity(self: FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !UUID {
         const uuid_str = UUID.init().format_uuid();
-        defer std.debug.print("Added new {s} successfully using UUID: {s}\n", .{
-            struct_name,
-            uuid_str,
-        });
 
         const member_names = schemaEngine.structName2structMembers(struct_name);
         for (member_names) |member_name| {
@@ -207,7 +207,7 @@ pub const FileEngine = struct {
                     .mode = .read_write,
                 }) catch {
                     std.debug.print("Error opening data file.", .{});
-                    return;
+                    continue; // TODO: Error handeling
                 };
                 defer file.close();
 
@@ -219,14 +219,14 @@ pub const FileEngine = struct {
                 const new_file_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{d}.zippondata", .{ self.path_to_DATA_dir, struct_name, member_name, max_index + 1 });
                 defer self.allocator.free(new_file_path);
 
-                std.debug.print("new file path: {s}\n", .{new_file_path});
-
                 const new_file = std.fs.cwd().createFile(new_file_path, .{}) catch @panic("Error creating new data file");
                 defer new_file.close();
 
                 try new_file.writer().print("{s} {s}\n", .{ &uuid_str, data_map.get(member_name).? });
             }
         }
+
+        return UUID.parse(&uuid_str);
     }
 
     /// Use a filename in the format 1.zippondata and return the 1
@@ -245,6 +245,7 @@ pub const FileEngine = struct {
         defer member_dir.close();
 
         var iter = member_dir.iterate();
+        defer iter.reset();
         while (try iter.next()) |entry| {
             if ((entry.kind != std.fs.Dir.Entry.Kind.file) or (std.mem.eql(u8, "main.zippondata", entry.name))) continue;
             try file_names.*.append(try self.allocator.dupe(u8, entry.name));
@@ -281,10 +282,10 @@ pub const FileEngine = struct {
 
         var iter = member_dir.iterate();
         while (try iter.next()) |entry| {
-            if ((entry.kind != std.fs.Dir.Entry.Kind.file) or (std.mem.eql(u8, "main.zippondata", entry.name))) continue;
+            if (entry.kind != std.fs.Dir.Entry.Kind.file) continue;
             count += 1;
         }
-        return count;
+        return count - 1;
     }
 
     // TODO: Give the option to keep , dump or erase the data

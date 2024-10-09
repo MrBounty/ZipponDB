@@ -7,6 +7,17 @@ const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("tokenizers/ziql.zig").Token;
 const ziqlParser = @import("ziqlParser.zig").Parser;
 
+const stdout = std.io.getStdOut().writer();
+
+fn send(comptime format: []const u8, args: anytype) void {
+    stdout.print(format, args) catch |err| {
+        std.log.err("Can't send: {any}", .{err});
+        stdout.print("\x03\n", .{}) catch {};
+    };
+
+    stdout.print("\x03\n", .{}) catch {};
+}
+
 pub fn main() !void {
     // TODO: Use an environment variable for the path of the DB
     checkAndCreateDirectories();
@@ -16,11 +27,8 @@ pub fn main() !void {
 
     defer {
         switch (gpa.deinit()) {
-            .ok => std.debug.print("No memory leak baby !\n", .{}),
-            .leak => {
-                std.debug.print("We fucked it up bro...\n", .{});
-                @panic("=(");
-            },
+            .ok => std.log.debug("No memory leak baby !\n", .{}),
+            .leak => std.log.debug("We fucked it up bro...\n", .{}),
         }
     }
 
@@ -33,6 +41,8 @@ pub fn main() !void {
         const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(line_buf, '\n');
 
         if (line) |line_str| {
+            const time_initial = std.time.microTimestamp();
+
             const null_term_line_str = try allocator.dupeZ(u8, line_str[0..line_str.len]);
             defer allocator.free(null_term_line_str);
 
@@ -47,20 +57,19 @@ pub fn main() !void {
                             defer allocator.free(null_term_query_str);
                             try runCommand(null_term_query_str);
                         },
-                        .keyword_help => std.debug.print("The run command will take a ZiQL query between \" and run it. eg: run \"GRAB User\"\n", .{}),
-                        else => std.debug.print("After command run, need a string of a query, eg: \"GRAB User\"\n", .{}),
+                        .keyword_help => send("The run command will take a ZiQL query between \" and run it. eg: run \"GRAB User\"\n", .{}),
+                        else => send("After command run, need a string of a query, eg: \"GRAB User\"\n", .{}),
                     }
                 },
                 .keyword_schema => {
                     const second_token = cliToker.next();
 
                     switch (second_token.tag) {
-                        .keyword_describe => std.debug.print("{s}\n", .{ // TODO: Change that to use the SchemaEngine
+                        .keyword_describe => send("{s}\n", .{ // TODO: Change that to use the SchemaEngine
                             \\User (
                             \\  name: str,
                             \\  email: str,
                             \\)
-                            \\
                             \\Message (
                             \\  content: str,
                             \\)
@@ -70,7 +79,7 @@ pub fn main() !void {
                             try data_engine.initDataFolder();
                         },
                         .keyword_help => {
-                            std.debug.print("{s}", .{
+                            send("{s}", .{
                                 \\Here are all available options to use with the schema command:
                                 \\
                                 \\describe  Print the schema use by the current engine.
@@ -82,7 +91,7 @@ pub fn main() !void {
                     }
                 },
                 .keyword_help => {
-                    std.debug.print("{s}", .{
+                    send("{s}", .{
                         \\Welcome to ZipponDB!
                         \\
                         \\run       To run a query. Args => query: str, the query to execute.
@@ -95,8 +104,12 @@ pub fn main() !void {
                 },
                 .keyword_quit => break,
                 .eof => {},
-                else => std.debug.print("Command need to start with a keyword, including: run, schema, help and quit\n", .{}),
+                else => send("Command need to start with a keyword, including: run, schema, help and quit\n", .{}),
             }
+
+            const time_final = std.time.microTimestamp();
+            const duration = time_final - time_initial;
+            std.debug.print("Time: {d:.2}ms\n", .{@as(f64, @floatFromInt(duration)) / 1000.0});
         }
     }
 }
