@@ -4,7 +4,7 @@
 
 ZipponDB is a relational database written entirely in Zig from stractch with 0 dependency.  
 
-ZipponDB goal is to be ACID, light, simple and high performance. It is aim for small to medium application that don't need fancy features but a simple and reliable database.  
+ZipponDB goal is to be ACID, light, simple and high performance. It aim small to medium application that don't need fancy features but a simple and reliable database.  
 
 ### Why Zippon ?
 
@@ -15,12 +15,11 @@ ZipponDB goal is to be ACID, light, simple and high performance. It is aim for s
 
 # Declare a schema
 
-ZipponDB need a schema to work. A schema is a way to define how your data will be store. 
+In ZipponDB you use structures, or struct for short, and not tables to organize how your data is store and manipulate. A struct have a name like `User` and members like `name` and `age`.
 
-Compared to SQL, you can see it as a file where you declare all table name, columns name, data type and relationship. 
+For that you create a file with inside the schema of the database that describe all structs. Compared to SQL, you can see it as a file where you declare all table name, columns name, data type and relationship. 
 
-But here you declare struct. A struct have a name and members. A member is one data or link and have a type associated. Here a simple example for a user:
-
+Here an example of a `schema.zipponschema` file:
 ```
 User (
     name: str,
@@ -29,65 +28,34 @@ User (
 )
 ```
 
-Note that the best friend is a link to another User.
+Note that the best friend is a link to another `User`.
 
 Here a more advance example with multiple struct:
 ```
-User {
-    name: str,
-    email: str,
-    friends: []User,
-    posts: []Post,
-    liked_posts: []Post,
-    comments: []Comment,
-    liked_coms: []Comment,
-}
-
-Post {
-    title: str,
-    image: str,
-    at: date,
-    from: User,
-    like_by: []User,
-    comments: []Comment,
-}
-
-Comment {
-    content: str,
-    at: date,
-    from: User,
-    like_by: []User,
-    of: Post,
-}
-```
-
-Can be simplify to take less space but can require more complexe query:
-
-```
-User {
+User (
     name: str,
     email: str,
     friends: []User,
     posts: []Post,
     comments: []Comment,
-}
+)
 
-Post {
+Post (
     title: str,
     image: str,
     at: date,
     like_by: []User,
     comments: []Comment,
-}
+)
 
-Comment {
+Comment (
     content: str,
     at: date,
     like_by: []User,
-}
+)
 ```
 
-Note: [] are list of value.
+Note: `[]` before the type mean a list/array of this type.
 
 # ZipponQL
 
@@ -95,80 +63,160 @@ ZipponDB use it's own query language, ZipponQL or ZiQL for short. Here the keys 
 
 - 4 actions available: `GRAB` `ADD` `UPDATE` `DELETE`
 - All query start with an action then a struct name
-- {} Are filters
-- [] Are how much; what data
-- () Are new or updated data (Not already in file)
-- || Are additional options
+- `{}` Are filters
+- `[]` Are how much; what data
+- `()` Are new or updated data (Not already in file)
+- `||` Are additional options
 - By default all member that are not link are return
-- To return link or just some member, specify them between []
+- To return link or only some members, specify them between `[]`
+
+***Disclaimer: Lot of stuff are still missing and the language may change over time.***
 
 ## GRAB
 
 The main action is `GRAB`, this will parse files and return data. Here how it's work:
 
-```
+```js
 GRAB StructName [number_of_entity_max; member_name1, member_name2] { member_name1 = value1}
 ```
 
-Note that `[]` and `{}` are both optional.  
-So this will work and return all User without any filtering:
-```
+Note that `[]` and `{}` are both optional. So this will work and return all `User` without any filtering:
+```js
 GRAB User
 ```
 
-Here a simple example where to get all User above 18 years old:
-```
+Here a simple example where to get all `User` above 18 years old:
+```js
 GRAB User {age > 18}
 ```
 
-To just return the name of User:
-```
+To just return the name of `User`:
+```js
 GRAB User [name] {age > 18}
 ```
 
-To return the 10 first User:
-```
+To return the 10 first `User`:
+```js
 GRAB User [10] {age > 18}
 ```
 
 You can use both:
-```
+```js
 GRAB User [10; name] {age > 18}
 ```
 
 To order it using the name:
-```
+```js
 GRAB User [10; name] {age > 10} |ASC name|
+```
+
+Use multiple condition:
+```js
+GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
+```
+
+#### Not yet implemented
+
+You can specify how much and what to return even for link inside struct. In this example I get 1 friend name for 10 `User`:
+```js
+GRAB User [10; friends [1; name]]
+```
+
+##### Using IN 
+You can use the `IN` operator to check if something is in an array:
+```js
+GRAB User { age > 10 AND name IN ['Adrien' 'Bob']}
+```
+
+This also work by using other filter. Here I get `User` that have a best friend named Adrien:
+```js
+GRAB User { bestfriend IN { name = 'Adrien' } }
+```
+
+You can use `IN` on itself. Here I get all `User` that liked a `Comment` that is from 2024. Both queries return the same thing:
+```js
+GRAB User { IN Comment {at > '2024/01/01'}.like_by}
+GRAB Comment.like_by { at > '2024/01/01'}
+```
+
+##### Return relationship
+
+You can also return a relationship only. The filter will be done on `User` but will return `Comment`:
+```js
+GRAB User.comments {name = 'Bob'}
+```
+
+You can do it as much as you like. This will return all `User` that liked comments from Bob:
+```js
+GRAB User.comments.like_by {name = 'Bob'}
+```
+
+This can also be use inside filter. Note that we need to specify `User` because it is a different struct that `Post`. Here I get all `Post` that have a comment from Bob:
+```js
+GRAB Post {comments IN User{name = 'Bob'}.comments}
+```
+
+Can also do the same but only for the first Bob found:
+```js
+GRAB Post {comments IN User [1] {name = 'Bob'}.comments}
+```
+
+Be carefull, this will return all `User` that liked a comment from 10 `User` named Bob:
+```js
+GRAB User.comments.like_by [10] {name = 'Bob'}
+```
+
+To get 10 `User` that liked a comment from any `User` named Bob, you need to use:
+```js
+GRAB User.comments.like_by [comments [like_by [10]]] {name = 'Bob'}
+```
+
+##### Using !
+You can use `!` to return the opposite. Use with `IN`, it check if it is NOT is the list. Use it with filters, it return entities that do not respect the filter.
+
+This will return all `User` that didn't like a `Comment` in 2024:
+```js
+GRAB User { !IN Comment {at > '2024/01/01'}.like_by}
+```
+
+Be carefull because this do not return the same, it return all `User` that liked a `Comment` not in 2024:
+```js
+GRAB Comment.like_by !{ at > '2024/01/01'}
+```
+
+Which is the same as:
+```js
+GRAB Comment.like_by { at < '2024/01/01'}
 ```
 
 ## ADD
 
 The `ADD` action will add one entity into the database.  
-The synthax is similare but use `()`, this mean that the data is not yet in the database if between `()`.
+The synthax is similare but use `()`, this mean that the data is not yet in the database.
 
 Here an example:
-```
+```js
 ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82])
 ```
 
 You need to specify all member when adding an entity (default value are comming).
 
-#### Not implemented
+#### Not yet implemented
 
 And you can also add them in batch 
-```
+```js
 ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82]) (name = 'Bob2', age = 33, email = 'bob2@email.com', scores = [])
 ```
 
-You don't need to specify the member in the second entity as long as the order is respected
-```
+You don't need to specify the member in the second entity as long as the order is respected.
+```js
 ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82]) ('Bob2', 33, 'bob2@email.com', [])
 ```
 
 ## DELETE
 
 Similare to `GRAB` but delete all entity found using the filter and return the list of UUID deleted.
-```
+```js
 DELETE User {name = 'Bob'}
 ```
 
@@ -176,35 +224,50 @@ DELETE User {name = 'Bob'}
 
 A mix of `GRAB` and `ADD`. This take a filter first, then the new data.  
 Here we update the 5 first User named `adrien` to add a capital and become `Adrien`.
-```
-UPDATE User [5] {name='adrien'} => (name = 'Adrien')
+```js
+UPDATE User [5] {name='adrien'} TO (name = 'Adrien')
 ```
 
 Note that compared to `ADD`, you don't need to specify all member between `()`. Only the one specify will be updated.
 
-## Examples list
-| Command | Description |
-| --- | --- |
-| GRAB User | Get all users |
-| GRAB User { name = 'Adrien' } | Get all users named Adrien |
-| GRAB User [1; email] | Get one user's email |
-| GRAB User \| ASC name \| | Get all users ordered by name |
-| GRAB User [name] { age > 10 AND name != 'Adrien' } | Get users' name if more than 10 years old and not named Adrien |
-| GRAB User { age > 10 AND (name = 'Adrien' OR  name = 'Bob'} | Use multiple condition |
-| UPDATE User [1] { name = 'Adrien' } => ( email = 'new@email.com' ) | Update a user's email |
-| REMOVE User { id = '000-000' } | Remove a user by ID |
-| ADD User ( name = 'Adrien', email = 'email', age = 40 ) | Add a new user |
+#### Not yet implemented
 
-### Not yet implemented
-| Command | Description |
-| --- | --- |
-| GRAB User { age > 10 AND name IN ['Adrien' 'Bob']} | In comparison |
-| GRAB User [1] { bestfriend IN { name = 'Adrien' } } | Get one user that has a best friend named Adrien |
-| GRAB User [10; friends [1]] { age > 10 } | Get one friend of the 10th user above 10 years old |
-| GRAB Message [100; comments [ date ] ] { writter IN { name = 'Adrien' }.bestfriend } | Get the date of 100 comments written by the best friend of a user named Adrien |
-| GRAB User { IN Message { date > '12-01-2014' }.writter } | Get all users that sent a message after the 12th January 2014 |
-| GRAB User { !IN Comment { }.writter } | Get all users that didn't write a comment |
-| GRAB User { IN User { name = 'Adrien' }.friends } | Get all users that are friends with an Adrien |
+You can use operations on itself too when updating:
+```js
+UPDATE User {name = 'Bob'} TO (age += 1)
+```
+
+You can also manipulate array, like adding or removing values.
+```js
+UPDATE User {name='Bob'} TO (scores APPEND 45)
+UPDATE User {name='Bob'} TO (scores REMOVEAT [0 1 2])
+```
+
+For now there is 4 keywords to manipulate list:
+- `APPEND`: Add value at the end of the list.
+- `REMOVE`: Check the list and if the same value is found, delete it.
+- `REMOVEAT`: Delete the value at a specific index.
+- `CLEAR`: Remove all value in the array.
+
+Except `CLEAR` that take no value, each can use one value or an array of value, if chose an array it will perform the operation on all value in the array.
+
+For relationship, you can use filter on it:
+```js
+UPDATE User {name='Bob'} TO (comments APPEND {id = '000'})
+UPDATE User {name='Bob'} TO (comments REMOVE { at < '2023/12/31'})
+```
+
+I may include more options later.
+
+## Link query - Not yet implemented
+
+You an also link query. Each query return a list of UUID of a specific struct. You can use it in the next query.
+Here an example where I create a new `Comment` that I then append to the list of comment of one specific `User`.
+```js
+ADD Comment (content='Hello world', at=NOW, like_by=[]) => added_comment => UPDATE User {id = '000'} TO (comments APPEND added_comment)
+```
+
+The name between `=>` is the variable name of the list of UUID used for the next queries, you can have multiple one if the link have more than 2 queries. You can also just use one `=>` but the list of UUID is discard in that case.
 
 # Data types
 
@@ -213,7 +276,7 @@ Their is 5 data type for the moment:
 - `float`: 64 bit float. Need to have a dot, `1.` is a float `1` is an integer.
 - `bool`: Boolean, can be `true` or `false`
 - `string`: Character array between `''`
-- `uuid`: Id in the UUID format, used for relationship, ect. All struct have an id member.
+- `UUID`: Id in the UUID format, used for relationship, ect. All struct have an id member.
 
 Comming soon:
 - `date`: A date in yyyy/mm/dd
@@ -247,7 +310,8 @@ TODO: Create a tech doc of what is happening inside.
 #### v0.2 - Usable  
 - [ ] B-Tree  
 - [ ] Relationships  
-- [ ] Date  
+- [ ] Date
+- [ ] Link query
 - [ ] Docker  
 
 #### v0.3 - QoL  
