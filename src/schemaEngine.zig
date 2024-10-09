@@ -20,6 +20,18 @@ pub const struct_type_list: [2][]const DataType = .{
     &[_]DataType{.str},
 };
 
+// use to know how much token the Parser of the FileEngine need to pass before the right one
+pub fn columnIndexOfMember(struct_name: []const u8, member_name: []const u8) ?usize {
+    var i: u16 = 0;
+
+    for (structName2structMembers(struct_name)) |mn| {
+        if (std.mem.eql(u8, mn, member_name)) return i;
+        i += 1;
+    }
+
+    return null;
+}
+
 /// Get the type of the member
 pub fn memberName2DataType(struct_name: []const u8, member_name: []const u8) ?DataType {
     var i: u16 = 0;
