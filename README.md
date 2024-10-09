@@ -13,14 +13,24 @@ ZipponDB goal is to be ACID, light, simple and high performance. It aim small to
 - Simple and minimal query language
 - Small, light, fast and implementable everywhere
 
+# Quickstart
+
+You can build the binary directly from the source code (tuto is comming), or using the binary in the release (comming too).
+
+You can then run it, starting a Command Line Interface. The first thing to do is to create a new database. For that run the command `db new path/to/folder`, it will create a `ZipponDB` folder with multiple stuffs inside. One down, can run `database metrics` to get metrics on the database and see if everything is working. You can change between database by using `db swap path/to/ZipponDB`.
+
+Once the database created, you need to attach a schema to it (see next section for how to define a schema). For that you can run `schema init path/to/schema.txt`. This will create new folder and empty files used to store data. 
+
+You can now start using the database by sending query like that `run "ADD User (name = 'Bob')"`.
+
 # Declare a schema
 
 In ZipponDB you use structures, or struct for short, and not tables to organize how your data is store and manipulate. A struct have a name like `User` and members like `name` and `age`.
 
-For that you create a file with inside the schema of the database that describe all structs. Compared to SQL, you can see it as a file where you declare all table name, columns name, data type and relationship. 
+For that you create a file with inside a schema that describe all structs. Compared to SQL, you can see it as a file where you declare all table name, columns name, data type and relationship. All struct have an id of the type UUID by default.
 
 Here an example of a `schema.zipponschema` file:
-```
+```lua
 User (
     name: str,
     email: str,
@@ -31,7 +41,7 @@ User (
 Note that the best friend is a link to another `User`.
 
 Here a more advance example with multiple struct:
-```
+```lua
 User (
     name: str,
     email: str,
@@ -55,7 +65,13 @@ Comment (
 )
 ```
 
-Note: `[]` before the type mean a list/array of this type.
+Note: `[]` before the type mean a list/array of this typ
+
+### Migration to a new schema
+
+***Not yet implemented***
+
+In the future, you will be able to update the schema like add a new member to a struct and update the database. For the moment, you can't change the schema once init.
 
 # ZipponQL
 
@@ -74,23 +90,19 @@ ZipponDB use it's own query language, ZipponQL or ZiQL for short. Here the keys 
 
 ## GRAB
 
-The main action is `GRAB`, this will parse files and return data. Here how it's work:
+The main action is `GRAB`, this will parse files and return data.  
 
-```js
-GRAB StructName [number_of_entity_max; member_name1, member_name2] { member_name1 = value1}
-```
-
-Note that `[]` and `{}` are both optional. So this will work and return all `User` without any filtering:
+Here how to return all `User` without any filtering:
 ```js
 GRAB User
 ```
 
-Here a simple example where to get all `User` above 18 years old:
+To get all `User` above 18 years old:
 ```js
 GRAB User {age > 18}
 ```
 
-To just return the name of `User`:
+To only return the name of `User`:
 ```js
 GRAB User [name] {age > 18}
 ```
@@ -137,6 +149,11 @@ You can use `IN` on itself. Here I get all `User` that liked a `Comment` that is
 ```js
 GRAB User { IN Comment {at > '2024/01/01'}.like_by}
 GRAB Comment.like_by { at > '2024/01/01'}
+```
+
+You can optain a similar result with this query but it will return a list of `Comment` with a member `liked_by` that is similar to `User` above. If you take all `liked_by` inside all `Comment`, it will be the same list but you can end up with duplicate as one `User` can like multiple `Comment`.
+```js
+GRAB Comment [liked_by] {at > '2024/01/01'}
 ```
 
 ##### Return relationship
@@ -261,7 +278,7 @@ I may include more options later.
 
 ## Link query - Not yet implemented
 
-You an also link query. Each query return a list of UUID of a specific struct. You can use it in the next query.
+You can also link query. Each query return a list of UUID of a specific struct. You can use it in the next query.
 Here an example where I create a new `Comment` that I then append to the list of comment of one specific `User`.
 ```js
 ADD Comment (content='Hello world', at=NOW, like_by=[]) => added_comment => UPDATE User {id = '000'} TO (comments APPEND added_comment)
