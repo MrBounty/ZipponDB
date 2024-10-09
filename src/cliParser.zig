@@ -74,7 +74,7 @@ pub fn main() !void {
                             \\  content: str,
                             \\)
                         }),
-                        .keyword_build => { // Maybe rename that in init now that I dont build binary anymore
+                        .keyword_init => { // Maybe rename that in init now that I dont build binary anymore
                             const data_engine = DataEngine.init(allocator, null);
                             try data_engine.initDataFolder();
                         },

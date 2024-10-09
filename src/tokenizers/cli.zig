@@ -14,7 +14,7 @@ pub const Token = struct {
         .{ "run", .keyword_run },
         .{ "help", .keyword_help },
         .{ "describe", .keyword_describe },
-        .{ "build", .keyword_build },
+        .{ "init", .keyword_init },
         .{ "schema", .keyword_schema },
         .{ "quit", .keyword_quit },
     });
@@ -31,7 +31,7 @@ pub const Token = struct {
         keyword_help,
         keyword_describe,
         keyword_schema,
-        keyword_build,
+        keyword_init,
         keyword_quit,
 
         string_literal,
