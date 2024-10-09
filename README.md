@@ -17,19 +17,19 @@ ZipponDB goal is to be ACID, light, simple and high performance. It aim small to
 
 You can build the binary directly from the source code (tuto is comming), or using the binary in the release (comming too).
 
-You can then run it, starting a Command Line Interface. The first thing to do is to create a new database. For that run the command `db new path/to/folder`, it will create a `ZipponDB` folder with multiple stuffs inside. One down, can run `database metrics` to get metrics on the database and see if everything is working. You can change between database by using `db swap path/to/ZipponDB`.
+You can then run it, starting a Command Line Interface. The first thing to do is to create a new database. For that run the command `db new path/to/folder`, it will create a `ZipponDB` folder with multiple stuffs inside. Then `database metrics` to see if it worked. You can change between database by using `db swap path/to/ZipponDB`.
 
 Once the database created, you need to attach a schema to it (see next section for how to define a schema). For that you can run `schema init path/to/schema.txt`. This will create new folder and empty files used to store data. 
 
-You can now start using the database by sending query like that `run "ADD User (name = 'Bob')"`.
+You can now start using the database by sending query like that: `run "ADD User (name = 'Bob')"`.
 
 # Declare a schema
 
 In ZipponDB you use structures, or struct for short, and not tables to organize how your data is store and manipulate. A struct have a name like `User` and members like `name` and `age`.
 
-For that you create a file with inside a schema that describe all structs. Compared to SQL, you can see it as a file where you declare all table name, columns name, data type and relationship. All struct have an id of the type UUID by default.
+Create a file with inside a schema that describe all structs. Compared to SQL, you can see it as a file where you declare all table name, columns name, data type and relationship. All struct have an id of the type UUID by default.
 
-Here an example of a `schema.zipponschema` file:
+Here an example of a file:
 ```lua
 User (
     name: str,
@@ -65,7 +65,7 @@ Comment (
 )
 ```
 
-Note: `[]` before the type mean a list/array of this typ
+Note: `[]` before the type mean a list/array of this type.
 
 ### Migration to a new schema
 
@@ -143,6 +143,16 @@ GRAB User { age > 10 AND name IN ['Adrien' 'Bob']}
 This also work by using other filter. Here I get `User` that have a best friend named Adrien:
 ```js
 GRAB User { bestfriend IN { name = 'Adrien' } }
+```
+
+When using an array with IN, it will return all `User` that have at least ONE friend named Adrien:
+```js
+GRAB User { friends IN { name = 'Adrien' } }
+```
+
+To get `User` with ALL friends named Adrien:
+```js
+GRAB User { friends ALLIN { name = 'Adrien' } }
 ```
 
 You can use `IN` on itself. Here I get all `User` that liked a `Comment` that is from 2024. Both queries return the same thing:
