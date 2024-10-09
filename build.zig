@@ -46,7 +46,7 @@ pub fn build(b: *std.Build) void {
     const run_tests4 = b.addRunArtifact(tests4);
 
     const tests5 = b.addTest(.{
-        .root_source_file = b.path("src/types/uuid.zig"),
+        .root_source_file = b.path("src/engines/types/uuid.zig"),
         .target = target,
         .optimize = optimize,
         .name = "UUID",
@@ -55,7 +55,7 @@ pub fn build(b: *std.Build) void {
     const run_tests5 = b.addRunArtifact(tests5);
 
     const tests6 = b.addTest(.{
-        .root_source_file = b.path("src/fileEngine.zig"),
+        .root_source_file = b.path("src/engines/file.zig"),
         .target = target,
         .optimize = optimize,
         .name = "File Engine",

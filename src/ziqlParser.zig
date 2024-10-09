@@ -1,10 +1,10 @@
 const std = @import("std");
-const schemaEngine = @import("schemaEngine.zig");
-const DataEngine = @import("fileEngine.zig").FileEngine;
-const Condition = @import("fileEngine.zig").FileEngine.Condition;
+const schemaEngine = @import("engines/schema.zig");
+const DataEngine = @import("engines/file.zig").FileEngine;
+const Condition = @import("engines/file.zig").FileEngine.Condition;
 const Tokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const Token = @import("tokenizers/ziql.zig").Token;
-const UUID = @import("types/uuid.zig").UUID;
+const UUID = @import("engines/types/uuid.zig").UUID;
 const Allocator = std.mem.Allocator;
 
 const stdout = std.io.getStdOut().writer();

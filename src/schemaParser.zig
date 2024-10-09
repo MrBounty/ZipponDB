@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Toker = @import("schemaTokenizer.zig").Tokenizer;
-const Token = @import("schemaTokenizer.zig").Token;
+const Toker = @import("tokenizers/schema.zig").Tokenizer;
+const Token = @import("tokenizers/schema.zig").Token;
 
 pub const Parser = struct {
     file: std.fs.File,
@@ -181,3 +181,5 @@ pub const Parser = struct {
         self.writeToFile("\";");
     }
 };
+
+// TODO: Some test, weird that there isn't any yet

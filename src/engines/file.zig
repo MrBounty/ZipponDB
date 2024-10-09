@@ -1,5 +1,5 @@
 const std = @import("std");
-const schemaEngine = @import("schemaEngine.zig");
+const schemaEngine = @import("schema.zig");
 const Allocator = std.mem.Allocator;
 const UUID = @import("types/uuid.zig").UUID;
 const DataType = @import("types/dataType.zig").DataType;
@@ -435,12 +435,6 @@ test "Get list of UUID using condition" {
 
     const condition = FileEngine.Condition{ .struct_name = "User", .member_name = "email", .value = "adrien@mail.com", .operation = .equal, .data_type = .str };
     try data_engine.getUUIDListUsingCondition(condition, &uuid_array);
-}
-
-test "Open dir" {
-    const dir = std.fs.cwd();
-    const sub_dir = try dir.openDir("src/types", .{});
-    _ = sub_dir;
 }
 
 // Series of functions to use just before creating an entity.

@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const DataEngine = @import("fileEngine.zig").FileEngine;
+const DataEngine = @import("engines/file.zig").FileEngine;
 const cliTokenizer = @import("tokenizers/cli.zig").Tokenizer;
 const cliToken = @import("tokenizers/cli.zig").Token;
 const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
