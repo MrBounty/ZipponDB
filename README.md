@@ -335,7 +335,7 @@ TODO: Create a tech doc of what is happening inside.
 - [X] File engine  
 
 #### v0.2 - Usable  
-- [ ] B-Tree  
+- [ ] B+Tree  
 - [ ] Relationships  
 - [ ] Date
 - [ ] Link query

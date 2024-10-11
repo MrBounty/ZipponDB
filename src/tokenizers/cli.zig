@@ -59,6 +59,10 @@ pub const Tokenizer = struct {
         string_literal_backslash,
     };
 
+    pub fn getTokenSlice(self: *Tokenizer, token: Token) []const u8 {
+        return self.buffer[token.loc.start..token.loc.end];
+    }
+
     pub fn next(self: *Tokenizer) Token {
         var state: State = .start;
         var result: Token = .{
@@ -104,7 +108,7 @@ pub const Tokenizer = struct {
                 },
 
                 .identifier => switch (c) {
-                    'a'...'z', 'A'...'Z', '_', '0'...'9' => continue,
+                    'a'...'z', 'A'...'Z', '_', '0'...'9', '.' => continue,
                     else => {
                         if (Token.getKeyword(self.buffer[result.loc.start..self.index])) |tag| {
                             result.tag = tag;

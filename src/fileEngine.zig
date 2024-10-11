@@ -1,8 +1,13 @@
 const std = @import("std");
-const schemaEngine = @import("schema.zig");
 const Allocator = std.mem.Allocator;
 const UUID = @import("types/uuid.zig").UUID;
 const DataType = @import("types/dataType.zig").DataType;
+const FileTokenizer = @import("tokenizers/file.zig").Tokenizer;
+const FileToken = @import("tokenizers/file.zig").Token;
+const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
+const SchemaParser = @import("schemaParser.zig").Parser;
+const SchemaTokenizer = @import("tokenizers/schema.zig").Tokenizer;
+const SchemaToken = @import("tokenizers/schema.zig").Token;
 
 //TODO: Create a union class and chose between file and memory
 
@@ -10,142 +15,39 @@ const DataType = @import("types/dataType.zig").DataType;
 /// Or even get stats, whatever. If it touch files, it's here
 pub const FileEngine = struct {
     allocator: Allocator,
-    path_to_DATA_dir: []const u8, // The path to the DATA folder
+    path_to_ZipponDB_dir: []const u8, // The path to the DATA folder
     max_file_size: usize = 5e+4, // 50kb TODO: Change
+    null_terminated_schema_buff: [:0]u8,
+    struct_array: std.ArrayList(SchemaStruct),
 
-    pub const Token = struct {
-        tag: Tag,
-        loc: Loc,
+    pub fn init(allocator: Allocator, path: ?[]const u8) FileEngine {
+        const path_to_ZipponDB_dir = path orelse "ZipponDB";
 
-        pub const Loc = struct {
-            start: usize,
-            end: usize,
+        var schema_buf = allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
+        defer allocator.free(schema_buf);
+
+        const len: usize = FileEngine.readSchemaFile(allocator, path_to_ZipponDB_dir, schema_buf) catch 0;
+        const null_terminated_schema_buff = allocator.dupeZ(u8, schema_buf[0..len]) catch @panic("Cant allocate null term buffer for the schema");
+
+        var toker = SchemaTokenizer.init(null_terminated_schema_buff);
+        var parser = SchemaParser.init(&toker, allocator);
+
+        var struct_array = std.ArrayList(SchemaStruct).init(allocator);
+        parser.parse(&struct_array) catch {};
+
+        return FileEngine{
+            .allocator = allocator,
+            .path_to_ZipponDB_dir = path_to_ZipponDB_dir,
+            .null_terminated_schema_buff = null_terminated_schema_buff,
+            .struct_array = struct_array,
         };
+    }
 
-        pub const Tag = enum {
-            eof,
-            invalid,
-
-            string_literal,
-            int_literal,
-            float_literal,
-            identifier,
-            equal,
-            bang, // !
-            pipe, // |
-            l_paren, // (
-            r_paren, // )
-            l_bracket, // [
-            r_bracket, // ]
-            l_brace, // {
-            r_brace, // }
-            semicolon, // ;
-            comma, // ,
-            angle_bracket_left, // <
-            angle_bracket_right, // >
-            angle_bracket_left_equal, // <=
-            angle_bracket_right_equal, // >=
-            equal_angle_bracket_right, // =>
-            period, // .
-            bang_equal, // !=
-        };
-    };
-
-    pub const Tokenizer = struct {
-        buffer: [:0]const u8,
-        index: usize,
-
-        // Maybe change that to use the stream directly so I dont have to read the line 2 times
-        pub fn init(buffer: [:0]const u8) Tokenizer {
-            // Skip the UTF-8 BOM if present.
-            return .{
-                .buffer = buffer,
-                .index = if (std.mem.startsWith(u8, buffer, "\xEF\xBB\xBF")) 3 else 0, // WTF ? I guess some OS add that or some shit like that
-            };
-        }
-
-        const State = enum {
-            start,
-            string_literal,
-            float,
-            int,
-        };
-
-        pub fn getTokenSlice(self: *Tokenizer, token: Token) []const u8 {
-            return self.buffer[token.loc.start..token.loc.end];
-        }
-
-        pub fn next(self: *Tokenizer) Token {
-            // That ugly but work
-            if (self.buffer[self.index] == ' ') self.index += 1;
-
-            var state: State = .start;
-            var result: Token = .{
-                .tag = undefined,
-                .loc = .{
-                    .start = self.index,
-                    .end = undefined,
-                },
-            };
-            while (true) : (self.index += 1) {
-                const c = self.buffer[self.index];
-
-                if (self.index == self.buffer.len) break;
-
-                switch (state) {
-                    .start => switch (c) {
-                        '\'' => {
-                            state = .string_literal;
-                            result.tag = .string_literal;
-                        },
-                        '0'...'9', '-' => {
-                            state = .int;
-                            result.tag = .int_literal;
-                        },
-                        '[' => {
-                            result.tag = .l_bracket;
-                            self.index += 1;
-                            break;
-                        },
-                        ']' => {
-                            result.tag = .r_bracket;
-                            self.index += 1;
-                            break;
-                        },
-                        else => std.debug.print("Unknow character: {c}\n", .{c}),
-                    },
-
-                    .string_literal => switch (c) {
-                        '\'' => {
-                            self.index += 1;
-                            break;
-                        },
-                        else => continue,
-                    },
-
-                    .int => switch (c) {
-                        '.' => {
-                            state = .float;
-                            result.tag = .float_literal;
-                        },
-                        '0'...'9' => continue,
-                        else => break,
-                    },
-                    .float => switch (c) {
-                        '0'...'9' => {
-                            continue;
-                        },
-                        else => {
-                            break;
-                        },
-                    },
-                }
-            }
-
-            result.loc.end = self.index;
-            return result;
-        }
-    };
+    pub fn deinit(self: *FileEngine) void {
+        for (self.struct_array.items) |*elem| elem.deinit();
+        self.struct_array.deinit();
+        self.allocator.free(self.null_terminated_schema_buff);
+    }
 
     const ComparisonValue = union {
         int: i64,
@@ -173,20 +75,18 @@ pub const FileEngine = struct {
         }
     };
 
-    pub fn init(allocator: Allocator, DATA_path: ?[]const u8) FileEngine {
-        // I think use env variable for the path, idk, something better at least than just that 😕
-        return FileEngine{
-            .allocator = allocator,
-            .path_to_DATA_dir = DATA_path orelse "ZipponDB/DATA",
-        };
-    }
-
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
+    /// TODO: Optimize the shit out of this, it it way too slow rn. Here some ideas
+    /// - Array can take a very long time to parse, maybe put them in a seperate file. But string can be too...
+    /// - Use the stream directly in the tokenizer
+    /// - Use a fixed size and split into other file. Like one file for one member (Because very long, like an array of 1000 value) and another one for everything else
+    ///     The threselhold can be like if the average len is > 400 character. So UUID would take less that 10% of the storage
+    /// - Save data in a more compact way
     pub fn getUUIDListUsingCondition(self: *FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
         const max_file_index = try self.maxFileIndex(condition.struct_name);
         var current_index: usize = 0;
 
-        var sub_path = std.fmt.allocPrint(self.allocator, "{s}/{s}/{d}.zippondata", .{ self.path_to_DATA_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        var sub_path = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
         defer self.allocator.free(sub_path);
 
         var file = std.fs.cwd().openFile(sub_path, .{}) catch @panic("Can't open first file to init a data iterator");
@@ -220,8 +120,8 @@ pub const FileEngine = struct {
             }
         }
 
-        var token: FileEngine.Token = undefined;
-        const column_index = schemaEngine.columnIndexOfMember(condition.struct_name, condition.member_name);
+        var token: FileToken = undefined;
+        const column_index = self.columnIndexOfMember(condition.struct_name, condition.member_name);
 
         while (true) {
             output_fbs.reset();
@@ -234,7 +134,7 @@ pub const FileEngine = struct {
                     current_index += 1;
 
                     self.allocator.free(sub_path);
-                    sub_path = std.fmt.allocPrint(self.allocator, "{s}/{s}/{d}.zippondata", .{ self.path_to_DATA_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+                    sub_path = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
 
                     file.close(); // Do I need to close ? I think so
                     file = std.fs.cwd().openFile(sub_path, .{}) catch {
@@ -257,7 +157,7 @@ pub const FileEngine = struct {
             const null_terminated_string = try self.allocator.dupeZ(u8, output_fbs.getWritten()[37..]);
             defer self.allocator.free(null_terminated_string);
 
-            var data_toker = Tokenizer.init(null_terminated_string);
+            var data_toker = FileTokenizer.init(null_terminated_string);
             const uuid = try UUID.parse(output_fbs.getWritten()[0..36]);
 
             // Skip unwanted token
@@ -333,7 +233,7 @@ pub const FileEngine = struct {
     // TODO: Clean a bit the code
     // Do I need multiple files too ? I mean it duplicate UUID a lot, if it's just to save a name like 'Bob', storing a long UUID is overkill
     // I could just use a tabular data format with separator using space - Or maybe I encode the uuid to take a minimum space as I always know it size
-    pub fn writeEntity(self: FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !UUID {
+    pub fn writeEntity(self: *FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !UUID {
         const uuid = UUID.init();
 
         const potential_file_index = try self.getFirstUsableIndexFile(struct_name);
@@ -344,21 +244,20 @@ pub const FileEngine = struct {
         defer self.allocator.free(path);
 
         if (potential_file_index) |file_index| {
-            path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{d}.zippondata", .{ self.path_to_DATA_dir, struct_name, file_index });
+            path = try std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, file_index });
             file = std.fs.cwd().openFile(path, .{ .mode = .read_write }) catch @panic("=(");
         } else {
             const max_index = try self.maxFileIndex(struct_name);
 
-            path = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{d}.zippondata", .{ self.path_to_DATA_dir, struct_name, max_index + 1 });
+            path = try std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, max_index + 1 });
             file = std.fs.cwd().createFile(path, .{}) catch @panic("Error creating new data file");
         }
 
         try file.seekFromEnd(0);
         try file.writer().print("{s}", .{uuid.format_uuid()});
 
-        const member_names = schemaEngine.structName2structMembers(struct_name); // This need to be in the same order all the time tho
-        for (member_names) |member_name| {
-            try file.writer().print(" {s}", .{data_map.get(member_name).?});
+        for (self.structName2structMembers(struct_name)) |member_name| {
+            try file.writer().print(" {s}", .{data_map.get(self.locToSlice(member_name)).?});
         }
 
         try file.writer().print("\n", .{});
@@ -375,7 +274,7 @@ pub const FileEngine = struct {
     /// Use the map of file stat to find the first file with under the bytes limit.
     /// return the name of the file. If none is found, return null.
     fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) !?usize {
-        const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ self.path_to_DATA_dir, struct_name });
+        const path = try std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name });
         defer self.allocator.free(path);
 
         var member_dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
@@ -392,7 +291,7 @@ pub const FileEngine = struct {
     /// Iter over all file and get the max name and return the value of it as usize
     /// So for example if there is 1.zippondata and 2.zippondata it return 2.
     fn maxFileIndex(self: FileEngine, struct_name: []const u8) !usize {
-        const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ self.path_to_DATA_dir, struct_name });
+        const path = try std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name });
         defer self.allocator.free(path);
 
         const member_dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
@@ -406,35 +305,186 @@ pub const FileEngine = struct {
         return count - 1;
     }
 
-    // TODO: Give the option to keep , dump or erase the data
-    pub fn initDataFolder(self: FileEngine) !void {
-        var data_dir = try std.fs.cwd().openDir(self.path_to_DATA_dir, .{});
+    const FileError = error{
+        SchemaFileNotFound,
+        SchemaNotConform,
+        DATAFolderNotFound,
+        StructFolderNotFound,
+        CantMakeDir,
+        CantMakeFile,
+    };
+
+    /// Request a path to a schema file and then create the struct folder
+    /// TODO: Delete current folder before new one are created
+    pub fn initDataFolder(self: *FileEngine, path_to_schema_file: []const u8) FileError!void {
+        var schema_buf = self.allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
+        defer self.allocator.free(schema_buf);
+
+        const file = std.fs.cwd().openFile(path_to_schema_file, .{}) catch return FileError.SchemaFileNotFound;
+        defer file.close();
+
+        const len = file.readAll(schema_buf) catch @panic("Can't read schema file");
+
+        self.allocator.free(self.null_terminated_schema_buff);
+        self.null_terminated_schema_buff = self.allocator.dupeZ(u8, schema_buf[0..len]) catch @panic("Cant allocate null term buffer for the schema");
+
+        var toker = SchemaTokenizer.init(self.null_terminated_schema_buff);
+        var parser = SchemaParser.init(&toker, self.allocator);
+
+        // Deinit the struct array before creating a new one
+        for (self.struct_array.items) |*elem| elem.deinit();
+        for (0..self.struct_array.items.len) |_| _ = self.struct_array.pop();
+
+        parser.parse(&self.struct_array) catch return error.SchemaNotConform;
+
+        const path = std.fmt.allocPrint(self.allocator, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch @panic("Cant allocate path");
+        defer self.allocator.free(path);
+
+        var data_dir = std.fs.cwd().openDir(path, .{}) catch return FileError.DATAFolderNotFound;
         defer data_dir.close();
 
-        for (schemaEngine.struct_name_list) |struct_name| {
-            data_dir.makeDir(struct_name) catch |err| switch (err) {
+        for (self.struct_array.items) |struct_item| {
+            data_dir.makeDir(self.locToSlice(struct_item.name)) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
-                else => return err,
+                else => return FileError.CantMakeDir,
             };
-            const struct_dir = try data_dir.openDir(struct_name, .{});
+            const struct_dir = data_dir.openDir(self.locToSlice(struct_item.name), .{}) catch return FileError.StructFolderNotFound;
 
             _ = struct_dir.createFile("0.zippondata", .{}) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
-                else => return err,
+                else => return FileError.CantMakeFile,
             };
         }
+
+        self.writeSchemaFile();
+    }
+
+    // Stuff for schema
+
+    pub fn readSchemaFile(allocator: Allocator, sub_path: []const u8, buffer: []u8) !usize {
+        const path = try std.fmt.allocPrint(allocator, "{s}/schema.zipponschema", .{sub_path});
+        defer allocator.free(path);
+
+        const file = try std.fs.cwd().openFile(path, .{});
+        defer file.close();
+
+        const len = try file.readAll(buffer);
+        return len;
+    }
+
+    pub fn writeSchemaFile(self: *FileEngine) void {
+        // Delete the current schema file
+        // Create a new one
+        // Dumpe the buffer inside
+        var zippon_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{}) catch @panic("Cant open main folder!");
+        defer zippon_dir.close();
+        zippon_dir.deleteFile("schema.zipponschema") catch |err| switch (err) {
+            error.FileNotFound => {},
+            else => @panic("Error other than file not found when writing the schema."),
+        };
+
+        var file = zippon_dir.createFile("schema.zipponschema", .{}) catch @panic("Can't create new schema file");
+        defer file.close();
+        file.writeAll(self.null_terminated_schema_buff) catch @panic("Can't write new schema");
+    }
+
+    pub fn locToSlice(self: *FileEngine, loc: SchemaToken.Loc) []const u8 {
+        return self.null_terminated_schema_buff[loc.start..loc.end];
+    }
+
+    pub fn columnIndexOfMember(self: *FileEngine, struct_name: []const u8, member_name: []const u8) ?usize {
+        var i: u16 = 0;
+
+        for (self.structName2structMembers(struct_name)) |mn| {
+            if (std.mem.eql(u8, self.locToSlice(mn), member_name)) return i;
+            i += 1;
+        }
+
+        return null;
+    }
+
+    /// Get the type of the member
+    pub fn memberName2DataType(self: *FileEngine, struct_name: []const u8, member_name: []const u8) ?DataType {
+        var i: u16 = 0;
+
+        for (self.structName2structMembers(struct_name)) |mn| {
+            if (std.mem.eql(u8, self.locToSlice(mn), member_name)) return self.structName2DataType(struct_name)[i];
+            i += 1;
+        }
+
+        return null;
+    }
+
+    /// Get the list of all member name for a struct name
+    pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) []SchemaToken.Loc {
+        var i: u16 = 0;
+
+        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) break;
+
+        if (i == self.struct_array.items.len) {
+            @panic("Struct name not found!");
+        }
+
+        return self.struct_array.items[i].members.items;
+    }
+
+    pub fn structName2DataType(self: *FileEngine, struct_name: []const u8) []const DataType {
+        var i: u16 = 0;
+
+        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) break;
+
+        return self.struct_array.items[i].types.items;
+    }
+
+    /// Chech if the name of a struct is in the current schema
+    pub fn isStructNameExists(self: *FileEngine, struct_name: []const u8) bool {
+        var i: u16 = 0;
+        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) return true;
+        return false;
+    }
+
+    /// Check if a struct have the member name
+    pub fn isMemberNameInStruct(self: *FileEngine, struct_name: []const u8, member_name: []const u8) bool {
+        for (self.structName2structMembers(struct_name)) |mn| {
+            if (std.mem.eql(u8, self.locToSlice(mn), member_name)) return true;
+        }
+        return false;
+    }
+
+    /// Check if a string is a name of a struct in the currently use engine
+    pub fn isStructInSchema(self: *FileEngine, struct_name_to_check: []const u8) bool {
+        for (self.struct_array.items) |struct_schema| {
+            if (std.mem.eql(u8, struct_name_to_check, struct_schema.name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Return true if the map have all the member name as key and not more
+    pub fn checkIfAllMemberInMap(self: *FileEngine, struct_name: []const u8, map: *std.StringHashMap([]const u8)) bool {
+        const all_struct_member = self.structName2structMembers(struct_name);
+        var count: u16 = 0;
+
+        for (all_struct_member) |mn| {
+            if (map.contains(self.locToSlice(mn))) count += 1 else std.debug.print("Missing: {s}\n", .{self.locToSlice(mn)});
+        }
+
+        return ((count == all_struct_member.len) and (count == map.count()));
     }
 };
 
 test "Get list of UUID using condition" {
     const allocator = std.testing.allocator;
-    var data_engine = FileEngine.init(allocator, null);
+
+    var file_engine = FileEngine.init(allocator, null);
+    defer file_engine.deinit();
 
     var uuid_array = std.ArrayList(UUID).init(allocator);
     defer uuid_array.deinit();
 
     const condition = FileEngine.Condition{ .struct_name = "User", .member_name = "email", .value = "adrien@mail.com", .operation = .equal, .data_type = .str };
-    try data_engine.getUUIDListUsingCondition(condition, &uuid_array);
+    try file_engine.getUUIDListUsingCondition(condition, &uuid_array);
 }
 
 // Series of functions to use just before creating an entity.
@@ -544,18 +594,4 @@ test "Data parsing" {
     try std.testing.expect(std.mem.eql(bool, out6.items, &expected_out6));
 
     // TODO: Test the string array
-}
-
-// Test tokenizer
-
-test "basic query" {
-    try testTokenize("001 123 0185", &.{ .int_literal, .int_literal, .int_literal });
-}
-
-fn testTokenize(source: [:0]const u8, expected_token_tags: []const FileEngine.Token.Tag) !void {
-    var tokenizer = FileEngine.Tokenizer.init(source);
-    for (expected_token_tags) |expected_token_tag| {
-        const token = tokenizer.next();
-        try std.testing.expectEqual(expected_token_tag, token.tag);
-    }
 }

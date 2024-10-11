@@ -1,184 +1,231 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const DataType = @import("types/dataType.zig").DataType;
 const Toker = @import("tokenizers/schema.zig").Tokenizer;
 const Token = @import("tokenizers/schema.zig").Token;
 
+const stdout = std.io.getStdOut().writer();
+
+fn send(comptime format: []const u8, args: anytype) void {
+    stdout.print(format, args) catch |err| {
+        std.log.err("Can't send: {any}", .{err});
+        stdout.print("\x03\n", .{}) catch {};
+    };
+
+    stdout.print("\x03\n", .{}) catch {};
+}
+
 pub const Parser = struct {
-    file: std.fs.File,
+    toker: *Toker,
+    allocator: Allocator,
+
+    pub fn init(toker: *Toker, allocator: Allocator) Parser {
+        return .{
+            .allocator = allocator,
+            .toker = toker,
+        };
+    }
+
+    // Maybe I the name and member can be Loc, with a start and end, and use the buffer to get back the value
+    // This is how Token works
+    // From my understanding this is the same here. I put slices, that can just a len and a pointer, put I con't save the value itself.
+    // Or maybe I do actually, and an array of pointer would be *[]u8
+    pub const SchemaStruct = struct {
+        allocator: Allocator,
+        name: Token.Loc,
+        members: std.ArrayList(Token.Loc),
+        types: std.ArrayList(DataType),
+
+        pub fn init(allocator: Allocator, name: Token.Loc) SchemaStruct {
+            return SchemaStruct{ .allocator = allocator, .name = name, .members = std.ArrayList(Token.Loc).init(allocator), .types = std.ArrayList(DataType).init(allocator) };
+        }
+
+        pub fn deinit(self: *SchemaStruct) void {
+            self.types.deinit();
+            self.members.deinit();
+        }
+    };
 
     const State = enum {
-        start,
+        end,
         invalid,
-
-        expect_l_paren,
-        expect_r_paren,
+        expect_struct_name_OR_end,
         expect_member_name,
-        expect_two_dot,
+        expect_l_paren,
+        expect_member_name_OR_r_paren,
         expect_value_type,
+        expext_array_type,
+        expect_two_dot,
         expect_comma,
     };
 
-    pub fn init() Parser {
-        return .{
-            .file = undefined,
-        };
-    }
+    // TODO: Pass that to the FileEngine and do the metadata.zig file instead
+    pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
+        var state: State = .expect_struct_name_OR_end;
+        var index: usize = 0;
+        var keep_next = false;
 
-    fn writeToFile(self: *const Parser, text: []const u8) void {
-        const bytes_written = self.file.write(text) catch |err| {
-            std.debug.print("Error when writing dtypes.zig: {}", .{err});
-            return;
-        };
-        _ = bytes_written;
-    }
-
-    // TODO: Pass that to the DataEngine and do the metadata.zig file instead
-    pub fn parse(self: *Parser, toker: *Toker, buffer: []u8) void {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        const allocator = gpa.allocator();
-        var struct_array = std.ArrayList([]u8).init(allocator);
-
-        var state: State = .start;
-
-        std.fs.cwd().deleteFile("src/metadata.zig") catch {};
-
-        self.file = std.fs.cwd().createFile("src/metadata.zig", .{}) catch |err| {
-            std.debug.print("Error when writing dtypes.zig: {}", .{err});
-            return;
-        };
-        defer self.file.close();
-
-        self.writeToFile("const std = @import(\"std\");\nconst UUID = @import(\"uuid.zig\").UUID;\n\n");
-
-        var token = toker.next();
-        while (token.tag != Token.Tag.eof) : (token = toker.next()) {
+        var token = self.toker.next();
+        while ((state != .end) and (state != .invalid)) : ({
+            token = if (!keep_next) self.toker.next() else token;
+            keep_next = false;
+        }) {
             switch (state) {
-                .start => switch (token.tag) {
+                .expect_struct_name_OR_end => switch (token.tag) {
                     .identifier => {
                         state = .expect_l_paren;
-                        self.writeToFile("pub const ");
-                        self.writeToFile(buffer[token.loc.start..token.loc.end]);
-                        self.writeToFile(" = struct {\n");
-                        self.writeToFile("    id: UUID,\n");
+                        struct_array.append(SchemaStruct.init(self.allocator, token.loc)) catch @panic("Error appending a struct name.");
+                    },
+                    .eof => state = .end,
+                    else => {
+                        self.printError("Error parsing schema: Expected a struct name", &token);
+                        state = .invalid;
+                    },
+                },
 
-                        // TODO: Check if struct name is already use
-                        struct_array.append(buffer[token.loc.start..token.loc.end]) catch @panic("Error appending a struct name.");
-                    },
-                    else => {
-                        state = .invalid;
-                    },
-                },
                 .expect_l_paren => switch (token.tag) {
-                    .l_paren => {
-                        state = .expect_member_name;
-                    },
+                    .l_paren => state = .expect_member_name,
                     else => {
+                        self.printError("Error parsing schema: Expected (", &token);
                         state = .invalid;
                     },
                 },
-                .expect_member_name => switch (token.tag) {
+
+                .expect_member_name_OR_r_paren => switch (token.tag) {
                     .identifier => {
-                        state = .expect_two_dot;
-                        self.writeToFile("    ");
-                        self.writeToFile(buffer[token.loc.start..token.loc.end]);
+                        state = .expect_member_name;
+                        keep_next = true;
                     },
                     .r_paren => {
-                        state = .start;
-                        self.writeToFile("};\n\n");
+                        state = .expect_struct_name_OR_end;
+                        index += 1;
                     },
                     else => {
+                        self.printError("Error parsing schema: Expected member name or )", &token);
                         state = .invalid;
                     },
                 },
+
+                .expect_member_name => {
+                    state = .expect_two_dot;
+                    struct_array.items[index].members.append(token.loc) catch @panic("Error appending a member name.");
+                },
+
                 .expect_two_dot => switch (token.tag) {
-                    .two_dot => {
-                        state = .expect_value_type;
-                        self.writeToFile(": ");
-                    },
+                    .two_dot => state = .expect_value_type,
                     else => {
+                        self.printError("Error parsing schema: Expected :", &token);
                         state = .invalid;
                     },
                 },
+
                 .expect_value_type => switch (token.tag) {
                     .type_int => {
                         state = .expect_comma;
-                        self.writeToFile("i64");
+                        struct_array.items[index].types.append(DataType.int) catch @panic("Error appending a type.");
                     },
                     .type_str => {
                         state = .expect_comma;
-                        self.writeToFile("[] u8");
+                        struct_array.items[index].types.append(DataType.str) catch @panic("Error appending a type.");
                     },
                     .type_float => {
                         state = .expect_comma;
-                        self.writeToFile("f64");
+                        struct_array.items[index].types.append(DataType.float) catch @panic("Error appending a type.");
+                    },
+                    .type_bool => {
+                        state = .expect_comma;
+                        struct_array.items[index].types.append(DataType.bool) catch @panic("Error appending a type.");
+                    },
+                    .type_date => @panic("Date not yet implemented"),
+                    .identifier => @panic("Link not yet implemented"),
+                    .lr_bracket => state = .expext_array_type,
+                    else => {
+                        self.printError("Error parsing schema: Expected data type", &token);
+                        state = .invalid;
+                    },
+                },
+
+                .expext_array_type => switch (token.tag) {
+                    .type_int => {
+                        state = .expect_comma;
+                        struct_array.items[index].types.append(DataType.int_array) catch @panic("Error appending a type.");
+                    },
+                    .type_str => {
+                        state = .expect_comma;
+                        struct_array.items[index].types.append(DataType.str_array) catch @panic("Error appending a type.");
+                    },
+                    .type_float => {
+                        state = .expect_comma;
+                        struct_array.items[index].types.append(DataType.float_array) catch @panic("Error appending a type.");
+                    },
+                    .type_bool => {
+                        state = .expect_comma;
+                        struct_array.items[index].types.append(DataType.bool_array) catch @panic("Error appending a type.");
                     },
                     .type_date => {
-                        @panic("Date not yet implemented");
+                        self.printError("Error parsing schema: Data not yet implemented", &token);
+                        state = .invalid;
                     },
                     .identifier => {
-                        @panic("Link not yet implemented");
-                    },
-                    .lr_bracket => {
-                        @panic("Array not yet implemented");
+                        self.printError("Error parsing schema: Relationship not yet implemented", &token);
+                        state = .invalid;
                     },
                     else => {
+                        self.printError("Error parsing schema: Expected data type", &token);
                         state = .invalid;
                     },
                 },
+
                 .expect_comma => switch (token.tag) {
-                    .comma => {
-                        state = .expect_member_name;
-                        self.writeToFile(",\n");
-                    },
+                    .comma => state = .expect_member_name_OR_r_paren,
                     else => {
+                        self.printError("Error parsing schema: Expected ,", &token);
                         state = .invalid;
                     },
                 },
-                .invalid => {
-                    // TODO: Better errors
-                    @panic("Error: Schema need to start with an Identifier.");
-                },
-                else => {
-                    @panic("");
-                },
+
+                else => unreachable,
             }
         }
 
-        // Use @embedFile
+        // if invalid, empty the list
+        if (state == .invalid) {
+            for (0..struct_array.items.len) |i| {
+                struct_array.items[i].deinit();
+            }
 
-        // Make the union `Type` with all different struct
-        self.writeToFile("pub const Types = union {\n");
-        for (struct_array.items) |struct_name| {
-            self.writeToFile("    ");
-            self.writeToFile(struct_name);
-            self.writeToFile(": *");
-            self.writeToFile(struct_name);
-            self.writeToFile(",\n");
+            for (0..struct_array.items.len) |_| {
+                _ = struct_array.pop();
+            }
+            return error.SchemaNotConform;
         }
-        self.writeToFile("};\n\n");
+    }
 
-        // Make an array of struct name
-        self.writeToFile("pub const struct_name_list: [");
-        var int_buffer: [20]u8 = undefined;
-        const len = std.fmt.formatIntBuf(&int_buffer, @as(usize, struct_array.items.len), 10, .lower, .{});
-        self.writeToFile(int_buffer[0..len]);
-        self.writeToFile("][]const u8 = .{ ");
-        for (struct_array.items) |struct_name| {
-            self.writeToFile(" \"");
-            self.writeToFile(struct_name);
-            self.writeToFile("\", ");
+    fn printError(self: *Parser, message: []const u8, token: *Token) void {
+        stdout.print("\n", .{}) catch {};
+
+        const output = self.allocator.dupe(u8, self.toker.buffer) catch @panic("Cant allocator memory when print error");
+        defer self.allocator.free(output);
+
+        std.mem.replaceScalar(u8, output, '\n', ' ');
+        stdout.print("{s}\n", .{output}) catch {};
+
+        // Calculate the number of spaces needed to reach the start position.
+        var spaces: usize = 0;
+        while (spaces < token.loc.start) : (spaces += 1) {
+            stdout.print(" ", .{}) catch {};
         }
-        self.writeToFile("};\n\n");
 
-        // Create the var that contain the description of the current schema to be printed when running:
-        // The query "__DESCRIBE__" on the engine
-        // Or the command `schema describe` on the console
-        self.writeToFile("pub const describe_str = \"");
-        var escaped_text: [1024]u8 = undefined;
-        const replacement_count = std.mem.replace(u8, buffer, "\n", "\\n", &escaped_text);
-        const escaped_text_len = replacement_count + buffer.len;
-        self.writeToFile(escaped_text[0..escaped_text_len]);
-        self.writeToFile("\";");
+        // Print the '^' characters for the error span.
+        var i: usize = token.loc.start;
+        while (i < token.loc.end) : (i += 1) {
+            stdout.print("^", .{}) catch {};
+        }
+        stdout.print("    \n", .{}) catch {}; // Align with the message
+
+        stdout.print("{s}\n", .{message}) catch {};
+
+        send("", .{});
     }
 };
 

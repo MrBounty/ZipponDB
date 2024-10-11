@@ -14,6 +14,7 @@ pub const Token = struct {
         .{ "int", .type_int },
         .{ "float", .type_float },
         .{ "str", .type_str },
+        .{ "bool", .type_bool },
         .{ "date", .type_date },
     });
 
@@ -28,6 +29,7 @@ pub const Token = struct {
         type_int,
         type_float,
         type_str,
+        type_bool,
         type_date,
 
         identifier,
@@ -58,6 +60,10 @@ pub const Tokenizer = struct {
         identifier,
         l_bracket,
     };
+
+    pub fn getTokenSlice(self: *Tokenizer, token: Token) []const u8 {
+        return self.buffer[token.loc.start..token.loc.end];
+    }
 
     pub fn next(self: *Tokenizer) Token {
         var state: State = .start;

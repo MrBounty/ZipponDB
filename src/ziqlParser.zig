@@ -1,10 +1,9 @@
 const std = @import("std");
-const schemaEngine = @import("engines/schema.zig");
-const DataEngine = @import("engines/file.zig").FileEngine;
-const Condition = @import("engines/file.zig").FileEngine.Condition;
+const FileEngine = @import("fileEngine.zig").FileEngine;
+const Condition = @import("fileEngine.zig").FileEngine.Condition;
 const Tokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const Token = @import("tokenizers/ziql.zig").Token;
-const UUID = @import("engines/types/uuid.zig").UUID;
+const UUID = @import("types/uuid.zig").UUID;
 const Allocator = std.mem.Allocator;
 
 const stdout = std.io.getStdOut().writer();
@@ -22,21 +21,20 @@ pub const Parser = struct {
     allocator: Allocator,
     state: State,
     toker: *Tokenizer,
-    data_engine: DataEngine,
     additional_data: AdditionalData,
     struct_name: []const u8 = undefined,
+    file_engine: *FileEngine,
 
     action: enum { GRAB, ADD, UPDATE, DELETE } = undefined,
 
-    pub fn init(allocator: Allocator, toker: *Tokenizer) Parser {
-        // Do I need to init a DataEngine at each Parser, can't I put it in the CLI parser instead ?
-        const data_engine = DataEngine.init(allocator, null);
+    pub fn init(allocator: Allocator, toker: *Tokenizer, file_engine: *FileEngine) Parser {
+        // Do I need to init a FileEngine at each Parser, can't I put it in the CLI parser instead ?
         return Parser{
             .allocator = allocator,
             .toker = toker,
-            .state = State.start,
-            .data_engine = data_engine,
+            .state = .start,
             .additional_data = AdditionalData.init(allocator),
+            .file_engine = file_engine,
         };
     }
 
@@ -75,7 +73,7 @@ pub const Parser = struct {
         expect_comma_OR_r_bracket,
 
         // For the filter parser
-        expect_left_condition, // Condition is a struct in DataEngine, it's all info necessary to get a list of UUID usinf DataEngine.getUUIDListUsingCondition
+        expect_left_condition, // Condition is a struct in FileEngine, it's all info necessary to get a list of UUID usinf FileEngine.getUUIDListUsingCondition
         expect_operation, // Operations are = != < <= > >=
         expect_value,
         expect_ANDOR_OR_end,
@@ -129,35 +127,33 @@ pub const Parser = struct {
             keep_next = false;
         }) {
             switch (self.state) {
-                .start => {
-                    switch (token.tag) {
-                        .keyword_grab => {
-                            self.action = .GRAB;
-                            self.state = .expect_struct_name;
-                        },
-                        .keyword_add => {
-                            self.action = .ADD;
-                            self.state = .expect_struct_name;
-                        },
-                        .keyword_update => {
-                            self.action = .UPDATE;
-                            self.state = .expect_struct_name;
-                        },
-                        .keyword_delete => {
-                            self.action = .DELETE;
-                            self.state = .expect_struct_name;
-                        },
-                        else => {
-                            self.printError("Error: Expected action keyword. Available: GRAB ADD DELETE UPDATE", &token);
-                            self.state = .end;
-                        },
-                    }
+                .start => switch (token.tag) {
+                    .keyword_grab => {
+                        self.action = .GRAB;
+                        self.state = .expect_struct_name;
+                    },
+                    .keyword_add => {
+                        self.action = .ADD;
+                        self.state = .expect_struct_name;
+                    },
+                    .keyword_update => {
+                        self.action = .UPDATE;
+                        self.state = .expect_struct_name;
+                    },
+                    .keyword_delete => {
+                        self.action = .DELETE;
+                        self.state = .expect_struct_name;
+                    },
+                    else => {
+                        self.printError("Error: Expected action keyword. Available: GRAB ADD DELETE UPDATE", &token);
+                        self.state = .end;
+                    },
                 },
 
                 .expect_struct_name => {
                     // Check if the struct name is in the schema
                     self.struct_name = try self.allocator.dupe(u8, self.toker.getTokenSlice(token));
-                    if (!schemaEngine.isStructNameExists(self.struct_name)) self.printError("Error: struct name not found in schema.", &token);
+                    if (!self.file_engine.isStructNameExists(self.struct_name)) self.printError("Error: struct name not found in schema.", &token);
                     switch (self.action) {
                         .ADD => self.state = .expect_new_data,
                         else => self.state = .expect_filter_or_additional_data,
@@ -186,35 +182,31 @@ pub const Parser = struct {
                     self.state = .end;
                 },
 
-                .expect_new_data => {
-                    switch (token.tag) {
-                        .l_paren => {
-                            keep_next = true;
-                            self.state = .parse_new_data_and_add_data;
-                        },
-                        else => self.printError("Error: Expecting new data starting with (", &token),
-                    }
+                .expect_new_data => switch (token.tag) {
+                    .l_paren => {
+                        keep_next = true;
+                        self.state = .parse_new_data_and_add_data;
+                    },
+                    else => self.printError("Error: Expecting new data starting with (", &token),
                 },
 
-                .parse_new_data_and_add_data => {
-                    switch (self.action) {
-                        .ADD => {
-                            var data_map = std.StringHashMap([]const u8).init(self.allocator);
-                            defer data_map.deinit();
-                            self.parseNewData(&data_map);
+                .parse_new_data_and_add_data => switch (self.action) {
+                    .ADD => {
+                        var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                        defer data_map.deinit();
+                        self.parseNewData(&data_map);
 
-                            // TODO: Print the list of missing
-                            if (!schemaEngine.checkIfAllMemberInMap(self.struct_name, &data_map)) self.printError("Error: Missing member", &token);
-                            const uuid = self.data_engine.writeEntity(self.struct_name, data_map) catch {
-                                send("ZipponDB error: Couln't write new data to file", .{});
-                                continue;
-                            };
-                            send("Successfully added new {s} with UUID: {s}", .{ self.struct_name, uuid.format_uuid() });
-                            self.state = .end;
-                        },
-                        .UPDATE => {}, // TODO:
-                        else => unreachable,
-                    }
+                        // TODO: Print the list of missing
+                        if (!self.file_engine.checkIfAllMemberInMap(self.struct_name, &data_map)) self.printError("Error: Missing member", &token);
+                        const uuid = self.file_engine.writeEntity(self.struct_name, data_map) catch {
+                            send("ZipponDB error: Couln't write new data to file", .{});
+                            continue;
+                        };
+                        send("Successfully added new {s} with UUID: {s}", .{ self.struct_name, uuid.format_uuid() });
+                        self.state = .end;
+                    },
+                    .UPDATE => {}, // TODO:
+                    else => unreachable,
                 },
 
                 else => unreachable,
@@ -255,37 +247,35 @@ pub const Parser = struct {
             switch (self.state) {
                 .expect_left_condition => {
                     token = self.parseCondition(&left_condition, &token);
-                    try self.data_engine.getUUIDListUsingCondition(left_condition, left_array);
+                    try self.file_engine.getUUIDListUsingCondition(left_condition, left_array);
                     self.state = State.expect_ANDOR_OR_end;
                     keep_next = true;
                 },
 
-                .expect_ANDOR_OR_end => {
-                    switch (token.tag) {
-                        .r_brace => {
-                            if (main) {
-                                self.state = State.end;
-                            } else {
-                                self.printError("Error: Expected } to end main condition or AND/OR to continue it", &token);
-                            }
-                        },
-                        .r_paren => {
-                            if (!main) {
-                                self.state = State.end;
-                            } else {
-                                self.printError("Error: Expected ) to end inside condition or AND/OR to continue it", &token);
-                            }
-                        },
-                        .keyword_and => {
-                            curent_operation = .and_;
-                            self.state = State.expect_right_uuid_array;
-                        },
-                        .keyword_or => {
-                            curent_operation = .or_;
-                            self.state = State.expect_right_uuid_array;
-                        },
-                        else => self.printError("Error: Expected a condition including AND or OR or } or )", &token),
-                    }
+                .expect_ANDOR_OR_end => switch (token.tag) {
+                    .r_brace => {
+                        if (main) {
+                            self.state = State.end;
+                        } else {
+                            self.printError("Error: Expected } to end main condition or AND/OR to continue it", &token);
+                        }
+                    },
+                    .r_paren => {
+                        if (!main) {
+                            self.state = State.end;
+                        } else {
+                            self.printError("Error: Expected ) to end inside condition or AND/OR to continue it", &token);
+                        }
+                    },
+                    .keyword_and => {
+                        curent_operation = .and_;
+                        self.state = State.expect_right_uuid_array;
+                    },
+                    .keyword_or => {
+                        curent_operation = .or_;
+                        self.state = State.expect_right_uuid_array;
+                    },
+                    else => self.printError("Error: Expected a condition including AND or OR or } or )", &token),
                 },
 
                 .expect_right_uuid_array => {
@@ -299,7 +289,7 @@ pub const Parser = struct {
 
                             token = self.parseCondition(&right_condition, &token);
                             keep_next = true;
-                            try self.data_engine.getUUIDListUsingCondition(right_condition, &right_array);
+                            try self.file_engine.getUUIDListUsingCondition(right_condition, &right_array);
                         }, // Create a new condition and compare it
                         else => self.printError("Error: Expecting ( or member name.", &token),
                     }
@@ -333,18 +323,16 @@ pub const Parser = struct {
             keep_next = false;
         }) {
             switch (self.state) {
-                .expect_member => {
-                    switch (token.tag) {
-                        .identifier => {
-                            if (!schemaEngine.isMemberPartOfStruct(condition.struct_name, self.toker.getTokenSlice(token))) {
-                                self.printError("Error: Member not part of struct.", &token);
-                            }
-                            condition.data_type = schemaEngine.memberName2DataType(condition.struct_name, self.toker.getTokenSlice(token)) orelse @panic("Couldn't find the struct and member");
-                            condition.member_name = self.toker.getTokenSlice(token);
-                            self.state = State.expect_operation;
-                        },
-                        else => self.printError("Error: Expected member name.", &token),
-                    }
+                .expect_member => switch (token.tag) {
+                    .identifier => {
+                        if (!self.file_engine.isMemberNameInStruct(condition.struct_name, self.toker.getTokenSlice(token))) {
+                            self.printError("Error: Member not part of struct.", &token);
+                        }
+                        condition.data_type = self.file_engine.memberName2DataType(condition.struct_name, self.toker.getTokenSlice(token)) orelse @panic("Couldn't find the struct and member");
+                        condition.member_name = self.toker.getTokenSlice(token);
+                        self.state = State.expect_operation;
+                    },
+                    else => self.printError("Error: Expected member name.", &token),
                 },
 
                 .expect_operation => {
@@ -470,51 +458,43 @@ pub const Parser = struct {
                     }
                 },
 
-                .expect_semicolon_OR_right_bracket => {
-                    switch (token.tag) {
-                        .semicolon => self.state = .expect_member,
-                        .r_bracket => self.state = .end,
-                        else => self.printError("Error: Expect ';' or ']'.", &token),
-                    }
+                .expect_semicolon_OR_right_bracket => switch (token.tag) {
+                    .semicolon => self.state = .expect_member,
+                    .r_bracket => self.state = .end,
+                    else => self.printError("Error: Expect ';' or ']'.", &token),
                 },
 
-                .expect_member => {
-                    switch (token.tag) {
-                        .identifier => {
-                            if (!schemaEngine.isMemberNameInStruct(self.struct_name, self.toker.getTokenSlice(token))) self.printError("Member not found in struct.", &token);
-                            try additional_data.member_to_find.append(
-                                AdditionalDataMember.init(
-                                    self.allocator,
-                                    self.toker.getTokenSlice(token),
-                                ),
-                            );
+                .expect_member => switch (token.tag) {
+                    .identifier => {
+                        if (!self.file_engine.isMemberNameInStruct(self.struct_name, self.toker.getTokenSlice(token))) self.printError("Member not found in struct.", &token);
+                        try additional_data.member_to_find.append(
+                            AdditionalDataMember.init(
+                                self.allocator,
+                                self.toker.getTokenSlice(token),
+                            ),
+                        );
 
-                            self.state = .expect_comma_OR_r_bracket_OR_l_bracket;
-                        },
-                        else => self.printError("Error: Expected a member name.", &token),
-                    }
+                        self.state = .expect_comma_OR_r_bracket_OR_l_bracket;
+                    },
+                    else => self.printError("Error: Expected a member name.", &token),
                 },
 
-                .expect_comma_OR_r_bracket_OR_l_bracket => {
-                    switch (token.tag) {
-                        .comma => self.state = .expect_member,
-                        .r_bracket => self.state = .end,
-                        .l_bracket => {
-                            try self.parseAdditionalData(
-                                &additional_data.member_to_find.items[additional_data.member_to_find.items.len - 1].additional_data,
-                            );
-                            self.state = .expect_comma_OR_r_bracket;
-                        },
-                        else => self.printError("Error: Expected , or ] or [", &token),
-                    }
+                .expect_comma_OR_r_bracket_OR_l_bracket => switch (token.tag) {
+                    .comma => self.state = .expect_member,
+                    .r_bracket => self.state = .end,
+                    .l_bracket => {
+                        try self.parseAdditionalData(
+                            &additional_data.member_to_find.items[additional_data.member_to_find.items.len - 1].additional_data,
+                        );
+                        self.state = .expect_comma_OR_r_bracket;
+                    },
+                    else => self.printError("Error: Expected , or ] or [", &token),
                 },
 
-                .expect_comma_OR_r_bracket => {
-                    switch (token.tag) {
-                        .comma => self.state = .expect_member,
-                        .r_bracket => self.state = .end,
-                        else => self.printError("Error: Expected , or ]", &token),
-                    }
+                .expect_comma_OR_r_bracket => switch (token.tag) {
+                    .comma => self.state = .expect_member,
+                    .r_bracket => self.state = .end,
+                    else => self.printError("Error: Expected , or ]", &token),
                 },
 
                 else => unreachable,
@@ -536,144 +516,124 @@ pub const Parser = struct {
             keep_next = false;
         }) {
             switch (self.state) {
-                .expect_member => {
-                    switch (token.tag) {
-                        .identifier => {
-                            member_name = self.toker.getTokenSlice(token);
-                            if (!schemaEngine.isMemberNameInStruct(self.struct_name, member_name)) self.printError("Member not found in struct.", &token);
-                            self.state = .expect_equal;
-                        },
-                        else => self.printError("Error: Expected member name.", &token),
-                    }
+                .expect_member => switch (token.tag) {
+                    .identifier => {
+                        member_name = self.toker.getTokenSlice(token);
+                        if (!self.file_engine.isMemberNameInStruct(self.struct_name, member_name)) self.printError("Member not found in struct.", &token);
+                        self.state = .expect_equal;
+                    },
+                    else => self.printError("Error: Expected member name.", &token),
                 },
 
-                .expect_equal => {
-                    switch (token.tag) {
-                        // TODO: Add more comparison like IN or other stuff
-                        .equal => self.state = .expect_new_value,
-                        else => self.printError("Error: Expected =", &token),
-                    }
+                .expect_equal => switch (token.tag) {
+                    // TODO: Add more comparison like IN or other stuff
+                    .equal => self.state = .expect_new_value,
+                    else => self.printError("Error: Expected =", &token),
                 },
 
                 .expect_new_value => {
-                    const data_type = schemaEngine.memberName2DataType(self.struct_name, member_name);
+                    const data_type = self.file_engine.memberName2DataType(self.struct_name, member_name);
                     switch (data_type.?) {
-                        .int => {
-                            switch (token.tag) {
-                                .int_literal, .keyword_null => {
-                                    member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected int", &token),
-                            }
+                        .int => switch (token.tag) {
+                            .int_literal, .keyword_null => {
+                                member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected int", &token),
                         },
-                        .float => {
-                            switch (token.tag) {
-                                .float_literal, .keyword_null => {
-                                    member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected float", &token),
-                            }
+                        .float => switch (token.tag) {
+                            .float_literal, .keyword_null => {
+                                member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected float", &token),
                         },
-                        .bool => {
-                            switch (token.tag) {
-                                .bool_literal_true => {
-                                    member_map.put(member_name, "1") catch @panic("Could not add member name and value to map in getMapOfMember");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                .bool_literal_false => {
-                                    member_map.put(member_name, "0") catch @panic("Could not add member name and value to map in getMapOfMember");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                .keyword_null => {
-                                    member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected bool: true false", &token),
-                            }
+                        .bool => switch (token.tag) {
+                            .bool_literal_true => {
+                                member_map.put(member_name, "1") catch @panic("Could not add member name and value to map in getMapOfMember");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            .bool_literal_false => {
+                                member_map.put(member_name, "0") catch @panic("Could not add member name and value to map in getMapOfMember");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            .keyword_null => {
+                                member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected bool: true false", &token),
                         },
-                        .str => {
-                            switch (token.tag) {
-                                .string_literal, .keyword_null => {
-                                    member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected string between ''", &token),
-                            }
+                        .str => switch (token.tag) {
+                            .string_literal, .keyword_null => {
+                                member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected string between ''", &token),
                         },
                         // TODO: Maybe upgrade that to use multiple state
-                        .int_array => {
-                            switch (token.tag) {
-                                .l_bracket => {
-                                    const start_index = token.loc.start;
-                                    token = self.toker.next();
-                                    while (token.tag != .r_bracket) : (token = self.toker.next()) {
-                                        switch (token.tag) {
-                                            .int_literal => continue,
-                                            else => self.printError("Error: Expected int or ].", &token),
-                                        }
+                        .int_array => switch (token.tag) {
+                            .l_bracket => {
+                                const start_index = token.loc.start;
+                                token = self.toker.next();
+                                while (token.tag != .r_bracket) : (token = self.toker.next()) {
+                                    switch (token.tag) {
+                                        .int_literal => continue,
+                                        else => self.printError("Error: Expected int or ].", &token),
                                     }
-                                    // Maybe change that as it just recreate a string that is already in the buffer
-                                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected [ to start an array", &token),
-                            }
+                                }
+                                // Maybe change that as it just recreate a string that is already in the buffer
+                                member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected [ to start an array", &token),
                         },
-                        .float_array => {
-                            switch (token.tag) {
-                                .l_bracket => {
-                                    const start_index = token.loc.start;
-                                    token = self.toker.next();
-                                    while (token.tag != .r_bracket) : (token = self.toker.next()) {
-                                        switch (token.tag) {
-                                            .float_literal => continue,
-                                            else => self.printError("Error: Expected float or ].", &token),
-                                        }
+                        .float_array => switch (token.tag) {
+                            .l_bracket => {
+                                const start_index = token.loc.start;
+                                token = self.toker.next();
+                                while (token.tag != .r_bracket) : (token = self.toker.next()) {
+                                    switch (token.tag) {
+                                        .float_literal => continue,
+                                        else => self.printError("Error: Expected float or ].", &token),
                                     }
-                                    // Maybe change that as it just recreate a string that is already in the buffer
-                                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected [ to start an array", &token),
-                            }
+                                }
+                                // Maybe change that as it just recreate a string that is already in the buffer
+                                member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected [ to start an array", &token),
                         },
-                        .bool_array => {
-                            switch (token.tag) {
-                                .l_bracket => {
-                                    const start_index = token.loc.start;
-                                    token = self.toker.next();
-                                    while (token.tag != .r_bracket) : (token = self.toker.next()) {
-                                        switch (token.tag) {
-                                            .bool_literal_false, .bool_literal_true => continue,
-                                            else => self.printError("Error: Expected bool or ].", &token),
-                                        }
+                        .bool_array => switch (token.tag) {
+                            .l_bracket => {
+                                const start_index = token.loc.start;
+                                token = self.toker.next();
+                                while (token.tag != .r_bracket) : (token = self.toker.next()) {
+                                    switch (token.tag) {
+                                        .bool_literal_false, .bool_literal_true => continue,
+                                        else => self.printError("Error: Expected bool or ].", &token),
                                     }
-                                    // Maybe change that as it just recreate a string that is already in the buffer
-                                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected [ to start an array", &token),
-                            }
+                                }
+                                // Maybe change that as it just recreate a string that is already in the buffer
+                                member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected [ to start an array", &token),
                         },
-                        .str_array => {
-                            switch (token.tag) {
-                                .l_bracket => {
-                                    const start_index = token.loc.start;
-                                    token = self.toker.next();
-                                    while (token.tag != .r_bracket) : (token = self.toker.next()) {
-                                        switch (token.tag) {
-                                            .string_literal => continue,
-                                            else => self.printError("Error: Expected str or ].", &token),
-                                        }
+                        .str_array => switch (token.tag) {
+                            .l_bracket => {
+                                const start_index = token.loc.start;
+                                token = self.toker.next();
+                                while (token.tag != .r_bracket) : (token = self.toker.next()) {
+                                    switch (token.tag) {
+                                        .string_literal => continue,
+                                        else => self.printError("Error: Expected str or ].", &token),
                                     }
-                                    // Maybe change that as it just recreate a string that is already in the buffer
-                                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
-                                    self.state = .expect_comma_OR_end;
-                                },
-                                else => self.printError("Error: Expected [ to start an array", &token),
-                            }
+                                }
+                                // Maybe change that as it just recreate a string that is already in the buffer
+                                member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                                self.state = .expect_comma_OR_end;
+                            },
+                            else => self.printError("Error: Expected [ to start an array", &token),
                         },
                     }
                 },
@@ -709,8 +669,6 @@ pub const Parser = struct {
         stdout.print("    \n", .{}) catch {}; // Align with the message
 
         stdout.print("{s}\n", .{message}) catch {};
-
-        stdout.print("{any}\n{any}\n", .{ token.tag, token.loc }) catch {};
 
         send("", .{});
     }
@@ -832,185 +790,13 @@ test "GRAB filter with int" {
 
 fn testParsing(source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
+
+    var file_engine = FileEngine.init(allocator, null);
+    defer file_engine.deinit();
+
     var tokenizer = Tokenizer.init(source);
-    var parser = Parser.init(allocator, &tokenizer);
+    var parser = Parser.init(allocator, &tokenizer, &file_engine);
     defer parser.deinit();
+
     try parser.parse();
-}
-
-test "Parse condition" {
-    const condition1 = Condition{ .data_type = .int, .member_name = "age", .operation = .superior_or_equal, .struct_name = "User", .value = "26" };
-    try testConditionParsing("age >= 26", condition1);
-
-    const condition2 = Condition{ .data_type = .int_array, .member_name = "scores", .operation = .equal, .struct_name = "User", .value = "[1 2 42]" };
-    try testConditionParsing("scores = [1 2 42]", condition2);
-
-    const condition3 = Condition{ .data_type = .str, .member_name = "email", .operation = .equal, .struct_name = "User", .value = "'adrien@email.com'" };
-    try testConditionParsing("email = 'adrien@email.com'", condition3);
-}
-
-fn testConditionParsing(source: [:0]const u8, expected_condition: Condition) !void {
-    const allocator = std.testing.allocator;
-    var tokenizer = Tokenizer.init(source);
-    var parser = Parser.init(allocator, &tokenizer);
-    var token = tokenizer.next();
-
-    var condition = Condition.init("User");
-    _ = parser.parseCondition(&condition, &token);
-
-    try std.testing.expect(compareCondition(expected_condition, condition));
-}
-
-fn compareCondition(c1: Condition, c2: Condition) bool {
-    return ((std.mem.eql(u8, c1.value, c2.value)) and (std.mem.eql(u8, c1.struct_name, c2.struct_name)) and (std.mem.eql(u8, c1.member_name, c2.member_name)) and (c1.operation == c2.operation) and (c1.data_type == c2.data_type));
-}
-
-test "Parse new data" {
-    const allocator = std.testing.allocator;
-
-    var map1 = std.StringHashMap([]const u8).init(allocator);
-    defer map1.deinit();
-    try map1.put("name", "'Adrien'");
-    testNewDataParsing("(name = 'Adrien')", map1);
-
-    var map2 = std.StringHashMap([]const u8).init(allocator);
-    defer map2.deinit();
-    try map2.put("name", "'Adrien'");
-    try map2.put("email", "'adrien@email.com'");
-    try map2.put("scores", "[1 4 19]");
-    try map2.put("age", "26");
-    testNewDataParsing("(name = 'Adrien', scores = [1 4 19], age = 26, email = 'adrien@email.com')", map2);
-}
-
-fn testNewDataParsing(source: [:0]const u8, expected_member_map: std.StringHashMap([]const u8)) void {
-    const allocator = std.testing.allocator;
-    var tokenizer = Tokenizer.init(source);
-
-    var parser = Parser.init(allocator, &tokenizer);
-    parser.struct_name = allocator.dupe(u8, "User") catch @panic("Cant alloc struct name");
-    defer parser.deinit();
-
-    var data_map = std.StringHashMap([]const u8).init(allocator);
-    defer data_map.deinit();
-
-    _ = tokenizer.next();
-    parser.parseNewData(&data_map);
-
-    var iterator = expected_member_map.iterator();
-
-    var expected_total_count: usize = 0;
-    var found_count: usize = 0;
-    var error_found = false;
-    while (iterator.next()) |entry| {
-        expected_total_count += 1;
-        if (!data_map.contains(entry.key_ptr.*)) {
-            std.debug.print("Error new data parsing: Missing {s} in parsed map.\n", .{entry.key_ptr.*});
-            error_found = true;
-            continue;
-        }
-        if (!std.mem.eql(u8, entry.value_ptr.*, data_map.get(entry.key_ptr.*).?)) {
-            std.debug.print("Error new data parsing: Wrong data for {s} in parsed map.\n    Expected: {s}\n    Got: {s}", .{ entry.key_ptr.*, entry.value_ptr.*, data_map.get(entry.key_ptr.*).? });
-            error_found = true;
-            continue;
-        }
-        found_count += 1;
-    }
-
-    if ((error_found) or (expected_total_count != found_count)) @panic("=(");
-}
-
-test "Parse filter" {
-    const allocator = std.testing.allocator;
-
-    var tokenizer = Tokenizer.init("{name = 'Adrien'}");
-    var parser = Parser.init(allocator, &tokenizer);
-    parser.struct_name = allocator.dupe(u8, "User") catch @panic("Cant alloc struct name"); // Otherwise get an error trying to free this when deinit
-
-    defer parser.deinit();
-    _ = tokenizer.next(); // Start at name
-
-    var uuid_array = std.ArrayList(UUID).init(allocator);
-    defer uuid_array.deinit();
-
-    try parser.parseFilter(&uuid_array, "User", true);
-}
-
-test "Parse additional data" {
-    const allocator = std.testing.allocator;
-
-    var additional_data1 = Parser.AdditionalData.init(allocator);
-    additional_data1.entity_count_to_find = 1;
-    testAdditionalData("[1]", additional_data1);
-
-    var additional_data2 = Parser.AdditionalData.init(allocator);
-    defer additional_data2.deinit();
-    try additional_data2.member_to_find.append(
-        Parser.AdditionalDataMember.init(
-            allocator,
-            "name",
-        ),
-    );
-    testAdditionalData("[name]", additional_data2);
-
-    var additional_data3 = Parser.AdditionalData.init(allocator);
-    additional_data3.entity_count_to_find = 1;
-    defer additional_data3.deinit();
-    try additional_data3.member_to_find.append(
-        Parser.AdditionalDataMember.init(
-            allocator,
-            "name",
-        ),
-    );
-    testAdditionalData("[1; name]", additional_data3);
-
-    var additional_data4 = Parser.AdditionalData.init(allocator);
-    additional_data4.entity_count_to_find = 100;
-    defer additional_data4.deinit();
-    try additional_data4.member_to_find.append(
-        Parser.AdditionalDataMember.init(
-            allocator,
-            "friends",
-        ),
-    );
-    testAdditionalData("[100; friends [name]]", additional_data4);
-}
-
-fn testAdditionalData(source: [:0]const u8, expected_AdditionalData: Parser.AdditionalData) void {
-    const allocator = std.testing.allocator;
-    var tokenizer = Tokenizer.init(source);
-
-    var parser = Parser.init(allocator, &tokenizer);
-    parser.struct_name = allocator.dupe(u8, "User") catch @panic("Cant alloc struct name");
-    defer parser.deinit();
-
-    _ = tokenizer.next();
-    parser.parseAdditionalData(&parser.additional_data) catch |err| {
-        std.debug.print("Error parsing additional data: {any}\n", .{err});
-    };
-
-    compareAdditionalData(expected_AdditionalData, parser.additional_data);
-}
-
-fn compareAdditionalData(ad1: Parser.AdditionalData, ad2: Parser.AdditionalData) void {
-    std.testing.expectEqual(ad1.entity_count_to_find, ad2.entity_count_to_find) catch {
-        std.debug.print("Additional data entity_count_to_find are not equal.\n", .{});
-    };
-
-    var founded = false;
-
-    for (ad1.member_to_find.items) |elem1| {
-        founded = false;
-        for (ad2.member_to_find.items) |elem2| {
-            if (std.mem.eql(u8, elem1.name, elem2.name)) {
-                compareAdditionalData(elem1.additional_data, elem2.additional_data);
-                founded = true;
-                break;
-            }
-        }
-
-        std.testing.expect(founded) catch {
-            std.debug.print("{s} not found\n", .{elem1.name});
-            @panic("=(");
-        };
-    }
 }
