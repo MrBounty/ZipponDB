@@ -58,6 +58,7 @@ pub const Parser = struct {
         filter_and_send,
         filter_and_update,
         filter_and_delete,
+        send_all,
 
         // For the main parse function
         expect_struct_name,
@@ -178,6 +179,7 @@ pub const Parser = struct {
                             .DELETE => .filter_and_delete,
                             else => unreachable,
                         },
+                        .eof => self.state = .send_all,
                         else => return self.printError("Error: Expect [ for additional data or { for a filter", &token, ZiQlParserError.SynthaxError),
                     }
                 },
@@ -192,6 +194,17 @@ pub const Parser = struct {
                     };
                 },
 
+                .send_all => {
+                    var array = std.ArrayList(UUID).init(self.allocator);
+                    defer array.deinit();
+                    try self.file_engine.getAllUUIDList(self.struct_name, &array);
+
+                    // TODO: Use the additional data to reduce the array
+
+                    self.sendEntity(&array);
+                    self.state = .end;
+                },
+
                 .filter_and_send => {
                     var array = std.ArrayList(UUID).init(self.allocator);
                     defer array.deinit();
@@ -199,7 +212,7 @@ pub const Parser = struct {
 
                     // TODO: Use the additional data to reduce the array
 
-                    self.sendEntity(array.items);
+                    self.sendEntity(&array);
                     self.state = .end;
                 },
 
@@ -211,7 +224,7 @@ pub const Parser = struct {
 
                     // TODO: Use the additional data to reduce the array
 
-                    if (token.tag != .equal_angle_bracket_right) return self.printError("Error: Expected =>", &token, ZiQlParserError.SynthaxError);
+                    if (token.tag != .keyword_to) return self.printError("Error: Expected TO", &token, ZiQlParserError.SynthaxError);
 
                     token = self.toker.next();
                     if (token.tag != .l_paren) return self.printError("Error: Expected (", &token, ZiQlParserError.SynthaxError);
@@ -264,14 +277,21 @@ pub const Parser = struct {
         }
     }
 
-    // TODO: Use that when I want to return data to the use, need to understand how it's work.
-    // I think for now put the ordering using additional data here
-    // Maybe to a struct Communicator to handle all communication between use and cli
-    fn sendEntity(self: *Parser, uuid_array: []UUID) void {
-        _ = self;
-        _ = uuid_array;
+    // TODO: Update that to order before cutting if too long when the ASC and DESC will be implemented
+    fn sendEntity(self: *Parser, uuid_list: *std.ArrayList(UUID)) void {
+        var buffer = std.ArrayList(u8).init(self.allocator);
+        defer buffer.deinit();
 
-        //send("Number of uuid to send: {d}\n", .{uuid_array.len});
+        // Pop some element if the array is too long
+        if ((self.additional_data.entity_count_to_find != 0) and (self.additional_data.entity_count_to_find < uuid_list.items.len)) {
+            const to_pop = uuid_list.items.len - self.additional_data.entity_count_to_find;
+            for (0..to_pop) |_| _ = uuid_list.pop();
+        }
+
+        // Im gonna need a function in the file engine to parse and write in the buffer
+        self.file_engine.parseAndWriteToSend(self.struct_name, uuid_list.items, &buffer, self.additional_data) catch @panic("Error parsing data to send");
+
+        send("{s}", .{buffer.items});
     }
 
     // TODO: The parser that check what is between ||
@@ -296,31 +316,37 @@ pub const Parser = struct {
             keep_next = false;
         }) {
             switch (self.state) {
-                .expect_left_condition => {
-                    token = try self.parseCondition(&left_condition, &token);
-                    try self.file_engine.getUUIDListUsingCondition(left_condition, left_array);
-                    self.state = State.expect_ANDOR_OR_end;
-                    keep_next = true;
+                .expect_left_condition => switch (token.tag) {
+                    .r_brace => {
+                        try self.file_engine.getAllUUIDList(struct_name, left_array);
+                        self.state = .end;
+                    },
+                    else => {
+                        token = try self.parseCondition(&left_condition, &token);
+                        try self.file_engine.getUUIDListUsingCondition(left_condition, left_array);
+                        self.state = .expect_ANDOR_OR_end;
+                        keep_next = true;
+                    },
                 },
 
                 .expect_ANDOR_OR_end => switch (token.tag) {
                     .r_brace => if (main) {
-                        self.state = State.end;
+                        self.state = .end;
                     } else {
                         return self.printError("Error: Expected } to end main condition or AND/OR to continue it", &token, ZiQlParserError.SynthaxError);
                     },
                     .r_paren => if (!main) {
-                        self.state = State.end;
+                        self.state = .end;
                     } else {
                         return self.printError("Error: Expected ) to end inside condition or AND/OR to continue it", &token, ZiQlParserError.SynthaxError);
                     },
                     .keyword_and => {
                         curent_operation = .and_;
-                        self.state = State.expect_right_uuid_array;
+                        self.state = .expect_right_uuid_array;
                     },
                     .keyword_or => {
                         curent_operation = .or_;
-                        self.state = State.expect_right_uuid_array;
+                        self.state = .expect_right_uuid_array;
                     },
                     else => return self.printError("Error: Expected a condition including AND OR or the end of the filter with } or )", &token, ZiQlParserError.SynthaxError),
                 },
@@ -812,14 +838,21 @@ fn compareUUIDArray(arr1: std.ArrayList(UUID), arr2: std.ArrayList(UUID)) bool {
 
 test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[])");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[])");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[])");
 }
 
 test "UPDATE" {
-    try testParsing("UPDATE User {name = 'Bob'} => (email='new@gmail.com')");
+    try testParsing("UPDATE User {name = 'Bob'} TO (email='new@gmail.com')");
 }
 
 test "DELETE" {
     try testParsing("DELETE User {name='Bob'}");
+}
+
+test "GRAB filter with string" {
+    try testParsing("GRAB User {name = 'Bob'}");
+    try testParsing("GRAB User {name != 'Brittany Rogers'}");
 }
 
 test "GRAB with additional data" {
@@ -828,22 +861,18 @@ test "GRAB with additional data" {
     try testParsing("GRAB User [100; name] {age < 18}");
 }
 
-test "GRAB filter with string" {
-    // TODO: Use a fixe dataset for testing, to choose in the build.zig
-    // It should check if the right number of entity is found too
-    try testParsing("GRAB User {name = 'Brittany Rogers'}");
-    try testParsing("GRAB User {name != 'Brittany Rogers'}");
-}
-
 test "GRAB filter with int" {
-    // TODO: Use a fixe dataset for testing, to choose in the build.zig
-    // It should check if the right number of entity is found too
     try testParsing("GRAB User {age = 18}");
     try testParsing("GRAB User {age > 18}");
     try testParsing("GRAB User {age < 18}");
     try testParsing("GRAB User {age <= 18}");
     try testParsing("GRAB User {age >= 18}");
     try testParsing("GRAB User {age != 18}");
+}
+
+test "Specific query" {
+    try testParsing("GRAB User");
+    try testParsing("GRAB User {}");
 }
 
 fn testParsing(source: [:0]const u8) !void {

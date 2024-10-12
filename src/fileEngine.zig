@@ -8,6 +8,7 @@ const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
 const SchemaParser = @import("schemaParser.zig").Parser;
 const SchemaTokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const SchemaToken = @import("tokenizers/schema.zig").Token;
+const AdditionalData = @import("ziqlParser.zig").Parser.AdditionalData;
 
 //TODO: Create a union class and chose between file and memory
 
@@ -76,6 +77,182 @@ pub const FileEngine = struct {
             return Condition{ .struct_name = struct_name };
         }
     };
+
+    // TODO: A function that take a list of UUID and write into the buffer the message tot send
+    // Like the other, write it line by line then if the UUID is found, you write the data
+    // The output need to be in the JSON format, so change '' into ""
+    // Maybe I will change '' to "" everywhere
+    pub fn parseAndWriteToSend(self: *FileEngine, struct_name: []const u8, uuids: []UUID, buffer: *std.ArrayList(u8), additional_data: AdditionalData) !void {
+        const max_file_index = try self.maxFileIndex(struct_name);
+        var current_index: usize = 0;
+
+        var path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        defer self.allocator.free(path_buff);
+
+        var file = std.fs.cwd().openFile(path_buff, .{}) catch {
+            std.debug.print("Path: {s}", .{path_buff});
+            @panic("Can't open first file to init a data iterator");
+        };
+        defer file.close();
+
+        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output_fbs = std.io.fixedBufferStream(&output);
+        const writer = output_fbs.writer();
+
+        var buffered = std.io.bufferedReader(file.reader());
+        var reader = buffered.reader();
+        var founded = false;
+        var token: FileToken = undefined;
+
+        var out_writer = buffer.writer();
+        try out_writer.writeAll("[");
+
+        // Write the start {
+
+        while (true) {
+            output_fbs.reset();
+            reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) {
+                error.EndOfStream => {
+                    // When end of file, check if all file was parse, if not update the reader to the next file
+                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
+                    output_fbs.reset(); // clear buffer before exit
+
+                    if (current_index == max_file_index) break;
+
+                    current_index += 1;
+
+                    self.allocator.free(path_buff);
+                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    file.close(); // Do I need to close ? I think so
+                    file = std.fs.cwd().openFile(path_buff, .{}) catch {
+                        std.debug.print("Error trying to open {s}\n", .{path_buff});
+                        @panic("Can't open file to update a data iterator");
+                    };
+
+                    buffered = std.io.bufferedReader(file.reader());
+                    reader = buffered.reader();
+                    continue;
+                }, // file read till the end
+                else => {
+                    std.debug.print("Error while reading file: {any}\n", .{err});
+                    break;
+                },
+            };
+
+            const null_terminated_string = try self.allocator.dupeZ(u8, output_fbs.getWritten()[37..]);
+            defer self.allocator.free(null_terminated_string);
+
+            var data_toker = FileTokenizer.init(null_terminated_string);
+            const uuid = try UUID.parse(output_fbs.getWritten()[0..36]);
+
+            founded = false;
+            // Optimize this
+            for (uuids) |elem| {
+                if (elem.compare(uuid)) {
+                    founded = true;
+                    break;
+                }
+            }
+
+            if (founded) {
+                try out_writer.writeAll("{");
+                for (self.structName2structMembers(struct_name), self.structName2DataType(struct_name)) |member_name, member_type| {
+                    token = data_toker.next();
+                    // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
+                    if ((additional_data.member_to_find.items.len == 0) or (self.isMemberNameInAdditionalData(self.locToSlice(member_name), additional_data))) {
+                        // write the member name and = sign
+                        try out_writer.print("{s}: ", .{self.locToSlice(member_name)});
+
+                        switch (member_type) {
+                            .str => {
+                                const str_slice = data_toker.getTokenSlice(token);
+                                try out_writer.print("\"{s}\"", .{str_slice[1 .. str_slice.len - 1]});
+                            },
+                            .str_array => {}, // TODO: Write [ then "" then text, repeate
+                            .int_array, .float_array, .bool_array, .id_array => {
+                                while (token.tag != .r_bracket) : (token = data_toker.next()) {
+                                    try out_writer.writeAll(data_toker.getTokenSlice(token));
+                                    try out_writer.writeAll(" ");
+                                }
+                                try out_writer.writeAll(data_toker.getTokenSlice(token));
+                            },
+                            else => try out_writer.writeAll(data_toker.getTokenSlice(token)), //write the value as if
+                        }
+                        try out_writer.writeAll(", ");
+                    }
+                }
+                try out_writer.writeAll("}");
+                try out_writer.writeAll(", ");
+            }
+        }
+        // Write the end }
+        try out_writer.writeAll("]");
+    }
+
+    fn isMemberNameInAdditionalData(_: *FileEngine, member_name: []const u8, additional_data: AdditionalData) bool {
+        for (additional_data.member_to_find.items) |elem| {
+            if (std.mem.eql(u8, member_name, elem.name)) return true;
+        }
+        return false;
+    }
+
+    /// Use a struct name to populate a list with all UUID of this struct
+    pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_array: *std.ArrayList(UUID)) !void {
+        const max_file_index = try self.maxFileIndex(struct_name);
+        var current_index: usize = 0;
+
+        var path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        defer self.allocator.free(path_buff);
+
+        var file = std.fs.cwd().openFile(path_buff, .{}) catch {
+            std.debug.print("Path: {s}", .{path_buff});
+            @panic("Can't open first file to init a data iterator");
+        };
+        defer file.close();
+
+        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output_fbs = std.io.fixedBufferStream(&output);
+        const writer = output_fbs.writer();
+
+        var buffered = std.io.bufferedReader(file.reader());
+        var reader = buffered.reader();
+
+        while (true) {
+            output_fbs.reset();
+            reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) {
+                error.EndOfStream => {
+                    // When end of file, check if all file was parse, if not update the reader to the next file
+                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
+                    output_fbs.reset(); // clear buffer before exit
+
+                    if (current_index == max_file_index) break;
+
+                    current_index += 1;
+
+                    self.allocator.free(path_buff);
+                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    file.close(); // Do I need to close ? I think so
+                    file = std.fs.cwd().openFile(path_buff, .{}) catch {
+                        std.debug.print("Error trying to open {s}\n", .{path_buff});
+                        @panic("Can't open file to update a data iterator");
+                    };
+
+                    buffered = std.io.bufferedReader(file.reader());
+                    reader = buffered.reader();
+                    continue;
+                }, // file read till the end
+                else => {
+                    std.debug.print("Error while reading file: {any}\n", .{err});
+                    break;
+                },
+            };
+
+            const uuid = try UUID.parse(output_fbs.getWritten()[0..36]);
+            try uuid_array.append(uuid);
+        }
+    }
 
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
     /// TODO: Change the UUID function to be a B+Tree

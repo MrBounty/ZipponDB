@@ -21,6 +21,7 @@ pub const Token = struct {
         .{ "false", .bool_literal_false },
         .{ "AND", .keyword_and },
         .{ "OR", .keyword_or },
+        .{ "TO", .keyword_to },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -39,6 +40,7 @@ pub const Token = struct {
         keyword_null,
         keyword_and,
         keyword_or,
+        keyword_to,
 
         string_literal,
         int_literal,
