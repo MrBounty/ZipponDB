@@ -220,11 +220,21 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map);
 
-                    try self.file_engine.updateEntities(self.struct_name, array, data_map);
+                    try self.file_engine.updateEntities(self.struct_name, array.items, data_map);
                     self.state = .end;
                 },
 
-                .filter_and_delete => return self.printError("Error: Delete not yet implemented", &token, ZiQlParserError.FeatureMissing),
+                .filter_and_delete => {
+                    var array = std.ArrayList(UUID).init(self.allocator);
+                    defer array.deinit();
+                    _ = try self.parseFilter(&array, self.struct_name, true);
+
+                    // TODO: Use the additional data to reduce the array
+
+                    const deleted_count = try self.file_engine.deleteEntities(self.struct_name, array.items);
+                    std.debug.print("Successfully deleted {d} {s}\n", .{ deleted_count, self.struct_name });
+                    self.state = .end;
+                },
 
                 .expect_new_data => switch (token.tag) {
                     .l_paren => {
@@ -798,6 +808,18 @@ fn compareUUIDArray(arr1: std.ArrayList(UUID), arr2: std.ArrayList(UUID)) bool {
     }
 
     return true;
+}
+
+test "ADD" {
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[])");
+}
+
+test "UPDATE" {
+    try testParsing("UPDATE User {name = 'Bob'} => (email='new@gmail.com')");
+}
+
+test "DELETE" {
+    try testParsing("DELETE User {name='Bob'}");
 }
 
 test "GRAB with additional data" {

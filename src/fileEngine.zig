@@ -281,7 +281,7 @@ pub const FileEngine = struct {
     /// TODO: Optmize a lot, I did that quickly to work but it is far from optimized. Idea:
     ///     - Once all uuid found, stream until the end of the file without delimiter or uuid compare
     ///     - Change map to array
-    pub fn updateEntities(self: *FileEngine, struct_name: []const u8, uuids: std.ArrayList(UUID), new_data_map: std.StringHashMap([]const u8)) !void {
+    pub fn updateEntities(self: *FileEngine, struct_name: []const u8, uuids: []UUID, new_data_map: std.StringHashMap([]const u8)) !void {
         const max_file_index = self.maxFileIndex(struct_name) catch @panic("Cant get max index file when updating");
         var current_file_index: usize = 0;
 
@@ -365,11 +365,11 @@ pub const FileEngine = struct {
             try new_file.writeAll(output_fbs.getWritten());
 
             // THis is the uuid of the current row
-            const uuid = try UUID.parse(output_fbs.getWritten()[0..36]); // FIXME: After the first loop, the first char is \n, which is invalid
+            const uuid = try UUID.parse(output_fbs.getWritten()[0..36]);
             founded = false;
 
             // Optimize this
-            for (uuids.items) |elem| {
+            for (uuids) |elem| {
                 if (elem.compare(uuid)) {
                     founded = true;
                     break;
@@ -429,6 +429,120 @@ pub const FileEngine = struct {
                 try new_file.writeAll("\n");
             }
         }
+    }
+
+    /// Take a kist of UUID and a struct name and delete the row with same UUID
+    /// TODO: Use B+Tree
+    pub fn deleteEntities(self: *FileEngine, struct_name: []const u8, uuids: []UUID) !usize {
+        const max_file_index = self.maxFileIndex(struct_name) catch @panic("Cant get max index file when updating");
+        var current_file_index: usize = 0;
+
+        var path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        defer self.allocator.free(path_buff);
+
+        var path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        defer self.allocator.free(path_buff2);
+
+        var old_file = std.fs.cwd().openFile(path_buff, .{}) catch {
+            std.debug.print("Path: {s}", .{path_buff});
+            @panic("Can't open first file to init a data iterator");
+        };
+
+        self.allocator.free(path_buff);
+        path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata.new", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+        var new_file = std.fs.cwd().createFile(path_buff, .{}) catch {
+            std.debug.print("Path: {s}", .{path_buff});
+            @panic("Can't create new file to init a data iterator");
+        };
+        defer new_file.close();
+
+        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output_fbs = std.io.fixedBufferStream(&output);
+        const writer = output_fbs.writer();
+
+        var buffered = std.io.bufferedReader(old_file.reader());
+        var reader = buffered.reader();
+        var founded = false;
+        var deleted_count: usize = 0;
+
+        while (true) {
+            output_fbs.reset();
+            reader.streamUntilDelimiter(writer, ' ', null) catch |err| switch (err) {
+                error.EndOfStream => {
+                    // When end of file, check if all file was parse, if not update the reader to the next file
+                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
+                    output_fbs.reset(); // clear buffer before exit
+
+                    // Start by deleting and renaming the new file
+                    self.allocator.free(path_buff);
+                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    self.allocator.free(path_buff2);
+                    path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata.new", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    old_file.close();
+                    try std.fs.cwd().deleteFile(path_buff);
+                    try std.fs.cwd().rename(path_buff2, path_buff);
+
+                    if (current_file_index == max_file_index) break;
+
+                    current_file_index += 1;
+
+                    self.allocator.free(path_buff);
+                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    self.allocator.free(path_buff2);
+                    path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata.new", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    old_file = std.fs.cwd().openFile(path_buff, .{}) catch {
+                        std.debug.print("Error trying to open {s}\n", .{path_buff});
+                        @panic("Can't open  file to update entities");
+                    };
+
+                    new_file = std.fs.cwd().createFile(path_buff2, .{}) catch {
+                        std.debug.print("Error trying to create {s}\n", .{path_buff2});
+                        @panic("Can't create  file to update entities");
+                    };
+
+                    buffered = std.io.bufferedReader(old_file.reader());
+                    reader = buffered.reader();
+                    continue;
+                }, // file read till the end
+                else => {
+                    std.debug.print("Error while reading file: {any}\n", .{err});
+                    break;
+                },
+            };
+
+            // THis is the uuid of the current row
+            const uuid = try UUID.parse(output_fbs.getWritten()[0..36]);
+            founded = false;
+
+            // Optimize this
+            for (uuids) |elem| {
+                if (elem.compare(uuid)) {
+                    founded = true;
+                    deleted_count += 1;
+                    break;
+                }
+            }
+
+            if (!founded) {
+                // stream until the delimiter
+                try new_file.writeAll(output_fbs.getWritten());
+
+                output_fbs.reset();
+                try new_file.writeAll(" ");
+                try reader.streamUntilDelimiter(writer, '\n', null);
+                try new_file.writeAll(output_fbs.getWritten());
+                try new_file.writeAll("\n");
+            } else {
+                try reader.streamUntilDelimiter(writer, '\n', null);
+            }
+        }
+
+        return deleted_count;
     }
 
     /// Use a filename in the format 1.zippondata and return the 1
