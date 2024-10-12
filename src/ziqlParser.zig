@@ -56,6 +56,8 @@ pub const Parser = struct {
         // Endpoint
         parse_new_data_and_add_data,
         filter_and_send,
+        filter_and_update,
+        filter_and_delete,
 
         // For the main parse function
         expect_struct_name,
@@ -85,6 +87,15 @@ pub const Parser = struct {
         expect_comma_OR_end,
         add_member_to_map,
         add_array_to_map,
+    };
+
+    const ZiQlParserError = error{
+        SynthaxError,
+        MemberNotFound,
+        MemberMissing,
+        StructNotFound,
+        FeatureMissing,
+        ParsingValueError,
     };
 
     /// This is the [] part
@@ -144,16 +155,13 @@ pub const Parser = struct {
                         self.action = .DELETE;
                         self.state = .expect_struct_name;
                     },
-                    else => {
-                        self.printError("Error: Expected action keyword. Available: GRAB ADD DELETE UPDATE", &token);
-                        self.state = .end;
-                    },
+                    else => return self.printError("Error: Expected action keyword. Available: GRAB ADD DELETE UPDATE", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_struct_name => {
                     // Check if the struct name is in the schema
                     self.struct_name = try self.allocator.dupe(u8, self.toker.getTokenSlice(token));
-                    if (!self.file_engine.isStructNameExists(self.struct_name)) self.printError("Error: struct name not found in schema.", &token);
+                    if (!self.file_engine.isStructNameExists(self.struct_name)) return self.printError("Error: struct name not found in schema.", &token, ZiQlParserError.StructNotFound);
                     switch (self.action) {
                         .ADD => self.state = .expect_new_data,
                         else => self.state = .expect_filter_or_additional_data,
@@ -164,49 +172,81 @@ pub const Parser = struct {
                     keep_next = true;
                     switch (token.tag) {
                         .l_bracket => self.state = .parse_additional_data,
-                        .l_brace => self.state = .filter_and_send,
-                        else => self.printError("Error: Expect [ for additional data or { for a filter", &token),
+                        .l_brace => self.state = switch (self.action) {
+                            .GRAB => .filter_and_send,
+                            .UPDATE => .filter_and_update,
+                            .DELETE => .filter_and_delete,
+                            else => unreachable,
+                        },
+                        else => return self.printError("Error: Expect [ for additional data or { for a filter", &token, ZiQlParserError.SynthaxError),
                     }
                 },
 
                 .parse_additional_data => {
                     try self.parseAdditionalData(&self.additional_data);
-                    self.state = .filter_and_send;
+                    self.state = switch (self.action) {
+                        .GRAB => .filter_and_send,
+                        .UPDATE => .filter_and_update,
+                        .DELETE => .filter_and_delete,
+                        else => unreachable,
+                    };
                 },
 
                 .filter_and_send => {
                     var array = std.ArrayList(UUID).init(self.allocator);
                     defer array.deinit();
-                    try self.parseFilter(&array, self.struct_name, true);
+                    _ = try self.parseFilter(&array, self.struct_name, true);
+
+                    // TODO: Use the additional data to reduce the array
+
                     self.sendEntity(array.items);
                     self.state = .end;
                 },
+
+                // TODO: Optimize so it doesnt use parseFilter but just parse the file and directly check the condition. Here I end up parsing 2 times.
+                .filter_and_update => {
+                    var array = std.ArrayList(UUID).init(self.allocator);
+                    defer array.deinit();
+                    token = try self.parseFilter(&array, self.struct_name, true);
+
+                    // TODO: Use the additional data to reduce the array
+
+                    if (token.tag != .equal_angle_bracket_right) return self.printError("Error: Expected =>", &token, ZiQlParserError.SynthaxError);
+
+                    token = self.toker.next();
+                    if (token.tag != .l_paren) return self.printError("Error: Expected (", &token, ZiQlParserError.SynthaxError);
+
+                    var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                    defer data_map.deinit();
+                    try self.parseNewData(&data_map);
+
+                    try self.file_engine.updateEntities(self.struct_name, array, data_map);
+                    self.state = .end;
+                },
+
+                .filter_and_delete => return self.printError("Error: Delete not yet implemented", &token, ZiQlParserError.FeatureMissing),
 
                 .expect_new_data => switch (token.tag) {
                     .l_paren => {
                         keep_next = true;
                         self.state = .parse_new_data_and_add_data;
                     },
-                    else => self.printError("Error: Expecting new data starting with (", &token),
+                    else => return self.printError("Error: Expecting new data starting with (", &token, ZiQlParserError.SynthaxError),
                 },
 
-                .parse_new_data_and_add_data => switch (self.action) {
-                    .ADD => {
-                        var data_map = std.StringHashMap([]const u8).init(self.allocator);
-                        defer data_map.deinit();
-                        self.parseNewData(&data_map);
+                .parse_new_data_and_add_data => {
+                    var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                    defer data_map.deinit();
+                    try self.parseNewData(&data_map);
 
-                        // TODO: Print the list of missing
-                        if (!self.file_engine.checkIfAllMemberInMap(self.struct_name, &data_map)) self.printError("Error: Missing member", &token);
-                        const uuid = self.file_engine.writeEntity(self.struct_name, data_map) catch {
-                            send("ZipponDB error: Couln't write new data to file", .{});
-                            continue;
-                        };
-                        send("Successfully added new {s} with UUID: {s}", .{ self.struct_name, uuid.format_uuid() });
-                        self.state = .end;
-                    },
-                    .UPDATE => {}, // TODO:
-                    else => unreachable,
+                    // TODO: Print the list of missing
+                    if (!self.file_engine.checkIfAllMemberInMap(self.struct_name, &data_map)) return self.printError("Error: Missing member", &token, ZiQlParserError.MemberMissing);
+                    const uuid = self.file_engine.writeEntity(self.struct_name, data_map) catch {
+                        send("ZipponDB error: Couln't write new data to file", .{});
+                        continue;
+                    };
+                    send("Successfully added new {s} with UUID: {s}", .{ self.struct_name, uuid.format_uuid() });
+                    self.state = .end;
                 },
 
                 else => unreachable,
@@ -232,7 +272,8 @@ pub const Parser = struct {
 
     /// Take an array of UUID and populate it with what match what is between {}
     /// Main is to know if between {} or (), main is true if between {}, otherwise between () inside {}
-    fn parseFilter(self: *Parser, left_array: *std.ArrayList(UUID), struct_name: []const u8, main: bool) !void {
+    /// TODO: Optimize this so it can use multiple condition at the same time instead of parsing the all file for each condition
+    fn parseFilter(self: *Parser, left_array: *std.ArrayList(UUID), struct_name: []const u8, main: bool) !Token {
         var token = self.toker.next();
         var keep_next = false;
         self.state = State.expect_left_condition;
@@ -246,26 +287,22 @@ pub const Parser = struct {
         }) {
             switch (self.state) {
                 .expect_left_condition => {
-                    token = self.parseCondition(&left_condition, &token);
+                    token = try self.parseCondition(&left_condition, &token);
                     try self.file_engine.getUUIDListUsingCondition(left_condition, left_array);
                     self.state = State.expect_ANDOR_OR_end;
                     keep_next = true;
                 },
 
                 .expect_ANDOR_OR_end => switch (token.tag) {
-                    .r_brace => {
-                        if (main) {
-                            self.state = State.end;
-                        } else {
-                            self.printError("Error: Expected } to end main condition or AND/OR to continue it", &token);
-                        }
+                    .r_brace => if (main) {
+                        self.state = State.end;
+                    } else {
+                        return self.printError("Error: Expected } to end main condition or AND/OR to continue it", &token, ZiQlParserError.SynthaxError);
                     },
-                    .r_paren => {
-                        if (!main) {
-                            self.state = State.end;
-                        } else {
-                            self.printError("Error: Expected ) to end inside condition or AND/OR to continue it", &token);
-                        }
+                    .r_paren => if (!main) {
+                        self.state = State.end;
+                    } else {
+                        return self.printError("Error: Expected ) to end inside condition or AND/OR to continue it", &token, ZiQlParserError.SynthaxError);
                     },
                     .keyword_and => {
                         curent_operation = .and_;
@@ -275,7 +312,7 @@ pub const Parser = struct {
                         curent_operation = .or_;
                         self.state = State.expect_right_uuid_array;
                     },
-                    else => self.printError("Error: Expected a condition including AND or OR or } or )", &token),
+                    else => return self.printError("Error: Expected a condition including AND OR or the end of the filter with } or )", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_right_uuid_array => {
@@ -283,15 +320,15 @@ pub const Parser = struct {
                     defer right_array.deinit();
 
                     switch (token.tag) {
-                        .l_paren => try self.parseFilter(&right_array, struct_name, false), // run parserFilter to get the right array
+                        .l_paren => _ = try self.parseFilter(&right_array, struct_name, false), // run parserFilter to get the right array
                         .identifier => {
                             var right_condition = Condition.init(struct_name);
 
-                            token = self.parseCondition(&right_condition, &token);
+                            token = try self.parseCondition(&right_condition, &token);
                             keep_next = true;
                             try self.file_engine.getUUIDListUsingCondition(right_condition, &right_array);
                         }, // Create a new condition and compare it
-                        else => self.printError("Error: Expecting ( or member name.", &token),
+                        else => return self.printError("Error: Expecting ( or member name.", &token, ZiQlParserError.SynthaxError),
                     }
 
                     switch (curent_operation) {
@@ -302,18 +339,19 @@ pub const Parser = struct {
                             try OR(left_array, &right_array);
                         },
                     }
-                    std.debug.print("Token here {any}\n", .{token});
                     self.state = .expect_ANDOR_OR_end;
                 },
 
                 else => unreachable,
             }
         }
+
+        return token;
     }
 
     /// Parse to get a Condition< Which is a struct that is use by the FileEngine to retreive data.
     /// In the query, it is this part name = 'Bob' or age <= 10
-    fn parseCondition(self: *Parser, condition: *Condition, token_ptr: *Token) Token {
+    fn parseCondition(self: *Parser, condition: *Condition, token_ptr: *Token) !Token {
         var keep_next = false;
         self.state = .expect_member;
         var token = token_ptr.*;
@@ -326,13 +364,13 @@ pub const Parser = struct {
                 .expect_member => switch (token.tag) {
                     .identifier => {
                         if (!self.file_engine.isMemberNameInStruct(condition.struct_name, self.toker.getTokenSlice(token))) {
-                            self.printError("Error: Member not part of struct.", &token);
+                            return self.printError("Error: Member not part of struct.", &token, ZiQlParserError.MemberNotFound);
                         }
                         condition.data_type = self.file_engine.memberName2DataType(condition.struct_name, self.toker.getTokenSlice(token)) orelse @panic("Couldn't find the struct and member");
                         condition.member_name = self.toker.getTokenSlice(token);
                         self.state = State.expect_operation;
                     },
-                    else => self.printError("Error: Expected member name.", &token),
+                    else => return self.printError("Error: Expected member name.", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_operation => {
@@ -343,7 +381,7 @@ pub const Parser = struct {
                         .angle_bracket_left_equal => condition.operation = .inferior_or_equal, // <=
                         .angle_bracket_right_equal => condition.operation = .superior_or_equal, // >=
                         .bang_equal => condition.operation = .different, // !=
-                        else => self.printError("Error: Expected condition. Including < > <= >= = !=", &token),
+                        else => return self.printError("Error: Expected condition. Including < > <= >= = !=", &token, ZiQlParserError.SynthaxError),
                     }
                     self.state = State.expect_value;
                 },
@@ -353,25 +391,25 @@ pub const Parser = struct {
                         .int => {
                             switch (token.tag) {
                                 .int_literal => condition.value = self.toker.getTokenSlice(token),
-                                else => self.printError("Error: Expected int", &token),
+                                else => return self.printError("Error: Expected int", &token, ZiQlParserError.SynthaxError),
                             }
                         },
                         .float => {
                             switch (token.tag) {
                                 .float_literal => condition.value = self.toker.getTokenSlice(token),
-                                else => self.printError("Error: Expected float", &token),
+                                else => return self.printError("Error: Expected float", &token, ZiQlParserError.SynthaxError),
                             }
                         },
-                        .str => {
+                        .str, .id => {
                             switch (token.tag) {
                                 .string_literal => condition.value = self.toker.getTokenSlice(token),
-                                else => self.printError("Error: Expected string", &token),
+                                else => return self.printError("Error: Expected string", &token, ZiQlParserError.SynthaxError),
                             }
                         },
                         .bool => {
                             switch (token.tag) {
                                 .bool_literal_true, .bool_literal_false => condition.value = self.toker.getTokenSlice(token),
-                                else => self.printError("Error: Expected bool", &token),
+                                else => return self.printError("Error: Expected bool", &token, ZiQlParserError.SynthaxError),
                             }
                         },
                         .int_array => {
@@ -380,7 +418,7 @@ pub const Parser = struct {
                             while (token.tag != Token.Tag.r_bracket) : (token = self.toker.next()) {
                                 switch (token.tag) {
                                     .int_literal => continue,
-                                    else => self.printError("Error: Expected int or ].", &token),
+                                    else => return self.printError("Error: Expected int or ].", &token, ZiQlParserError.SynthaxError),
                                 }
                             }
                             condition.value = self.toker.buffer[start_index..token.loc.end];
@@ -391,18 +429,18 @@ pub const Parser = struct {
                             while (token.tag != Token.Tag.r_bracket) : (token = self.toker.next()) {
                                 switch (token.tag) {
                                     .float_literal => continue,
-                                    else => self.printError("Error: Expected float or ].", &token),
+                                    else => return self.printError("Error: Expected float or ].", &token, ZiQlParserError.SynthaxError),
                                 }
                             }
                             condition.value = self.toker.buffer[start_index..token.loc.end];
                         },
-                        .str_array => {
+                        .str_array, .id_array => {
                             const start_index = token.loc.start;
                             token = self.toker.next();
                             while (token.tag != Token.Tag.r_bracket) : (token = self.toker.next()) {
                                 switch (token.tag) {
                                     .string_literal => continue,
-                                    else => self.printError("Error: Expected string or ].", &token),
+                                    else => return self.printError("Error: Expected string or ].", &token, ZiQlParserError.SynthaxError),
                                 }
                             }
                             condition.value = self.toker.buffer[start_index..token.loc.end];
@@ -413,7 +451,7 @@ pub const Parser = struct {
                             while (token.tag != Token.Tag.r_bracket) : (token = self.toker.next()) {
                                 switch (token.tag) {
                                     .bool_literal_false, .bool_literal_true => continue,
-                                    else => self.printError("Error: Expected bool or ].", &token),
+                                    else => return self.printError("Error: Expected bool or ].", &token, ZiQlParserError.SynthaxError),
                                 }
                             }
                             condition.value = self.toker.buffer[start_index..token.loc.end];
@@ -444,9 +482,7 @@ pub const Parser = struct {
                     switch (token.tag) {
                         .int_literal => {
                             const count = std.fmt.parseInt(usize, self.toker.getTokenSlice(token), 10) catch {
-                                self.printError("Error while transforming this into a integer.", &token);
-                                self.state = .invalid;
-                                continue;
+                                return self.printError("Error while transforming this into a integer.", &token, ZiQlParserError.ParsingValueError);
                             };
                             additional_data.entity_count_to_find = count;
                             self.state = .expect_semicolon_OR_right_bracket;
@@ -461,12 +497,12 @@ pub const Parser = struct {
                 .expect_semicolon_OR_right_bracket => switch (token.tag) {
                     .semicolon => self.state = .expect_member,
                     .r_bracket => self.state = .end,
-                    else => self.printError("Error: Expect ';' or ']'.", &token),
+                    else => return self.printError("Error: Expect ';' or ']'.", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_member => switch (token.tag) {
                     .identifier => {
-                        if (!self.file_engine.isMemberNameInStruct(self.struct_name, self.toker.getTokenSlice(token))) self.printError("Member not found in struct.", &token);
+                        if (!self.file_engine.isMemberNameInStruct(self.struct_name, self.toker.getTokenSlice(token))) return self.printError("Member not found in struct.", &token, ZiQlParserError.SynthaxError);
                         try additional_data.member_to_find.append(
                             AdditionalDataMember.init(
                                 self.allocator,
@@ -476,7 +512,7 @@ pub const Parser = struct {
 
                         self.state = .expect_comma_OR_r_bracket_OR_l_bracket;
                     },
-                    else => self.printError("Error: Expected a member name.", &token),
+                    else => return self.printError("Error: Expected a member name.", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_comma_OR_r_bracket_OR_l_bracket => switch (token.tag) {
@@ -488,13 +524,13 @@ pub const Parser = struct {
                         );
                         self.state = .expect_comma_OR_r_bracket;
                     },
-                    else => self.printError("Error: Expected , or ] or [", &token),
+                    else => return self.printError("Error: Expected , or ] or [", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_comma_OR_r_bracket => switch (token.tag) {
                     .comma => self.state = .expect_member,
                     .r_bracket => self.state = .end,
-                    else => self.printError("Error: Expected , or ]", &token),
+                    else => return self.printError("Error: Expected , or ]", &token, ZiQlParserError.SynthaxError),
                 },
 
                 else => unreachable,
@@ -505,7 +541,7 @@ pub const Parser = struct {
     /// Take the tokenizer and return a map of the query for the ADD command.
     /// Keys are the member name and value are the string of the value in the query. E.g. 'Adrien' or '10'
     /// Entry token need to be (
-    fn parseNewData(self: *Parser, member_map: *std.StringHashMap([]const u8)) void {
+    fn parseNewData(self: *Parser, member_map: *std.StringHashMap([]const u8)) !void {
         var token = self.toker.next();
         var keep_next = false;
         var member_name: []const u8 = undefined; // Maybe use allocator.alloc
@@ -519,16 +555,16 @@ pub const Parser = struct {
                 .expect_member => switch (token.tag) {
                     .identifier => {
                         member_name = self.toker.getTokenSlice(token);
-                        if (!self.file_engine.isMemberNameInStruct(self.struct_name, member_name)) self.printError("Member not found in struct.", &token);
+                        if (!self.file_engine.isMemberNameInStruct(self.struct_name, member_name)) return self.printError("Member not found in struct.", &token, ZiQlParserError.MemberNotFound);
                         self.state = .expect_equal;
                     },
-                    else => self.printError("Error: Expected member name.", &token),
+                    else => return self.printError("Error: Expected member name.", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_equal => switch (token.tag) {
                     // TODO: Add more comparison like IN or other stuff
                     .equal => self.state = .expect_new_value,
-                    else => self.printError("Error: Expected =", &token),
+                    else => return self.printError("Error: Expected =", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_new_value => {
@@ -539,14 +575,14 @@ pub const Parser = struct {
                                 member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected int", &token),
+                            else => return self.printError("Error: Expected int", &token, ZiQlParserError.SynthaxError),
                         },
                         .float => switch (token.tag) {
                             .float_literal, .keyword_null => {
                                 member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected float", &token),
+                            else => return self.printError("Error: Expected float", &token, ZiQlParserError.SynthaxError),
                         },
                         .bool => switch (token.tag) {
                             .bool_literal_true => {
@@ -561,14 +597,14 @@ pub const Parser = struct {
                                 member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected bool: true false", &token),
+                            else => return self.printError("Error: Expected bool: true false", &token, ZiQlParserError.SynthaxError),
                         },
-                        .str => switch (token.tag) {
+                        .str, .id => switch (token.tag) {
                             .string_literal, .keyword_null => {
                                 member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected string between ''", &token),
+                            else => return self.printError("Error: Expected string between ''", &token, ZiQlParserError.SynthaxError),
                         },
                         // TODO: Maybe upgrade that to use multiple state
                         .int_array => switch (token.tag) {
@@ -578,14 +614,14 @@ pub const Parser = struct {
                                 while (token.tag != .r_bracket) : (token = self.toker.next()) {
                                     switch (token.tag) {
                                         .int_literal => continue,
-                                        else => self.printError("Error: Expected int or ].", &token),
+                                        else => return self.printError("Error: Expected int or ].", &token, ZiQlParserError.SynthaxError),
                                     }
                                 }
                                 // Maybe change that as it just recreate a string that is already in the buffer
                                 member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected [ to start an array", &token),
+                            else => return self.printError("Error: Expected [ to start an array", &token, ZiQlParserError.SynthaxError),
                         },
                         .float_array => switch (token.tag) {
                             .l_bracket => {
@@ -594,14 +630,14 @@ pub const Parser = struct {
                                 while (token.tag != .r_bracket) : (token = self.toker.next()) {
                                     switch (token.tag) {
                                         .float_literal => continue,
-                                        else => self.printError("Error: Expected float or ].", &token),
+                                        else => return self.printError("Error: Expected float or ].", &token, ZiQlParserError.SynthaxError),
                                     }
                                 }
                                 // Maybe change that as it just recreate a string that is already in the buffer
                                 member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected [ to start an array", &token),
+                            else => return self.printError("Error: Expected [ to start an array", &token, ZiQlParserError.SynthaxError),
                         },
                         .bool_array => switch (token.tag) {
                             .l_bracket => {
@@ -610,30 +646,30 @@ pub const Parser = struct {
                                 while (token.tag != .r_bracket) : (token = self.toker.next()) {
                                     switch (token.tag) {
                                         .bool_literal_false, .bool_literal_true => continue,
-                                        else => self.printError("Error: Expected bool or ].", &token),
+                                        else => return self.printError("Error: Expected bool or ].", &token, ZiQlParserError.SynthaxError),
                                     }
                                 }
                                 // Maybe change that as it just recreate a string that is already in the buffer
                                 member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected [ to start an array", &token),
+                            else => return self.printError("Error: Expected [ to start an array", &token, ZiQlParserError.SynthaxError),
                         },
-                        .str_array => switch (token.tag) {
+                        .str_array, .id_array => switch (token.tag) {
                             .l_bracket => {
                                 const start_index = token.loc.start;
                                 token = self.toker.next();
                                 while (token.tag != .r_bracket) : (token = self.toker.next()) {
                                     switch (token.tag) {
                                         .string_literal => continue,
-                                        else => self.printError("Error: Expected str or ].", &token),
+                                        else => return self.printError("Error: Expected str or ].", &token, ZiQlParserError.SynthaxError),
                                     }
                                 }
                                 // Maybe change that as it just recreate a string that is already in the buffer
                                 member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
                                 self.state = .expect_comma_OR_end;
                             },
-                            else => self.printError("Error: Expected [ to start an array", &token),
+                            else => return self.printError("Error: Expected [ to start an array", &token, ZiQlParserError.SynthaxError),
                         },
                     }
                 },
@@ -642,7 +678,7 @@ pub const Parser = struct {
                     switch (token.tag) {
                         .r_paren => self.state = .end,
                         .comma => self.state = .expect_member,
-                        else => self.printError("Error: Expect , or )", &token),
+                        else => return self.printError("Error: Expect , or )", &token, ZiQlParserError.SynthaxError),
                     }
                 },
 
@@ -651,8 +687,9 @@ pub const Parser = struct {
         }
     }
 
-    fn printError(self: *Parser, message: []const u8, token: *Token) void {
+    fn printError(self: *Parser, message: []const u8, token: *Token, err: ZiQlParserError) ZiQlParserError {
         stdout.print("\n", .{}) catch {};
+        stdout.print("{s}\n", .{message}) catch {};
         stdout.print("{s}\n", .{self.toker.buffer}) catch {};
 
         // Calculate the number of spaces needed to reach the start position.
@@ -668,9 +705,8 @@ pub const Parser = struct {
         }
         stdout.print("    \n", .{}) catch {}; // Align with the message
 
-        stdout.print("{s}\n", .{message}) catch {};
-
         send("", .{});
+        return err;
     }
 };
 

@@ -54,10 +54,12 @@ pub const FileEngine = struct {
         float: f64,
         str: []const u8,
         bool_: bool,
+        id: UUID,
         int_array: std.ArrayList(i64),
         str_array: std.ArrayList([]const u8),
         float_array: std.ArrayList(f64),
         bool_array: std.ArrayList(bool),
+        id_array: std.ArrayList(UUID),
     };
 
     /// use to parse file. It take a struct name and member name to know what to parse.
@@ -67,7 +69,7 @@ pub const FileEngine = struct {
         struct_name: []const u8,
         member_name: []const u8 = undefined,
         value: []const u8 = undefined,
-        operation: enum { equal, different, superior, superior_or_equal, inferior, inferior_or_equal } = undefined, // Add more stuff like IN
+        operation: enum { equal, different, superior, superior_or_equal, inferior, inferior_or_equal, in } = undefined, // Add more stuff like IN
         data_type: DataType = undefined,
 
         pub fn init(struct_name: []const u8) Condition {
@@ -76,20 +78,25 @@ pub const FileEngine = struct {
     };
 
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
+    /// TODO: Change the UUID function to be a B+Tree
     /// TODO: Optimize the shit out of this, it it way too slow rn. Here some ideas
     /// - Array can take a very long time to parse, maybe put them in a seperate file. But string can be too...
     /// - Use the stream directly in the tokenizer
     /// - Use a fixed size and split into other file. Like one file for one member (Because very long, like an array of 1000 value) and another one for everything else
     ///     The threselhold can be like if the average len is > 400 character. So UUID would take less that 10% of the storage
     /// - Save data in a more compact way
+    /// - Multithreading, each thread take a list of files and we mix them at the end
     pub fn getUUIDListUsingCondition(self: *FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) !void {
         const max_file_index = try self.maxFileIndex(condition.struct_name);
         var current_index: usize = 0;
 
-        var sub_path = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
-        defer self.allocator.free(sub_path);
+        var path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        defer self.allocator.free(path_buff);
 
-        var file = std.fs.cwd().openFile(sub_path, .{}) catch @panic("Can't open first file to init a data iterator");
+        var file = std.fs.cwd().openFile(path_buff, .{}) catch {
+            std.debug.print("Path: {s}", .{path_buff});
+            @panic("Can't open first file to init a data iterator");
+        };
         defer file.close();
 
         var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
@@ -105,10 +112,12 @@ pub const FileEngine = struct {
             .str => compare_value = ComparisonValue{ .str = condition.value },
             .float => compare_value = ComparisonValue{ .float = parseFloat(condition.value) },
             .bool => compare_value = ComparisonValue{ .bool_ = parseBool(condition.value) },
+            .id => compare_value = ComparisonValue{ .id = try UUID.parse(condition.value) },
             .int_array => compare_value = ComparisonValue{ .int_array = parseArrayInt(self.allocator, condition.value) },
             .str_array => compare_value = ComparisonValue{ .str_array = parseArrayStr(self.allocator, condition.value) },
             .float_array => compare_value = ComparisonValue{ .float_array = parseArrayFloat(self.allocator, condition.value) },
             .bool_array => compare_value = ComparisonValue{ .bool_array = parseArrayBool(self.allocator, condition.value) },
+            .id_array => compare_value = ComparisonValue{ .id_array = parseArrayUUID(self.allocator, condition.value) },
         }
         defer {
             switch (condition.data_type) {
@@ -116,6 +125,7 @@ pub const FileEngine = struct {
                 .str_array => compare_value.str_array.deinit(),
                 .float_array => compare_value.float_array.deinit(),
                 .bool_array => compare_value.bool_array.deinit(),
+                .id_array => compare_value.id_array.deinit(),
                 else => {},
             }
         }
@@ -127,19 +137,21 @@ pub const FileEngine = struct {
             output_fbs.reset();
             reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) {
                 error.EndOfStream => {
+                    // When end of file, check if all file was parse, if not update the reader to the next file
+                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
                     output_fbs.reset(); // clear buffer before exit
 
                     if (current_index == max_file_index) break;
 
                     current_index += 1;
 
-                    self.allocator.free(sub_path);
-                    sub_path = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+                    self.allocator.free(path_buff);
+                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
 
                     file.close(); // Do I need to close ? I think so
-                    file = std.fs.cwd().openFile(sub_path, .{}) catch {
-                        std.debug.print("Error trying to open {s}\n", .{sub_path});
-                        @panic("Can't open first file to init a data iterator");
+                    file = std.fs.cwd().openFile(path_buff, .{}) catch {
+                        std.debug.print("Error trying to open {s}\n", .{path_buff});
+                        @panic("Can't open file to update a data iterator");
                     };
 
                     buffered = std.io.bufferedReader(file.reader());
@@ -167,64 +179,63 @@ pub const FileEngine = struct {
 
             token = data_toker.next();
 
-            // TODO: Add error for wrong condition like superior between 2 string or array
+            // TODO: Make sure in amount that the rest is unreachable by sending an error for wrong condition like superior between 2 string or array
             switch (condition.operation) {
-                .equal => {
-                    switch (condition.data_type) {
-                        .int => if (compare_value.int == parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .float => if (compare_value.float == parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .str => if (std.mem.eql(u8, compare_value.str, data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .bool => if (compare_value.bool_ == parseBool(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        // TODO: Implement for array too
-                        else => {},
-                    }
+                .equal => switch (condition.data_type) {
+                    .int => if (compare_value.int == parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .float => if (compare_value.float == parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .str => if (std.mem.eql(u8, compare_value.str, data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .bool => if (compare_value.bool_ == parseBool(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .id => if (compare_value.id.compare(uuid)) try uuid_array.append(uuid),
+                    // TODO: Implement for array too
+                    else => unreachable,
                 },
 
-                .different => {
-                    switch (condition.data_type) {
-                        .int => if (compare_value.int != parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .float => if (compare_value.float != parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .str => if (!std.mem.eql(u8, compare_value.str, data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .bool => if (compare_value.bool_ != parseBool(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        // TODO: Implement for array too
-                        else => {},
-                    }
+                .different => switch (condition.data_type) {
+                    .int => if (compare_value.int != parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .float => if (compare_value.float != parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .str => if (!std.mem.eql(u8, compare_value.str, data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .bool => if (compare_value.bool_ != parseBool(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    // TODO: Implement for array too
+                    else => unreachable,
                 },
 
-                .superior_or_equal => {
-                    switch (condition.data_type) {
-                        .int => if (compare_value.int <= parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .float => if (compare_value.float <= parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        // TODO: Implement for array too
-                        else => {},
-                    }
+                .superior_or_equal => switch (condition.data_type) {
+                    .int => if (compare_value.int <= parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .float => if (compare_value.float <= parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    // TODO: Implement for array too
+                    else => unreachable,
                 },
 
-                .superior => {
-                    switch (condition.data_type) {
-                        .int => if (compare_value.int < parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .float => if (compare_value.float < parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        // TODO: Implement for array too
-                        else => {},
-                    }
+                .superior => switch (condition.data_type) {
+                    .int => if (compare_value.int < parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .float => if (compare_value.float < parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    // TODO: Implement for array too
+                    else => unreachable,
                 },
 
-                .inferior_or_equal => {
-                    switch (condition.data_type) {
-                        .int => if (compare_value.int >= parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .float => if (compare_value.float >= parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        // TODO: Implement for array too
-                        else => {},
-                    }
+                .inferior_or_equal => switch (condition.data_type) {
+                    .int => if (compare_value.int >= parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .float => if (compare_value.float >= parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    // TODO: Implement for array too
+                    else => unreachable,
                 },
 
-                .inferior => {
-                    switch (condition.data_type) {
-                        .int => if (compare_value.int > parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        .float => if (compare_value.float > parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                        // TODO: Implement for array too
-                        else => {},
-                    }
+                .inferior => switch (condition.data_type) {
+                    .int => if (compare_value.int > parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    .float => if (compare_value.float > parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
+                    // TODO: Implement for array too
+                    else => unreachable,
+                },
+
+                // TODO: Do it for other array
+                .in => switch (condition.data_type) {
+                    .id_array => {
+                        for (compare_value.id_array.items) |elem| {
+                            if (elem.compare(uuid)) try uuid_array.append(uuid);
+                        }
+                    },
+                    else => unreachable,
                 },
             }
         }
@@ -263,6 +274,161 @@ pub const FileEngine = struct {
         try file.writer().print("\n", .{});
 
         return uuid;
+    }
+
+    /// Function to update the file with updated data. Take a list of uuid and a list of string map. The map is in the format key: member; value: new value.
+    /// It create a new index.zippondata.new file in the same folder, stream the output of the old file to it until a uuid is found, then write the new row and continue until the end
+    /// TODO: Optmize a lot, I did that quickly to work but it is far from optimized. Idea:
+    ///     - Once all uuid found, stream until the end of the file without delimiter or uuid compare
+    ///     - Change map to array
+    pub fn updateEntities(self: *FileEngine, struct_name: []const u8, uuids: std.ArrayList(UUID), new_data_map: std.StringHashMap([]const u8)) !void {
+        const max_file_index = self.maxFileIndex(struct_name) catch @panic("Cant get max index file when updating");
+        var current_file_index: usize = 0;
+
+        var path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        defer self.allocator.free(path_buff);
+
+        var path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+        defer self.allocator.free(path_buff2);
+
+        var old_file = std.fs.cwd().openFile(path_buff, .{}) catch {
+            std.debug.print("Path: {s}", .{path_buff});
+            @panic("Can't open first file to init a data iterator");
+        };
+
+        self.allocator.free(path_buff);
+        path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata.new", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+        var new_file = std.fs.cwd().createFile(path_buff, .{}) catch {
+            std.debug.print("Path: {s}", .{path_buff});
+            @panic("Can't create new file to init a data iterator");
+        };
+        defer new_file.close();
+
+        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output_fbs = std.io.fixedBufferStream(&output);
+        const writer = output_fbs.writer();
+
+        var buffered = std.io.bufferedReader(old_file.reader());
+        var reader = buffered.reader();
+        var founded = false;
+
+        while (true) {
+            output_fbs.reset();
+            reader.streamUntilDelimiter(writer, ' ', null) catch |err| switch (err) {
+                error.EndOfStream => {
+                    // When end of file, check if all file was parse, if not update the reader to the next file
+                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
+                    output_fbs.reset(); // clear buffer before exit
+
+                    // Start by deleting and renaming the new file
+                    self.allocator.free(path_buff);
+                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    self.allocator.free(path_buff2);
+                    path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata.new", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    old_file.close();
+                    try std.fs.cwd().deleteFile(path_buff);
+                    try std.fs.cwd().rename(path_buff2, path_buff);
+
+                    if (current_file_index == max_file_index) break;
+
+                    current_file_index += 1;
+
+                    self.allocator.free(path_buff);
+                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    self.allocator.free(path_buff2);
+                    path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata.new", .{ self.path_to_ZipponDB_dir, struct_name, current_file_index }) catch @panic("Can't create sub_path for init a DataIterator");
+
+                    old_file = std.fs.cwd().openFile(path_buff, .{}) catch {
+                        std.debug.print("Error trying to open {s}\n", .{path_buff});
+                        @panic("Can't open  file to update entities");
+                    };
+
+                    new_file = std.fs.cwd().createFile(path_buff2, .{}) catch {
+                        std.debug.print("Error trying to create {s}\n", .{path_buff2});
+                        @panic("Can't create  file to update entities");
+                    };
+
+                    buffered = std.io.bufferedReader(old_file.reader());
+                    reader = buffered.reader();
+                    continue;
+                }, // file read till the end
+                else => {
+                    std.debug.print("Error while reading file: {any}\n", .{err});
+                    break;
+                },
+            };
+
+            try new_file.writeAll(output_fbs.getWritten());
+
+            // THis is the uuid of the current row
+            const uuid = try UUID.parse(output_fbs.getWritten()[0..36]); // FIXME: After the first loop, the first char is \n, which is invalid
+            founded = false;
+
+            // Optimize this
+            for (uuids.items) |elem| {
+                if (elem.compare(uuid)) {
+                    founded = true;
+                    break;
+                }
+            }
+
+            if (founded) {
+                for (self.structName2structMembers(struct_name), self.structName2DataType(struct_name)) |member_name, member_type| {
+                    // For all collum in the right order, check if the key is in the map, if so use it to write the new value, otherwise use the old file
+                    output_fbs.reset();
+                    switch (member_type) {
+                        .str => {
+                            try reader.streamUntilDelimiter(writer, '\'', null);
+                            try reader.streamUntilDelimiter(writer, '\'', null);
+                        },
+                        .int_array, .float_array, .bool_array, .id_array => try reader.streamUntilDelimiter(writer, ']', null),
+                        .str_array => try reader.streamUntilDelimiter(writer, ']', null), // FIXME: If the string itself contain ], this will be a problem
+                        else => {
+                            try reader.streamUntilDelimiter(writer, ' ', null);
+                            try reader.streamUntilDelimiter(writer, ' ', null);
+                        },
+                    }
+
+                    if (new_data_map.contains(self.locToSlice(member_name))) {
+                        // Write the new data
+                        try new_file.writer().print(" {s}", .{new_data_map.get(self.locToSlice(member_name)).?});
+                    } else {
+                        // Write the old data
+                        switch (member_type) {
+                            .str => try new_file.writeAll(" \'"),
+                            .int_array => try new_file.writeAll(" "),
+                            .float_array => try new_file.writeAll(" "),
+                            .str_array => try new_file.writeAll(" "),
+                            .bool_array => try new_file.writeAll(" "),
+                            .id_array => try new_file.writeAll(" "),
+                            else => try new_file.writeAll(" "),
+                        }
+
+                        try new_file.writeAll(output_fbs.getWritten());
+
+                        switch (member_type) {
+                            .str => try new_file.writeAll("\'"),
+                            .int_array, .float_array, .bool_array, .id_array => try new_file.writeAll("]"),
+                            else => {},
+                        }
+                    }
+                }
+
+                try reader.streamUntilDelimiter(writer, '\n', null);
+                try new_file.writeAll("\n");
+            } else {
+                // stream until the delimiter
+                output_fbs.reset();
+                try new_file.writeAll(" ");
+                try reader.streamUntilDelimiter(writer, '\n', null);
+                try new_file.writeAll(output_fbs.getWritten());
+                try new_file.writeAll("\n");
+            }
+        }
     }
 
     /// Use a filename in the format 1.zippondata and return the 1
@@ -530,6 +696,18 @@ pub fn parseArrayBool(allocator: std.mem.Allocator, array_str: []const u8) std.A
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
         array.append(parseBool(x)) catch {};
+    }
+
+    return array;
+}
+
+pub fn parseArrayUUID(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList(UUID) {
+    var array = std.ArrayList(UUID).init(allocator);
+
+    var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
+    while (it.next()) |x| {
+        const uuid = UUID.parse(x) catch continue;
+        array.append(uuid) catch continue;
     }
 
     return array;

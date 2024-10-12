@@ -92,7 +92,7 @@ pub fn main() !void {
                         .string_literal => {
                             const null_term_query_str = try allocator.dupeZ(u8, line_str[token.loc.start + 1 .. token.loc.end - 1]);
                             defer allocator.free(null_term_query_str);
-                            try runQuery(null_term_query_str, &file_engine);
+                            runQuery(null_term_query_str, &file_engine);
                             state = .end;
                         },
                         .keyword_help => {
@@ -165,7 +165,7 @@ pub fn main() !void {
     }
 }
 
-pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) !void {
+pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
@@ -175,12 +175,15 @@ pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) !vo
     defer {
         parser.deinit();
         switch (gpa.deinit()) {
-            .ok => std.log.debug("No memory leak baby !\n", .{}),
+            .ok => {},
             .leak => std.log.debug("We fucked it up bro...\n", .{}),
         }
     }
 
-    try parser.parse();
+    parser.parse() catch |err| switch (err) {
+        error.SynthaxError => {},
+        else => {},
+    };
 }
 
 // TODO: Put that in the FileEngine

@@ -4,8 +4,10 @@ pub const DataType = enum {
     float,
     str,
     bool,
+    id,
     int_array,
     float_array,
     str_array,
     bool_array,
+    id_array,
 };
