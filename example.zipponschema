@@ -3,5 +3,5 @@ User (
   age: int,
   email: str,
   scores: []int,
-  friends: []bool,
+  friends: []str,
 )
