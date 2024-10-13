@@ -84,10 +84,8 @@ pub const FileEngine = struct {
         self.path_to_ZipponDB_dir = path;
     }
 
-    // TODO: A function that take a list of UUID and write into the buffer the message tot send
-    // Like the other, write it line by line then if the UUID is found, you write the data
-    // The output need to be in the JSON format, so change '' into ""
-    // Maybe I will change '' to "" everywhere
+    /// Take a list of UUID and, a buffer array and the additional data to write into the buffer the JSON to send
+    /// TODO: Optimize
     pub fn parseAndWriteToSend(self: *FileEngine, struct_name: []const u8, uuids: []UUID, buffer: *std.ArrayList(u8), additional_data: AdditionalData) !void {
         const max_file_index = try self.maxFileIndex(struct_name);
         var current_index: usize = 0;
@@ -175,7 +173,15 @@ pub const FileEngine = struct {
                                 const str_slice = data_toker.getTokenSlice(token);
                                 try out_writer.print("\"{s}\"", .{str_slice[1 .. str_slice.len - 1]});
                             },
-                            .str_array => {}, // TODO: Write [ then "" then text, repeate
+                            .str_array => {
+                                while (token.tag != .r_bracket) : (token = data_toker.next()) {
+                                    try out_writer.writeAll("\"");
+                                    try out_writer.writeAll(data_toker.getTokenSlice(token)[1..(token.loc.end - token.loc.start)]);
+                                    try out_writer.writeAll("\"");
+                                    try out_writer.writeAll(" ");
+                                }
+                                try out_writer.writeAll(data_toker.getTokenSlice(token));
+                            },
                             .int_array, .float_array, .bool_array, .id_array => {
                                 while (token.tag != .r_bracket) : (token = data_toker.next()) {
                                     try out_writer.writeAll(data_toker.getTokenSlice(token));
@@ -370,7 +376,6 @@ pub const FileEngine = struct {
                     .str => if (std.mem.eql(u8, compare_value.str, data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .bool => if (compare_value.bool_ == parseBool(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .id => if (compare_value.id.compare(uuid)) try uuid_array.append(uuid),
-                    // TODO: Implement for array too
                     else => unreachable,
                 },
 
@@ -379,39 +384,34 @@ pub const FileEngine = struct {
                     .float => if (compare_value.float != parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .str => if (!std.mem.eql(u8, compare_value.str, data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .bool => if (compare_value.bool_ != parseBool(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                    // TODO: Implement for array too
                     else => unreachable,
                 },
 
                 .superior_or_equal => switch (condition.data_type) {
                     .int => if (compare_value.int <= parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .float => if (compare_value.float <= parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                    // TODO: Implement for array too
                     else => unreachable,
                 },
 
                 .superior => switch (condition.data_type) {
                     .int => if (compare_value.int < parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .float => if (compare_value.float < parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                    // TODO: Implement for array too
                     else => unreachable,
                 },
 
                 .inferior_or_equal => switch (condition.data_type) {
                     .int => if (compare_value.int >= parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .float => if (compare_value.float >= parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                    // TODO: Implement for array too
                     else => unreachable,
                 },
 
                 .inferior => switch (condition.data_type) {
                     .int => if (compare_value.int > parseInt(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
                     .float => if (compare_value.float > parseFloat(data_toker.getTokenSlice(token))) try uuid_array.append(uuid),
-                    // TODO: Implement for array too
                     else => unreachable,
                 },
 
-                // TODO: Do it for other array
+                // TODO: Do it for other array and implement in the query language
                 .in => switch (condition.data_type) {
                     .id_array => {
                         for (compare_value.id_array.items) |elem| {
