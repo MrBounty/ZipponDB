@@ -58,7 +58,6 @@ pub const Parser = struct {
         filter_and_send,
         filter_and_update,
         filter_and_delete,
-        send_all,
 
         // For the main parse function
         expect_struct_name,
@@ -97,6 +96,7 @@ pub const Parser = struct {
         StructNotFound,
         FeatureMissing,
         ParsingValueError,
+        ConditionError,
     };
 
     /// This is the [] part
@@ -162,6 +162,7 @@ pub const Parser = struct {
                 .expect_struct_name => {
                     // Check if the struct name is in the schema
                     self.struct_name = try self.allocator.dupe(u8, self.toker.getTokenSlice(token));
+                    if (token.tag != .identifier) return self.printError("Error: Missing struct name", &token, ZiQlParserError.StructNotFound);
                     if (!self.file_engine.isStructNameExists(self.struct_name)) return self.printError("Error: struct name not found in schema.", &token, ZiQlParserError.StructNotFound);
                     switch (self.action) {
                         .ADD => self.state = .expect_new_data,
@@ -179,7 +180,10 @@ pub const Parser = struct {
                             .DELETE => .filter_and_delete,
                             else => unreachable,
                         },
-                        .eof => self.state = .send_all,
+                        .eof => {
+                            self.state = .filter_and_send;
+                            keep_next = true;
+                        },
                         else => return self.printError("Error: Expect [ for additional data or { for a filter", &token, ZiQlParserError.SynthaxError),
                     }
                 },
@@ -194,59 +198,83 @@ pub const Parser = struct {
                     };
                 },
 
-                .send_all => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    try self.file_engine.getAllUUIDList(self.struct_name, &array);
+                .filter_and_send => switch (token.tag) {
+                    .l_brace => {
+                        var array = std.ArrayList(UUID).init(self.allocator);
+                        defer array.deinit();
+                        _ = try self.parseFilter(&array, self.struct_name, true);
 
-                    // TODO: Use the additional data to reduce the array
+                        self.sendEntity(&array);
+                        self.state = .end;
+                    },
+                    .eof => {
+                        var array = std.ArrayList(UUID).init(self.allocator);
+                        defer array.deinit();
+                        try self.file_engine.getAllUUIDList(self.struct_name, &array);
 
-                    self.sendEntity(&array);
-                    self.state = .end;
-                },
-
-                .filter_and_send => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    _ = try self.parseFilter(&array, self.struct_name, true);
-
-                    // TODO: Use the additional data to reduce the array
-
-                    self.sendEntity(&array);
-                    self.state = .end;
+                        self.sendEntity(&array);
+                        self.state = .end;
+                    },
+                    else => return self.printError("Error: Expected filter.", &token, ZiQlParserError.SynthaxError),
                 },
 
                 // TODO: Optimize so it doesnt use parseFilter but just parse the file and directly check the condition. Here I end up parsing 2 times.
-                .filter_and_update => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    token = try self.parseFilter(&array, self.struct_name, true);
+                .filter_and_update => switch (token.tag) {
+                    .l_brace => {
+                        var array = std.ArrayList(UUID).init(self.allocator);
+                        defer array.deinit();
+                        token = try self.parseFilter(&array, self.struct_name, true);
 
-                    // TODO: Use the additional data to reduce the array
+                        if (token.tag != .keyword_to) return self.printError("Error: Expected TO", &token, ZiQlParserError.SynthaxError);
 
-                    if (token.tag != .keyword_to) return self.printError("Error: Expected TO", &token, ZiQlParserError.SynthaxError);
+                        token = self.toker.next();
+                        if (token.tag != .l_paren) return self.printError("Error: Expected (", &token, ZiQlParserError.SynthaxError);
 
-                    token = self.toker.next();
-                    if (token.tag != .l_paren) return self.printError("Error: Expected (", &token, ZiQlParserError.SynthaxError);
+                        var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                        defer data_map.deinit();
+                        try self.parseNewData(&data_map);
 
-                    var data_map = std.StringHashMap([]const u8).init(self.allocator);
-                    defer data_map.deinit();
-                    try self.parseNewData(&data_map);
+                        try self.file_engine.updateEntities(self.struct_name, array.items, data_map);
+                        self.state = .end;
+                    },
+                    .keyword_to => {
+                        var array = std.ArrayList(UUID).init(self.allocator);
+                        defer array.deinit();
+                        try self.file_engine.getAllUUIDList(self.struct_name, &array);
 
-                    try self.file_engine.updateEntities(self.struct_name, array.items, data_map);
-                    self.state = .end;
+                        token = self.toker.next();
+                        if (token.tag != .l_paren) return self.printError("Error: Expected (", &token, ZiQlParserError.SynthaxError);
+
+                        var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                        defer data_map.deinit();
+                        try self.parseNewData(&data_map);
+
+                        try self.file_engine.updateEntities(self.struct_name, array.items, data_map);
+                        self.state = .end;
+                    },
+                    else => return self.printError("Error: Expected filter or TO.", &token, ZiQlParserError.SynthaxError),
                 },
 
-                .filter_and_delete => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    _ = try self.parseFilter(&array, self.struct_name, true);
+                .filter_and_delete => switch (token.tag) {
+                    .l_brace => {
+                        var array = std.ArrayList(UUID).init(self.allocator);
+                        defer array.deinit();
+                        _ = try self.parseFilter(&array, self.struct_name, true);
 
-                    // TODO: Use the additional data to reduce the array
+                        const deleted_count = try self.file_engine.deleteEntities(self.struct_name, array.items);
+                        std.debug.print("Successfully deleted {d} {s}\n", .{ deleted_count, self.struct_name });
+                        self.state = .end;
+                    },
+                    .eof => {
+                        var array = std.ArrayList(UUID).init(self.allocator);
+                        defer array.deinit();
+                        try self.file_engine.getAllUUIDList(self.struct_name, &array);
 
-                    const deleted_count = try self.file_engine.deleteEntities(self.struct_name, array.items);
-                    std.debug.print("Successfully deleted {d} {s}\n", .{ deleted_count, self.struct_name });
-                    self.state = .end;
+                        const deleted_count = try self.file_engine.deleteEntities(self.struct_name, array.items);
+                        std.debug.print("Successfully deleted all {d} {s}\n", .{ deleted_count, self.struct_name });
+                        self.state = .end;
+                    },
+                    else => return self.printError("Error: Expected filter.", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .expect_new_data => switch (token.tag) {
@@ -262,7 +290,7 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map);
 
-                    // TODO: Print the list of missing
+                    // TODO: Print the entire list of missing
                     if (!self.file_engine.checkIfAllMemberInMap(self.struct_name, &data_map)) return self.printError("Error: Missing member", &token, ZiQlParserError.MemberMissing);
                     const uuid = self.file_engine.writeEntity(self.struct_name, data_map) catch {
                         send("ZipponDB error: Couln't write new data to file", .{});
@@ -277,7 +305,7 @@ pub const Parser = struct {
         }
     }
 
-    // TODO: Update that to order before cutting if too long when the ASC and DESC will be implemented
+    // TODO: Update to use ASC and DESC
     fn sendEntity(self: *Parser, uuid_list: *std.ArrayList(UUID)) void {
         var buffer = std.ArrayList(u8).init(self.allocator);
         defer buffer.deinit();
@@ -385,7 +413,7 @@ pub const Parser = struct {
         return token;
     }
 
-    /// Parse to get a Condition< Which is a struct that is use by the FileEngine to retreive data.
+    /// Parse to get a Condition. Which is a struct that is use by the FileEngine to retreive data.
     /// In the query, it is this part name = 'Bob' or age <= 10
     fn parseCondition(self: *Parser, condition: *Condition, token_ptr: *Token) !Token {
         var keep_next = false;
@@ -499,10 +527,47 @@ pub const Parser = struct {
                 else => unreachable,
             }
         }
+
+        // Check if the condition is valid
+        switch (condition.operation) {
+            .equal => switch (condition.data_type) {
+                .int, .float, .str, .bool, .id => {},
+                else => return self.printError("Error: Only int, float, str, bool can be compare with =.", &token, ZiQlParserError.ConditionError),
+            },
+
+            .different => switch (condition.data_type) {
+                .int, .float, .str, .bool, .id => {},
+                else => return self.printError("Error: Only int, float, str, bool can be compare with !=.", &token, ZiQlParserError.ConditionError),
+            },
+
+            .superior_or_equal => switch (condition.data_type) {
+                .int, .float => {},
+                else => return self.printError("Error: Only int, float can be compare with <=.", &token, ZiQlParserError.ConditionError),
+            },
+
+            .superior => switch (condition.data_type) {
+                .int, .float => {},
+                else => return self.printError("Error: Only int, float can be compare with <.", &token, ZiQlParserError.ConditionError),
+            },
+
+            .inferior_or_equal => switch (condition.data_type) {
+                .int, .float => {},
+                else => return self.printError("Error: Only int, float can be compare with >=.", &token, ZiQlParserError.ConditionError),
+            },
+
+            .inferior => switch (condition.data_type) {
+                .int, .float => {},
+                else => return self.printError("Error: Only int, float can be compare with >.", &token, ZiQlParserError.ConditionError),
+            },
+
+            // TODO:  Do it for IN and other stuff to
+            else => unreachable,
+        }
+
         return token;
     }
 
-    /// When this function is call, nect token should be [
+    /// When this function is call, next token should be [
     /// Check if an int is here -> check if ; is here -> check if member is here -> check if [ is here -> loop
     fn parseAdditionalData(self: *Parser, additional_data: *AdditionalData) !void {
         var token = self.toker.next();
@@ -514,20 +579,18 @@ pub const Parser = struct {
             keep_next = false;
         }) {
             switch (self.state) {
-                .expect_count_of_entity_to_find => {
-                    switch (token.tag) {
-                        .int_literal => {
-                            const count = std.fmt.parseInt(usize, self.toker.getTokenSlice(token), 10) catch {
-                                return self.printError("Error while transforming this into a integer.", &token, ZiQlParserError.ParsingValueError);
-                            };
-                            additional_data.entity_count_to_find = count;
-                            self.state = .expect_semicolon_OR_right_bracket;
-                        },
-                        else => {
-                            self.state = .expect_member;
-                            keep_next = true;
-                        },
-                    }
+                .expect_count_of_entity_to_find => switch (token.tag) {
+                    .int_literal => {
+                        const count = std.fmt.parseInt(usize, self.toker.getTokenSlice(token), 10) catch {
+                            return self.printError("Error while transforming this into a integer.", &token, ZiQlParserError.ParsingValueError);
+                        };
+                        additional_data.entity_count_to_find = count;
+                        self.state = .expect_semicolon_OR_right_bracket;
+                    },
+                    else => {
+                        self.state = .expect_member;
+                        keep_next = true;
+                    },
                 },
 
                 .expect_semicolon_OR_right_bracket => switch (token.tag) {
@@ -574,7 +637,7 @@ pub const Parser = struct {
         }
     }
 
-    /// Take the tokenizer and return a map of the query for the ADD command.
+    /// Take the tokenizer and return a map of the ADD action.
     /// Keys are the member name and value are the string of the value in the query. E.g. 'Adrien' or '10'
     /// Entry token need to be (
     fn parseNewData(self: *Parser, member_map: *std.StringHashMap([]const u8)) !void {
@@ -598,7 +661,7 @@ pub const Parser = struct {
                 },
 
                 .expect_equal => switch (token.tag) {
-                    // TODO: Add more comparison like IN or other stuff
+                    // TODO: Implement stuff to manipulate array like APPEND or REMOVE
                     .equal => self.state = .expect_new_value,
                     else => return self.printError("Error: Expected =", &token, ZiQlParserError.SynthaxError),
                 },
@@ -723,6 +786,7 @@ pub const Parser = struct {
         }
     }
 
+    /// Print an error and send it to the user pointing to the token
     fn printError(self: *Parser, message: []const u8, token: *Token, err: ZiQlParserError) ZiQlParserError {
         stdout.print("\n", .{}) catch {};
         stdout.print("{s}\n", .{message}) catch {};
@@ -876,6 +940,16 @@ test "Specific query" {
     try testParsing("GRAB User [1]");
 }
 
+test "Synthax error" {
+    try expectParsingError("GRAB {}", Parser.ZiQlParserError.StructNotFound);
+    try expectParsingError("GRAB User {qwe = 'qwe'}", Parser.ZiQlParserError.MemberNotFound);
+    try expectParsingError("ADD User (name='Bob')", Parser.ZiQlParserError.MemberMissing);
+    try expectParsingError("GRAB User {name='Bob'", Parser.ZiQlParserError.SynthaxError);
+    try expectParsingError("GRAB User {age = 50 name='Bob'}", Parser.ZiQlParserError.SynthaxError);
+    try expectParsingError("GRAB User {age <14 AND (age>55}", Parser.ZiQlParserError.SynthaxError);
+    try expectParsingError("GRAB User {name < 'Hello'}", Parser.ZiQlParserError.ConditionError);
+}
+
 fn testParsing(source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
 
@@ -887,4 +961,17 @@ fn testParsing(source: [:0]const u8) !void {
     defer parser.deinit();
 
     try parser.parse();
+}
+
+fn expectParsingError(source: [:0]const u8, err: Parser.ZiQlParserError) !void {
+    const allocator = std.testing.allocator;
+
+    var file_engine = FileEngine.init(allocator, "ZipponDB");
+    defer file_engine.deinit();
+
+    var tokenizer = Tokenizer.init(source);
+    var parser = Parser.init(allocator, &tokenizer, &file_engine);
+    defer parser.deinit();
+
+    try std.testing.expectError(err, parser.parse());
 }
