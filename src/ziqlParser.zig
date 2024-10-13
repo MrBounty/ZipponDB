@@ -873,12 +873,13 @@ test "GRAB filter with int" {
 test "Specific query" {
     try testParsing("GRAB User");
     try testParsing("GRAB User {}");
+    try testParsing("GRAB User [1]");
 }
 
 fn testParsing(source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
 
-    var file_engine = FileEngine.init(allocator, null);
+    var file_engine = FileEngine.init(allocator, "ZipponDB");
     defer file_engine.deinit();
 
     var tokenizer = Tokenizer.init(source);

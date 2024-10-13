@@ -17,6 +17,10 @@ pub const Token = struct {
         .{ "init", .keyword_init },
         .{ "schema", .keyword_schema },
         .{ "quit", .keyword_quit },
+        .{ "db", .keyword_db },
+        .{ "new", .keyword_new },
+        .{ "metrics", .keyword_metrics },
+        .{ "use", .keyword_use },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -33,6 +37,10 @@ pub const Token = struct {
         keyword_schema,
         keyword_init,
         keyword_quit,
+        keyword_db,
+        keyword_new,
+        keyword_metrics,
+        keyword_use,
 
         string_literal,
         identifier,

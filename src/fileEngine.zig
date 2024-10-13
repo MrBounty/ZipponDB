@@ -16,13 +16,14 @@ const AdditionalData = @import("ziqlParser.zig").Parser.AdditionalData;
 /// Or even get stats, whatever. If it touch files, it's here
 pub const FileEngine = struct {
     allocator: Allocator,
-    path_to_ZipponDB_dir: []const u8, // The path to the DATA folder
+    usable: bool,
+    path_to_ZipponDB_dir: []const u8, // Make that into a list
     max_file_size: usize = 5e+4, // 50kb TODO: Change
     null_terminated_schema_buff: [:0]u8,
     struct_array: std.ArrayList(SchemaStruct),
 
-    pub fn init(allocator: Allocator, path: ?[]const u8) FileEngine {
-        const path_to_ZipponDB_dir = path orelse "ZipponDB";
+    pub fn init(allocator: Allocator, path: []const u8) FileEngine {
+        const path_to_ZipponDB_dir = path;
 
         var schema_buf = allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
         defer allocator.free(schema_buf);
@@ -41,6 +42,7 @@ pub const FileEngine = struct {
             .path_to_ZipponDB_dir = path_to_ZipponDB_dir,
             .null_terminated_schema_buff = null_terminated_schema_buff,
             .struct_array = struct_array,
+            .usable = !std.mem.eql(u8, path, ""),
         };
     }
 
@@ -77,6 +79,10 @@ pub const FileEngine = struct {
             return Condition{ .struct_name = struct_name };
         }
     };
+
+    pub fn setPath(self: *FileEngine, path: []const u8) void {
+        self.path_to_ZipponDB_dir = path;
+    }
 
     // TODO: A function that take a list of UUID and write into the buffer the message tot send
     // Like the other, write it line by line then if the UUID is found, you write the data
@@ -756,10 +762,60 @@ pub const FileEngine = struct {
 
         var iter = member_dir.iterate();
         while (try iter.next()) |entry| {
-            if (entry.kind != std.fs.Dir.Entry.Kind.file) continue;
+            if (entry.kind != .file) continue;
             count += 1;
         }
         return count - 1;
+    }
+
+    pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) !void {
+        const path = try std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir});
+        defer self.allocator.free(path);
+
+        const main_dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
+
+        const writer = buffer.writer();
+        try writer.print("Database path: {s}\n", .{path});
+        const main_size = try self.getDirTotalSize(main_dir);
+        try writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1e-6});
+
+        const log_dir = try main_dir.openDir("LOG", .{ .iterate = true });
+        const log_size = try self.getDirTotalSize(log_dir);
+        try writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1e-6});
+
+        const backup_dir = try main_dir.openDir("BACKUP", .{ .iterate = true });
+        const backup_size = try self.getDirTotalSize(backup_dir);
+        try writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1e-6});
+
+        const data_dir = try main_dir.openDir("DATA", .{ .iterate = true });
+        const data_size = try self.getDirTotalSize(data_dir);
+        try writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1e-6});
+
+        var iter = data_dir.iterate();
+        while (try iter.next()) |entry| {
+            if (entry.kind != .directory) continue;
+            const sub_dir = try data_dir.openDir(entry.name, .{ .iterate = true });
+            const size = try self.getDirTotalSize(sub_dir);
+            try writer.print("  {s}: {d:.}Mb\n", .{ entry.name, @as(f64, @floatFromInt(size)) / 1e-6 });
+        }
+    }
+
+    // Maybe make it so it use itself to search if it find a directory
+    fn getDirTotalSize(self: FileEngine, dir: std.fs.Dir) !u64 {
+        var total: u64 = 0;
+        var stat: std.fs.File.Stat = undefined;
+        var iter = dir.iterate();
+        while (try iter.next()) |entry| {
+            if (entry.kind == .directory) {
+                const sub_dir = try dir.openDir(entry.name, .{ .iterate = true });
+                total += try self.getDirTotalSize(sub_dir);
+            }
+
+            if (entry.kind != .file) continue;
+            stat = try dir.statFile(entry.name);
+            total += stat.size;
+        }
+        return total;
     }
 
     const FileError = error{
@@ -934,7 +990,7 @@ pub const FileEngine = struct {
 test "Get list of UUID using condition" {
     const allocator = std.testing.allocator;
 
-    var file_engine = FileEngine.init(allocator, null);
+    var file_engine = FileEngine.init(allocator, "ZipponDB");
     defer file_engine.deinit();
 
     var uuid_array = std.ArrayList(UUID).init(allocator);
