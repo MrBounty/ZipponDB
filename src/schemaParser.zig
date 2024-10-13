@@ -59,7 +59,6 @@ pub const Parser = struct {
         expect_comma,
     };
 
-    // TODO: Pass that to the FileEngine and do the metadata.zig file instead
     pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
         var state: State = .expect_struct_name_OR_end;
         var index: usize = 0;

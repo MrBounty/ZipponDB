@@ -282,7 +282,7 @@ pub const Parser = struct {
                         keep_next = true;
                         self.state = .parse_new_data_and_add_data;
                     },
-                    else => return self.printError("Error: Expecting new data starting with (", &token, ZiQlParserError.SynthaxError),
+                    else => return self.printError("Error: Expected new data starting with (", &token, ZiQlParserError.SynthaxError),
                 },
 
                 .parse_new_data_and_add_data => {
@@ -392,7 +392,7 @@ pub const Parser = struct {
                             keep_next = true;
                             try self.file_engine.getUUIDListUsingCondition(right_condition, &right_array);
                         }, // Create a new condition and compare it
-                        else => return self.printError("Error: Expecting ( or member name.", &token, ZiQlParserError.SynthaxError),
+                        else => return self.printError("Error: Expected ( or member name.", &token, ZiQlParserError.SynthaxError),
                     }
 
                     switch (curent_operation) {
@@ -953,7 +953,8 @@ test "Synthax error" {
 fn testParsing(source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
 
-    var file_engine = FileEngine.init(allocator, "ZipponDB");
+    const path = try allocator.dupe(u8, "ZipponDB");
+    var file_engine = FileEngine.init(allocator, path);
     defer file_engine.deinit();
 
     var tokenizer = Tokenizer.init(source);
@@ -966,7 +967,8 @@ fn testParsing(source: [:0]const u8) !void {
 fn expectParsingError(source: [:0]const u8, err: Parser.ZiQlParserError) !void {
     const allocator = std.testing.allocator;
 
-    var file_engine = FileEngine.init(allocator, "ZipponDB");
+    const path = try allocator.dupe(u8, "ZipponDB");
+    var file_engine = FileEngine.init(allocator, path);
     defer file_engine.deinit();
 
     var tokenizer = Tokenizer.init(source);

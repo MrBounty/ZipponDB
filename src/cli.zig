@@ -34,6 +34,7 @@ const State = enum {
     end,
 };
 
+// TODO: Check id  the argument --query or --q is in the command and just run the query instead
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -42,17 +43,29 @@ pub fn main() !void {
         .leak => std.log.debug("We fucked it up bro...\n", .{}),
     };
 
+    var db_path = std.ArrayList(u8).init(allocator);
+    defer db_path.deinit();
+
     const path_env_variable = utils.getEnvVariables(allocator, "ZIPPONDB_PATH");
-    defer if (path_env_variable) |path| allocator.free(path);
     var file_engine: FileEngine = undefined;
     defer file_engine.deinit();
 
     if (path_env_variable) |path| {
-        std.debug.print("Environment variable found: {s}\n", .{path});
-        file_engine = FileEngine.init(allocator, path_env_variable.?);
+        std.debug.print("ZIPONDB_PATH environment variable found: {s}\n", .{path});
+
+        var already_init = false;
+        _ = std.fs.cwd().openDir(path, .{}) catch {
+            std.debug.print("Error opening ZipponDB path using environment variable, please select the database using 'db use' or create a new one with 'db new'\n", .{});
+            file_engine = FileEngine.init(allocator, try allocator.dupe(u8, ""));
+            already_init = true;
+        };
+        if (!already_init) {
+            try checkAndCreateDirectories(path, allocator);
+            file_engine = FileEngine.init(allocator, path_env_variable.?);
+        }
     } else {
-        file_engine = FileEngine.init(allocator, "");
-        std.debug.print("No ZIPONDB_PATH envirionment variable found, please use the command:\n db use path/to/db \nor\n db new /path/to/dir\n", .{});
+        file_engine = FileEngine.init(allocator, try allocator.dupe(u8, ""));
+        std.debug.print("No ZIPONDB_PATH environment variable found, please use the command:\n db use path/to/db \nor\n db new /path/to/dir\n", .{});
     }
 
     const line_buf = try allocator.alloc(u8, 1024 * 50);
@@ -153,7 +166,7 @@ pub fn main() !void {
                     .expect_path_to_db => switch (token.tag) {
                         .identifier => {
                             file_engine.deinit();
-                            file_engine = FileEngine.init(allocator, cliToker.getTokenSlice(token));
+                            file_engine = FileEngine.init(allocator, try allocator.dupe(u8, cliToker.getTokenSlice(token)));
                             send("Successfully started using the database!", .{});
                             state = .end;
                         },
@@ -171,7 +184,7 @@ pub fn main() !void {
                                 continue;
                             };
                             file_engine.deinit();
-                            file_engine = FileEngine.init(allocator, cliToker.getTokenSlice(token));
+                            file_engine = FileEngine.init(allocator, try allocator.dupe(u8, cliToker.getTokenSlice(token)));
                             send("Successfully initialized the database!", .{});
                             state = .end;
                         },
@@ -279,7 +292,7 @@ pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) voi
 
 // TODO: Put that in the FileEngine
 fn checkAndCreateDirectories(sub_path: []const u8, allocator: Allocator) !void {
-    var path_buff = try std.fmt.allocPrint(allocator, "{s}/ZipponDB", .{sub_path});
+    var path_buff = try std.fmt.allocPrint(allocator, "{s}", .{sub_path});
     defer allocator.free(path_buff);
 
     const cwd = std.fs.cwd();
@@ -290,7 +303,7 @@ fn checkAndCreateDirectories(sub_path: []const u8, allocator: Allocator) !void {
     };
 
     allocator.free(path_buff);
-    path_buff = try std.fmt.allocPrint(allocator, "{s}/ZipponDB/DATA", .{sub_path});
+    path_buff = try std.fmt.allocPrint(allocator, "{s}/DATA", .{sub_path});
 
     cwd.makeDir(path_buff) catch |err| switch (err) {
         error.PathAlreadyExists => {},
@@ -298,7 +311,7 @@ fn checkAndCreateDirectories(sub_path: []const u8, allocator: Allocator) !void {
     };
 
     allocator.free(path_buff);
-    path_buff = try std.fmt.allocPrint(allocator, "{s}/ZipponDB/BACKUP", .{sub_path});
+    path_buff = try std.fmt.allocPrint(allocator, "{s}/BACKUP", .{sub_path});
 
     cwd.makeDir(path_buff) catch |err| switch (err) {
         error.PathAlreadyExists => {},
@@ -306,7 +319,7 @@ fn checkAndCreateDirectories(sub_path: []const u8, allocator: Allocator) !void {
     };
 
     allocator.free(path_buff);
-    path_buff = try std.fmt.allocPrint(allocator, "{s}/ZipponDB/LOG", .{sub_path});
+    path_buff = try std.fmt.allocPrint(allocator, "{s}/LOG", .{sub_path});
 
     cwd.makeDir(path_buff) catch |err| switch (err) {
         error.PathAlreadyExists => {},

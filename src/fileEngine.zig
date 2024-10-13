@@ -50,6 +50,7 @@ pub const FileEngine = struct {
         for (self.struct_array.items) |*elem| elem.deinit();
         self.struct_array.deinit();
         self.allocator.free(self.null_terminated_schema_buff);
+        self.allocator.free(self.path_to_ZipponDB_dir);
     }
 
     const ComparisonValue = union {
@@ -86,6 +87,7 @@ pub const FileEngine = struct {
 
     /// Take a list of UUID and, a buffer array and the additional data to write into the buffer the JSON to send
     /// TODO: Optimize
+    /// FIXME: Array of string are not working
     pub fn parseAndWriteToSend(self: *FileEngine, struct_name: []const u8, uuids: []UUID, buffer: *std.ArrayList(u8), additional_data: AdditionalData) !void {
         const max_file_index = try self.maxFileIndex(struct_name);
         var current_index: usize = 0;
@@ -161,6 +163,9 @@ pub const FileEngine = struct {
 
             if (founded) {
                 try out_writer.writeAll("{");
+                try out_writer.writeAll("id:\"");
+                try out_writer.print("{s}", .{output_fbs.getWritten()[0..36]});
+                try out_writer.writeAll("\", ");
                 for (self.structName2structMembers(struct_name), self.structName2DataType(struct_name)) |member_name, member_type| {
                     token = data_toker.next();
                     // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
@@ -174,6 +179,8 @@ pub const FileEngine = struct {
                                 try out_writer.print("\"{s}\"", .{str_slice[1 .. str_slice.len - 1]});
                             },
                             .str_array => {
+                                try out_writer.writeAll(data_toker.getTokenSlice(token));
+                                token = data_toker.next();
                                 while (token.tag != .r_bracket) : (token = data_toker.next()) {
                                     try out_writer.writeAll("\"");
                                     try out_writer.writeAll(data_toker.getTokenSlice(token)[1..(token.loc.end - token.loc.start)]);
@@ -777,26 +784,26 @@ pub const FileEngine = struct {
         const writer = buffer.writer();
         try writer.print("Database path: {s}\n", .{path});
         const main_size = try self.getDirTotalSize(main_dir);
-        try writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1e-6});
+        try writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1e6});
 
         const log_dir = try main_dir.openDir("LOG", .{ .iterate = true });
         const log_size = try self.getDirTotalSize(log_dir);
-        try writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1e-6});
+        try writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1e6});
 
         const backup_dir = try main_dir.openDir("BACKUP", .{ .iterate = true });
         const backup_size = try self.getDirTotalSize(backup_dir);
-        try writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1e-6});
+        try writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1e6});
 
         const data_dir = try main_dir.openDir("DATA", .{ .iterate = true });
         const data_size = try self.getDirTotalSize(data_dir);
-        try writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1e-6});
+        try writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1e6});
 
         var iter = data_dir.iterate();
         while (try iter.next()) |entry| {
             if (entry.kind != .directory) continue;
             const sub_dir = try data_dir.openDir(entry.name, .{ .iterate = true });
             const size = try self.getDirTotalSize(sub_dir);
-            try writer.print("  {s}: {d:.}Mb\n", .{ entry.name, @as(f64, @floatFromInt(size)) / 1e-6 });
+            try writer.print("  {s}: {d:.}Mb\n", .{ entry.name, @as(f64, @floatFromInt(size)) / 1e6 });
         }
     }
 
@@ -828,7 +835,7 @@ pub const FileEngine = struct {
     };
 
     /// Request a path to a schema file and then create the struct folder
-    /// TODO: Delete current folder before new one are created
+    /// TODO: Check if some data already exist and if so ask if the user want to delete it and make a backup
     pub fn initDataFolder(self: *FileEngine, path_to_schema_file: []const u8) FileError!void {
         var schema_buf = self.allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
         defer self.allocator.free(schema_buf);
@@ -990,7 +997,8 @@ pub const FileEngine = struct {
 test "Get list of UUID using condition" {
     const allocator = std.testing.allocator;
 
-    var file_engine = FileEngine.init(allocator, "ZipponDB");
+    const path = try allocator.dupe(u8, "ZipponDB");
+    var file_engine = FileEngine.init(allocator, path);
     defer file_engine.deinit();
 
     var uuid_array = std.ArrayList(UUID).init(allocator);
@@ -1060,13 +1068,15 @@ pub fn parseArrayUUID(allocator: std.mem.Allocator, array_str: []const u8) std.A
     return array;
 }
 
-// FIXME: This will not work if their is a space in one string. E.g ['Hello world'] will be split between Hello and world but it shouldn't
+// FIXME: I think it will not work if there is a ' inside the string
 pub fn parseArrayStr(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList([]const u8) {
     var array = std.ArrayList([]const u8).init(allocator);
 
-    var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
+    var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], "'");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x)) continue;
         const x_copy = allocator.dupe(u8, x) catch @panic("=(");
+        // FIXME: I think I need to add the '' on each side again
         array.append(x_copy) catch {};
     }
 
