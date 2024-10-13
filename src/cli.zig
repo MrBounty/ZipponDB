@@ -37,21 +37,19 @@ const State = enum {
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    defer {
-        switch (gpa.deinit()) {
-            .ok => std.log.debug("No memory leak baby !\n", .{}),
-            .leak => std.log.debug("We fucked it up bro...\n", .{}),
-        }
-    }
+    defer switch (gpa.deinit()) {
+        .ok => {},
+        .leak => std.log.debug("We fucked it up bro...\n", .{}),
+    };
 
     const path_env_variable = utils.getEnvVariables(allocator, "ZIPPONDB_PATH");
+    defer if (path_env_variable) |path| allocator.free(path);
     var file_engine: FileEngine = undefined;
     defer file_engine.deinit();
 
     if (path_env_variable) |path| {
         std.debug.print("Environment variable found: {s}\n", .{path});
         file_engine = FileEngine.init(allocator, path_env_variable.?);
-        defer allocator.free(path_env_variable.?);
     } else {
         file_engine = FileEngine.init(allocator, "");
         std.debug.print("No ZIPONDB_PATH envirionment variable found, please use the command:\n db use path/to/db \nor\n db new /path/to/dir\n", .{});
@@ -62,7 +60,6 @@ pub fn main() !void {
 
     var state: State = .expect_main_command;
 
-    // TODO: Use a State to prevent first_token and second_token
     while (true) {
         std.debug.print("> ", .{});
         const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(line_buf, '\n');
