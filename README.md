@@ -118,7 +118,7 @@ DELETE User {name = 'Bob'}
 ### UPDATE
 
 A mix of `GRAB` and `ADD`. It takes a filter first, then the new data.
-Here, we update the first 5 `User` entities named 'adrien' to capitalize the name and become 'Adrien':
+Here, we update the first 5 `User` entities named 'bob' to capitalize the name and become 'Bob':
 ```js
 UPDATE User [5] {name='bob'} TO (name = 'Bob')
 ```
