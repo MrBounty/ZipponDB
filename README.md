@@ -12,6 +12,8 @@ ZipponDB's goal is to be ACID, light, simple, and high-performance. It aims at s
 - Simple and minimal query language
 - Small, light, fast, and implementable everywhere
 
+***Note: ZipponDB is still in Alpha v0.1 and is missing a lot of features, see roadmap at the end of this README.***
+
 # Quickstart
 
 1. **Get a binary:** You can build the binary directly from the source code for any architecture (tutorial is coming), or using the binary in the release (coming too).
@@ -178,6 +180,7 @@ TODO: Create a tech doc of what is happening inside.
 
 ***Note: This will probably evolve over time.***
 
+### Alpha
 #### v0.1 - Base  
 - [X] UUID  
 - [X] CLI  
@@ -200,6 +203,7 @@ TODO: Create a tech doc of what is happening inside.
 - [ ] Better CLI
 - [ ] Logs
 
+### Beta
 #### v0.4 - Usability  
 - [ ] Server  
 - [ ] Config file
@@ -221,6 +225,7 @@ TODO: Create a tech doc of what is happening inside.
 - [ ] Metrics
 - [ ] Durability
 
+### Gold
 #### v0.8 - Advanced  
 - [ ] Query optimizer  
 
