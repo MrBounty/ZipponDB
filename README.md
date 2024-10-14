@@ -87,7 +87,7 @@ ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the k
 
 ***Disclaimer: Lot of stuff are still missing and the language may change over time.***
 
-## Quickstart
+## ZiQL Quickstart
 
 **For more information see [ZiQL Introduction](https://github.com/MrBounty/ZipponDB/blob/main/ZiQL.md)**
 
