@@ -1,4 +1,5 @@
 const std = @import("std");
+const utils = @import("stuffs/utils.zig");
 const Allocator = std.mem.Allocator;
 const UUID = @import("types/uuid.zig").UUID;
 const DataType = @import("types/dataType.zig").DataType;
@@ -31,23 +32,14 @@ pub const FileEngine = struct {
     null_terminated_schema_buff: [:0]u8,
     struct_array: std.ArrayList(SchemaStruct),
 
-    pub fn init(allocator: Allocator, path: []const u8) !FileEngine {
+    pub fn init(allocator: Allocator, path: []const u8) FileEngine {
         const path_to_ZipponDB_dir = path;
 
-        var schema_buf = std.ArrayList(u8).init(allocator);
-        defer schema_buf.deinit();
+        var schema_buf = allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
+        defer allocator.free(schema_buf);
 
-        const schema_path = try std.fmt.allocPrint(allocator, "{s}/schema.zipponschema", .{path_to_ZipponDB_dir});
-        defer allocator.free(schema_path);
-
-        const file = try std.fs.cwd().openFile(schema_path, .{});
-        defer file.close();
-
-        const stat = try file.stat();
-        const buff = try file.readToEndAlloc(allocator, stat.size);
-
-        const null_terminated_schema_buff = try allocator.dupeZ(u8, buff);
-        allocator.free(buff);
+        const len: usize = FileEngine.readSchemaFile(allocator, path_to_ZipponDB_dir, schema_buf) catch 0;
+        const null_terminated_schema_buff = allocator.dupeZ(u8, schema_buf[0..len]) catch @panic("Cant allocate null term buffer for the schema");
 
         var toker = SchemaTokenizer.init(null_terminated_schema_buff);
         var parser = SchemaParser.init(&toker, allocator);
@@ -65,7 +57,9 @@ pub const FileEngine = struct {
     }
 
     pub fn deinit(self: *FileEngine) void {
-        for (self.struct_array.items) |*elem| elem.deinit();
+        if (self.struct_array.items.len > 0) {
+            for (self.struct_array.items) |*elem| elem.deinit();
+        }
         self.struct_array.deinit();
         self.allocator.free(self.null_terminated_schema_buff);
         self.allocator.free(self.path_to_ZipponDB_dir);
@@ -101,6 +95,17 @@ pub const FileEngine = struct {
 
     // --------------------Other--------------------
 
+    pub fn readSchemaFile(allocator: Allocator, sub_path: []const u8, buffer: []u8) !usize {
+        const path = try std.fmt.allocPrint(allocator, "{s}/schema.zipponschema", .{sub_path});
+        defer allocator.free(path);
+
+        const file = try std.fs.cwd().openFile(path, .{});
+        defer file.close();
+
+        const len = try file.readAll(buffer);
+        return len;
+    }
+
     pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) !void {
         const path = try std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir});
         defer self.allocator.free(path);
@@ -109,26 +114,26 @@ pub const FileEngine = struct {
 
         const writer = buffer.writer();
         try writer.print("Database path: {s}\n", .{path});
-        const main_size = try self.getDirTotalSize(main_dir);
+        const main_size = try utils.getDirTotalSize(main_dir);
         try writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1e6});
 
         const log_dir = try main_dir.openDir("LOG", .{ .iterate = true });
-        const log_size = try self.getDirTotalSize(log_dir);
+        const log_size = try utils.getDirTotalSize(log_dir);
         try writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1e6});
 
         const backup_dir = try main_dir.openDir("BACKUP", .{ .iterate = true });
-        const backup_size = try self.getDirTotalSize(backup_dir);
+        const backup_size = try utils.getDirTotalSize(backup_dir);
         try writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1e6});
 
         const data_dir = try main_dir.openDir("DATA", .{ .iterate = true });
-        const data_size = try self.getDirTotalSize(data_dir);
+        const data_size = try utils.getDirTotalSize(data_dir);
         try writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1e6});
 
         var iter = data_dir.iterate();
         while (try iter.next()) |entry| {
             if (entry.kind != .directory) continue;
             const sub_dir = try data_dir.openDir(entry.name, .{ .iterate = true });
-            const size = try self.getDirTotalSize(sub_dir);
+            const size = try utils.getDirTotalSize(sub_dir);
             try writer.print("  {s}: {d:.}Mb\n", .{ entry.name, @as(f64, @floatFromInt(size)) / 1e6 });
         }
     }
@@ -136,9 +141,9 @@ pub const FileEngine = struct {
     // --------------------Init folder and files--------------------
 
     /// Create the main folder. Including DATA, LOG and BACKUP
-    pub fn checkAndCreateDirectories(sub_path: []const u8, allocator: Allocator) !void {
-        var path_buff = try std.fmt.allocPrint(allocator, "{s}", .{sub_path});
-        defer allocator.free(path_buff);
+    pub fn checkAndCreateDirectories(self: *FileEngine) !void {
+        var path_buff = try std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir});
+        defer self.allocator.free(path_buff);
 
         const cwd = std.fs.cwd();
 
@@ -147,24 +152,24 @@ pub const FileEngine = struct {
             else => return err,
         };
 
-        allocator.free(path_buff);
-        path_buff = try std.fmt.allocPrint(allocator, "{s}/DATA", .{sub_path});
+        self.allocator.free(path_buff);
+        path_buff = try std.fmt.allocPrint(self.allocator, "{s}/DATA", .{self.path_to_ZipponDB_dir});
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
 
-        allocator.free(path_buff);
-        path_buff = try std.fmt.allocPrint(allocator, "{s}/BACKUP", .{sub_path});
+        self.allocator.free(path_buff);
+        path_buff = try std.fmt.allocPrint(self.allocator, "{s}/BACKUP", .{self.path_to_ZipponDB_dir});
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
 
-        allocator.free(path_buff);
-        path_buff = try std.fmt.allocPrint(allocator, "{s}/LOG", .{sub_path});
+        self.allocator.free(path_buff);
+        path_buff = try std.fmt.allocPrint(self.allocator, "{s}/LOG", .{self.path_to_ZipponDB_dir});
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
             error.PathAlreadyExists => {},
@@ -979,7 +984,7 @@ test "Get list of UUID using condition" {
     const allocator = std.testing.allocator;
 
     const path = try allocator.dupe(u8, "ZipponDB");
-    var file_engine = try FileEngine.init(allocator, path);
+    var file_engine = FileEngine.init(allocator, path);
     defer file_engine.deinit();
 
     var uuid_array = std.ArrayList(UUID).init(allocator);
