@@ -6,6 +6,7 @@ const Token = @import("tokenizers/schema.zig").Token;
 
 const stdout = std.io.getStdOut().writer();
 
+// Fuse this with the same function in the ZiQL parser
 fn send(comptime format: []const u8, args: anytype) void {
     stdout.print(format, args) catch |err| {
         std.log.err("Can't send: {any}", .{err});
@@ -68,124 +69,122 @@ pub const Parser = struct {
         while ((state != .end) and (state != .invalid)) : ({
             token = if (!keep_next) self.toker.next() else token;
             keep_next = false;
-        }) {
-            switch (state) {
-                .expect_struct_name_OR_end => switch (token.tag) {
-                    .identifier => {
-                        state = .expect_l_paren;
-                        struct_array.append(SchemaStruct.init(self.allocator, token.loc)) catch @panic("Error appending a struct name.");
-                    },
-                    .eof => state = .end,
-                    else => {
-                        self.printError("Error parsing schema: Expected a struct name", &token);
-                        state = .invalid;
-                    },
+        }) switch (state) {
+            .expect_struct_name_OR_end => switch (token.tag) {
+                .identifier => {
+                    state = .expect_l_paren;
+                    struct_array.append(SchemaStruct.init(self.allocator, token.loc)) catch @panic("Error appending a struct name.");
                 },
-
-                .expect_l_paren => switch (token.tag) {
-                    .l_paren => state = .expect_member_name,
-                    else => {
-                        self.printError("Error parsing schema: Expected (", &token);
-                        state = .invalid;
-                    },
+                .eof => state = .end,
+                else => {
+                    self.printError("Error parsing schema: Expected a struct name", &token);
+                    state = .invalid;
                 },
+            },
 
-                .expect_member_name_OR_r_paren => switch (token.tag) {
-                    .identifier => {
-                        state = .expect_member_name;
-                        keep_next = true;
-                    },
-                    .r_paren => {
-                        state = .expect_struct_name_OR_end;
-                        index += 1;
-                    },
-                    else => {
-                        self.printError("Error parsing schema: Expected member name or )", &token);
-                        state = .invalid;
-                    },
+            .expect_l_paren => switch (token.tag) {
+                .l_paren => state = .expect_member_name,
+                else => {
+                    self.printError("Error parsing schema: Expected (", &token);
+                    state = .invalid;
                 },
+            },
 
-                .expect_member_name => {
-                    state = .expect_two_dot;
-                    struct_array.items[index].members.append(token.loc) catch @panic("Error appending a member name.");
+            .expect_member_name_OR_r_paren => switch (token.tag) {
+                .identifier => {
+                    state = .expect_member_name;
+                    keep_next = true;
                 },
-
-                .expect_two_dot => switch (token.tag) {
-                    .two_dot => state = .expect_value_type,
-                    else => {
-                        self.printError("Error parsing schema: Expected :", &token);
-                        state = .invalid;
-                    },
+                .r_paren => {
+                    state = .expect_struct_name_OR_end;
+                    index += 1;
                 },
-
-                .expect_value_type => switch (token.tag) {
-                    .type_int => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.int) catch @panic("Error appending a type.");
-                    },
-                    .type_str => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.str) catch @panic("Error appending a type.");
-                    },
-                    .type_float => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.float) catch @panic("Error appending a type.");
-                    },
-                    .type_bool => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.bool) catch @panic("Error appending a type.");
-                    },
-                    .type_date => @panic("Date not yet implemented"),
-                    .identifier => @panic("Link not yet implemented"),
-                    .lr_bracket => state = .expext_array_type,
-                    else => {
-                        self.printError("Error parsing schema: Expected data type", &token);
-                        state = .invalid;
-                    },
+                else => {
+                    self.printError("Error parsing schema: Expected member name or )", &token);
+                    state = .invalid;
                 },
+            },
 
-                .expext_array_type => switch (token.tag) {
-                    .type_int => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.int_array) catch @panic("Error appending a type.");
-                    },
-                    .type_str => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.str_array) catch @panic("Error appending a type.");
-                    },
-                    .type_float => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.float_array) catch @panic("Error appending a type.");
-                    },
-                    .type_bool => {
-                        state = .expect_comma;
-                        struct_array.items[index].types.append(DataType.bool_array) catch @panic("Error appending a type.");
-                    },
-                    .type_date => {
-                        self.printError("Error parsing schema: Data not yet implemented", &token);
-                        state = .invalid;
-                    },
-                    .identifier => {
-                        self.printError("Error parsing schema: Relationship not yet implemented", &token);
-                        state = .invalid;
-                    },
-                    else => {
-                        self.printError("Error parsing schema: Expected data type", &token);
-                        state = .invalid;
-                    },
+            .expect_member_name => {
+                state = .expect_two_dot;
+                struct_array.items[index].members.append(token.loc) catch @panic("Error appending a member name.");
+            },
+
+            .expect_two_dot => switch (token.tag) {
+                .two_dot => state = .expect_value_type,
+                else => {
+                    self.printError("Error parsing schema: Expected :", &token);
+                    state = .invalid;
                 },
+            },
 
-                .expect_comma => switch (token.tag) {
-                    .comma => state = .expect_member_name_OR_r_paren,
-                    else => {
-                        self.printError("Error parsing schema: Expected ,", &token);
-                        state = .invalid;
-                    },
+            .expect_value_type => switch (token.tag) {
+                .type_int => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.int) catch @panic("Error appending a type.");
                 },
+                .type_str => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.str) catch @panic("Error appending a type.");
+                },
+                .type_float => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.float) catch @panic("Error appending a type.");
+                },
+                .type_bool => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.bool) catch @panic("Error appending a type.");
+                },
+                .type_date => @panic("Date not yet implemented"),
+                .identifier => @panic("Link not yet implemented"),
+                .lr_bracket => state = .expext_array_type,
+                else => {
+                    self.printError("Error parsing schema: Expected data type", &token);
+                    state = .invalid;
+                },
+            },
 
-                else => unreachable,
-            }
-        }
+            .expext_array_type => switch (token.tag) {
+                .type_int => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.int_array) catch @panic("Error appending a type.");
+                },
+                .type_str => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.str_array) catch @panic("Error appending a type.");
+                },
+                .type_float => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.float_array) catch @panic("Error appending a type.");
+                },
+                .type_bool => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.bool_array) catch @panic("Error appending a type.");
+                },
+                .type_date => {
+                    self.printError("Error parsing schema: Data not yet implemented", &token);
+                    state = .invalid;
+                },
+                .identifier => {
+                    self.printError("Error parsing schema: Relationship not yet implemented", &token);
+                    state = .invalid;
+                },
+                else => {
+                    self.printError("Error parsing schema: Expected data type", &token);
+                    state = .invalid;
+                },
+            },
+
+            .expect_comma => switch (token.tag) {
+                .comma => state = .expect_member_name_OR_r_paren,
+                else => {
+                    self.printError("Error parsing schema: Expected ,", &token);
+                    state = .invalid;
+                },
+            },
+
+            else => unreachable,
+        };
 
         // if invalid, empty the list
         if (state == .invalid) {

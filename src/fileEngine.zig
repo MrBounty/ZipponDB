@@ -8,17 +8,25 @@ const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
 const SchemaParser = @import("schemaParser.zig").Parser;
 const SchemaTokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const SchemaToken = @import("tokenizers/schema.zig").Token;
-const AdditionalData = @import("ziqlParser.zig").Parser.AdditionalData;
+const AdditionalData = @import("parsing-tools/additionalData.zig").AdditionalData;
 
-//TODO: Create a union class and chose between file and memory
+// TODO: Use those errors everywhere in this file
+const FileEngineError = error{
+    SchemaFileNotFound,
+    SchemaNotConform,
+    DATAFolderNotFound,
+    StructFolderNotFound,
+    CantMakeDir,
+    CantMakeFile,
+};
 
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
 pub const FileEngine = struct {
     allocator: Allocator,
     usable: bool,
-    path_to_ZipponDB_dir: []const u8, // Make that into a list
-    max_file_size: usize = 5e+4, // 50kb TODO: Change
+    path_to_ZipponDB_dir: []const u8, // TODO: Put in config file
+    max_file_size: usize = 5e+4, // 50kb TODO: Put in config file
     null_terminated_schema_buff: [:0]u8,
     struct_array: std.ArrayList(SchemaStruct),
 
@@ -80,10 +88,6 @@ pub const FileEngine = struct {
             return Condition{ .struct_name = struct_name };
         }
     };
-
-    pub fn setPath(self: *FileEngine, path: []const u8) void {
-        self.path_to_ZipponDB_dir = path;
-    }
 
     /// Take a list of UUID and, a buffer array and the additional data to write into the buffer the JSON to send
     /// TODO: Optimize
@@ -161,62 +165,55 @@ pub const FileEngine = struct {
                 }
             }
 
-            if (founded) {
-                try out_writer.writeAll("{");
-                try out_writer.writeAll("id:\"");
-                try out_writer.print("{s}", .{output_fbs.getWritten()[0..36]});
-                try out_writer.writeAll("\", ");
-                for (self.structName2structMembers(struct_name), self.structName2DataType(struct_name)) |member_name, member_type| {
-                    token = data_toker.next();
-                    // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
-                    if ((additional_data.member_to_find.items.len == 0) or (self.isMemberNameInAdditionalData(self.locToSlice(member_name), additional_data))) {
-                        // write the member name and = sign
-                        try out_writer.print("{s}: ", .{self.locToSlice(member_name)});
+            if (!founded) continue;
 
-                        switch (member_type) {
-                            .str => {
-                                const str_slice = data_toker.getTokenSlice(token);
-                                try out_writer.print("\"{s}\"", .{str_slice[1 .. str_slice.len - 1]});
-                            },
-                            .str_array => {
-                                try out_writer.writeAll(data_toker.getTokenSlice(token));
-                                token = data_toker.next();
-                                while (token.tag != .r_bracket) : (token = data_toker.next()) {
-                                    try out_writer.writeAll("\"");
-                                    try out_writer.writeAll(data_toker.getTokenSlice(token)[1..(token.loc.end - token.loc.start)]);
-                                    try out_writer.writeAll("\"");
-                                    try out_writer.writeAll(" ");
-                                }
-                                try out_writer.writeAll(data_toker.getTokenSlice(token));
-                            },
-                            .int_array, .float_array, .bool_array, .id_array => {
-                                while (token.tag != .r_bracket) : (token = data_toker.next()) {
-                                    try out_writer.writeAll(data_toker.getTokenSlice(token));
-                                    try out_writer.writeAll(" ");
-                                }
-                                try out_writer.writeAll(data_toker.getTokenSlice(token));
-                            },
-                            else => try out_writer.writeAll(data_toker.getTokenSlice(token)), //write the value as if
+            try out_writer.writeAll("{");
+            try out_writer.writeAll("id:\"");
+            try out_writer.print("{s}", .{output_fbs.getWritten()[0..36]});
+            try out_writer.writeAll("\", ");
+            for (self.structName2structMembers(struct_name), self.structName2DataType(struct_name)) |member_name, member_type| {
+                token = data_toker.next();
+                // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
+                if (!(additional_data.member_to_find.items.len == 0) or !(additional_data.contains(self.locToSlice(member_name)))) continue;
+
+                // write the member name and = sign
+                try out_writer.print("{s}: ", .{self.locToSlice(member_name)});
+
+                switch (member_type) {
+                    .str => {
+                        const str_slice = data_toker.getTokenSlice(token);
+                        try out_writer.print("\"{s}\"", .{str_slice[1 .. str_slice.len - 1]});
+                    },
+                    .str_array => {
+                        try out_writer.writeAll(data_toker.getTokenSlice(token));
+                        token = data_toker.next();
+                        while (token.tag != .r_bracket) : (token = data_toker.next()) {
+                            try out_writer.writeAll("\"");
+                            try out_writer.writeAll(data_toker.getTokenSlice(token)[1..(token.loc.end - token.loc.start)]);
+                            try out_writer.writeAll("\"");
+                            try out_writer.writeAll(" ");
                         }
-                        try out_writer.writeAll(", ");
-                    }
+                        try out_writer.writeAll(data_toker.getTokenSlice(token));
+                    },
+                    .int_array, .float_array, .bool_array, .id_array => {
+                        while (token.tag != .r_bracket) : (token = data_toker.next()) {
+                            try out_writer.writeAll(data_toker.getTokenSlice(token));
+                            try out_writer.writeAll(" ");
+                        }
+                        try out_writer.writeAll(data_toker.getTokenSlice(token));
+                    },
+                    else => try out_writer.writeAll(data_toker.getTokenSlice(token)), //write the value as if
                 }
-                try out_writer.writeAll("}");
                 try out_writer.writeAll(", ");
             }
+            try out_writer.writeAll("}");
+            try out_writer.writeAll(", ");
         }
-        // Write the end }
         try out_writer.writeAll("]");
     }
 
-    fn isMemberNameInAdditionalData(_: *FileEngine, member_name: []const u8, additional_data: AdditionalData) bool {
-        for (additional_data.member_to_find.items) |elem| {
-            if (std.mem.eql(u8, member_name, elem.name)) return true;
-        }
-        return false;
-    }
-
     /// Use a struct name to populate a list with all UUID of this struct
+    /// TODO: Optimize this, I'm sure I can do better than that
     pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_array: *std.ArrayList(UUID)) !void {
         const max_file_index = try self.maxFileIndex(struct_name);
         var current_index: usize = 0;
@@ -431,9 +428,7 @@ pub const FileEngine = struct {
         }
     }
 
-    // TODO: Clean a bit the code
-    // Do I need multiple files too ? I mean it duplicate UUID a lot, if it's just to save a name like 'Bob', storing a long UUID is overkill
-    // I could just use a tabular data format with separator using space - Or maybe I encode the uuid to take a minimum space as I always know it size
+    // Do I need a map here ? Cant I use something else ?
     pub fn writeEntity(self: *FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) !UUID {
         const uuid = UUID.init();
 
@@ -566,7 +561,14 @@ pub const FileEngine = struct {
                 }
             }
 
-            if (founded) {
+            if (!founded) {
+                // stream until the delimiter
+                output_fbs.reset();
+                try new_file.writeAll(" ");
+                try reader.streamUntilDelimiter(writer, '\n', null);
+                try new_file.writeAll(output_fbs.getWritten());
+                try new_file.writeAll("\n");
+            } else {
                 for (self.structName2structMembers(struct_name), self.structName2DataType(struct_name)) |member_name, member_type| {
                     // For all collum in the right order, check if the key is in the map, if so use it to write the new value, otherwise use the old file
                     output_fbs.reset();
@@ -609,13 +611,6 @@ pub const FileEngine = struct {
                 }
 
                 try reader.streamUntilDelimiter(writer, '\n', null);
-                try new_file.writeAll("\n");
-            } else {
-                // stream until the delimiter
-                output_fbs.reset();
-                try new_file.writeAll(" ");
-                try reader.streamUntilDelimiter(writer, '\n', null);
-                try new_file.writeAll(output_fbs.getWritten());
                 try new_file.writeAll("\n");
             }
         }
@@ -807,40 +802,13 @@ pub const FileEngine = struct {
         }
     }
 
-    // Maybe make it so it use itself to search if it find a directory
-    fn getDirTotalSize(self: FileEngine, dir: std.fs.Dir) !u64 {
-        var total: u64 = 0;
-        var stat: std.fs.File.Stat = undefined;
-        var iter = dir.iterate();
-        while (try iter.next()) |entry| {
-            if (entry.kind == .directory) {
-                const sub_dir = try dir.openDir(entry.name, .{ .iterate = true });
-                total += try self.getDirTotalSize(sub_dir);
-            }
-
-            if (entry.kind != .file) continue;
-            stat = try dir.statFile(entry.name);
-            total += stat.size;
-        }
-        return total;
-    }
-
-    const FileError = error{
-        SchemaFileNotFound,
-        SchemaNotConform,
-        DATAFolderNotFound,
-        StructFolderNotFound,
-        CantMakeDir,
-        CantMakeFile,
-    };
-
     /// Request a path to a schema file and then create the struct folder
     /// TODO: Check if some data already exist and if so ask if the user want to delete it and make a backup
-    pub fn initDataFolder(self: *FileEngine, path_to_schema_file: []const u8) FileError!void {
+    pub fn initDataFolder(self: *FileEngine, path_to_schema_file: []const u8) FileEngineError!void {
         var schema_buf = self.allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
         defer self.allocator.free(schema_buf);
 
-        const file = std.fs.cwd().openFile(path_to_schema_file, .{}) catch return FileError.SchemaFileNotFound;
+        const file = std.fs.cwd().openFile(path_to_schema_file, .{}) catch return FileEngineError.SchemaFileNotFound;
         defer file.close();
 
         const len = file.readAll(schema_buf) catch @panic("Can't read schema file");
@@ -860,19 +828,19 @@ pub const FileEngine = struct {
         const path = std.fmt.allocPrint(self.allocator, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch @panic("Cant allocate path");
         defer self.allocator.free(path);
 
-        var data_dir = std.fs.cwd().openDir(path, .{}) catch return FileError.DATAFolderNotFound;
+        var data_dir = std.fs.cwd().openDir(path, .{}) catch return FileEngineError.DATAFolderNotFound;
         defer data_dir.close();
 
         for (self.struct_array.items) |struct_item| {
             data_dir.makeDir(self.locToSlice(struct_item.name)) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
-                else => return FileError.CantMakeDir,
+                else => return FileEngineError.CantMakeDir,
             };
-            const struct_dir = data_dir.openDir(self.locToSlice(struct_item.name), .{}) catch return FileError.StructFolderNotFound;
+            const struct_dir = data_dir.openDir(self.locToSlice(struct_item.name), .{}) catch return FileEngineError.StructFolderNotFound;
 
             _ = struct_dir.createFile("0.zippondata", .{}) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
-                else => return FileError.CantMakeFile,
+                else => return FileEngineError.CantMakeFile,
             };
         }
 
@@ -880,6 +848,7 @@ pub const FileEngine = struct {
     }
 
     // Stuff for schema
+    // TODO: Check all those functions and remove if not use
 
     pub fn readSchemaFile(allocator: Allocator, sub_path: []const u8, buffer: []u8) !usize {
         const path = try std.fmt.allocPrint(allocator, "{s}/schema.zipponschema", .{sub_path});
@@ -1011,6 +980,7 @@ test "Get list of UUID using condition" {
 // Series of functions to use just before creating an entity.
 // Will transform the string of data into data of the right type./
 
+// TODO: Put those functions somewhere else
 pub fn parseInt(value_str: []const u8) i64 {
     return std.fmt.parseInt(i64, value_str, 10) catch return 0;
 }

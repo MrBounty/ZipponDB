@@ -123,9 +123,94 @@ pub const UUID = struct {
 // Zero UUID
 pub const zero: UUID = .{ .bytes = .{0} ** 16 };
 
-// Convenience function to return a new v4 UUID.
-pub fn newV4() UUID {
-    return UUID.init();
+// TODO: Optimize both
+pub fn OR(arr1: *std.ArrayList(UUID), arr2: *std.ArrayList(UUID)) !void {
+    for (0..arr2.items.len) |i| {
+        if (!containUUID(arr1.*, arr2.items[i])) {
+            try arr1.append(arr2.items[i]);
+        }
+    }
+}
+
+pub fn AND(arr1: *std.ArrayList(UUID), arr2: *std.ArrayList(UUID)) !void {
+    var i: usize = 0;
+    for (0..arr1.items.len) |_| {
+        if (!containUUID(arr2.*, arr1.items[i])) {
+            _ = arr1.orderedRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+test "OR & AND" {
+    const allocator = std.testing.allocator;
+
+    var right_arr = std.ArrayList(UUID).init(allocator);
+    defer right_arr.deinit();
+    try right_arr.append(try UUID.parse("00000000-0000-0000-0000-000000000000"));
+    try right_arr.append(try UUID.parse("00000000-0000-0000-0000-000000000001"));
+    try right_arr.append(try UUID.parse("00000000-0000-0000-0000-000000000005"));
+    try right_arr.append(try UUID.parse("00000000-0000-0000-0000-000000000006"));
+    try right_arr.append(try UUID.parse("00000000-0000-0000-0000-000000000007"));
+
+    var left_arr1 = std.ArrayList(UUID).init(allocator);
+    defer left_arr1.deinit();
+    try left_arr1.append(try UUID.parse("00000000-0000-0000-0000-000000000000"));
+    try left_arr1.append(try UUID.parse("00000000-0000-0000-0000-000000000001"));
+    try left_arr1.append(try UUID.parse("00000000-0000-0000-0000-000000000002"));
+    try left_arr1.append(try UUID.parse("00000000-0000-0000-0000-000000000003"));
+    try left_arr1.append(try UUID.parse("00000000-0000-0000-0000-000000000004"));
+
+    var expected_arr1 = std.ArrayList(UUID).init(allocator);
+    defer expected_arr1.deinit();
+    try expected_arr1.append(try UUID.parse("00000000-0000-0000-0000-000000000000"));
+    try expected_arr1.append(try UUID.parse("00000000-0000-0000-0000-000000000001"));
+
+    try AND(&left_arr1, &right_arr);
+    try std.testing.expect(compareUUIDArray(left_arr1, expected_arr1));
+
+    var left_arr2 = std.ArrayList(UUID).init(allocator);
+    defer left_arr2.deinit();
+    try left_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000000"));
+    try left_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000001"));
+    try left_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000002"));
+    try left_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000003"));
+    try left_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000004"));
+
+    var expected_arr2 = std.ArrayList(UUID).init(allocator);
+    defer expected_arr2.deinit();
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000000"));
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000001"));
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000002"));
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000003"));
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000004"));
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000005"));
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000006"));
+    try expected_arr2.append(try UUID.parse("00000000-0000-0000-0000-000000000007"));
+
+    try OR(&left_arr2, &right_arr);
+
+    try std.testing.expect(compareUUIDArray(left_arr2, expected_arr2));
+}
+
+fn containUUID(arr: std.ArrayList(UUID), value: UUID) bool {
+    return for (arr.items) |elem| {
+        if (value.compare(elem)) break true;
+    } else false;
+}
+
+fn compareUUIDArray(arr1: std.ArrayList(UUID), arr2: std.ArrayList(UUID)) bool {
+    if (arr1.items.len != arr2.items.len) {
+        std.debug.print("Not same array len when comparing UUID. arr1: {d} arr2: {d}\n", .{ arr1.items.len, arr2.items.len });
+        return false;
+    }
+
+    for (0..arr1.items.len) |i| {
+        if (!containUUID(arr2, arr1.items[i])) return false;
+    }
+
+    return true;
 }
 
 test "parse and format" {
