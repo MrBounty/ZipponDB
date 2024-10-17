@@ -12,6 +12,8 @@ const SchemaTokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const SchemaToken = @import("tokenizers/schema.zig").Token;
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 
+const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
+
 // TODO: Use those errors everywhere in this file
 const FileEngineError = error{
     SchemaFileNotFound,
@@ -35,7 +37,7 @@ pub const FileEngine = struct {
     pub fn init(allocator: Allocator, path: []const u8) FileEngine {
         const path_to_ZipponDB_dir = path;
 
-        var schema_buf = allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
+        var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch @panic("Cant allocate the schema buffer");
         defer allocator.free(schema_buf);
 
         const len: usize = FileEngine.readSchemaFile(allocator, path_to_ZipponDB_dir, schema_buf) catch 0;
@@ -180,7 +182,7 @@ pub const FileEngine = struct {
     /// Request a path to a schema file and then create the struct folder
     /// TODO: Check if some data already exist and if so ask if the user want to delete it and make a backup
     pub fn initDataFolder(self: *FileEngine, path_to_schema_file: []const u8) FileEngineError!void {
-        var schema_buf = self.allocator.alloc(u8, 1024 * 50) catch @panic("Cant allocate the schema buffer");
+        var schema_buf = self.allocator.alloc(u8, BUFFER_SIZE) catch @panic("Cant allocate the schema buffer");
         defer self.allocator.free(schema_buf);
 
         const file = std.fs.cwd().openFile(path_to_schema_file, .{}) catch return FileEngineError.SchemaFileNotFound;
@@ -240,7 +242,7 @@ pub const FileEngine = struct {
         };
         defer file.close();
 
-        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
 
@@ -362,7 +364,7 @@ pub const FileEngine = struct {
         };
         defer file.close();
 
-        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
 
@@ -427,7 +429,7 @@ pub const FileEngine = struct {
         };
         defer file.close();
 
-        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
 
@@ -626,7 +628,7 @@ pub const FileEngine = struct {
         };
         defer new_file.close();
 
-        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
 
@@ -778,7 +780,7 @@ pub const FileEngine = struct {
         };
         defer new_file.close();
 
-        var output: [1024 * 50]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
 

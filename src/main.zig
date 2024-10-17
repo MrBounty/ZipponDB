@@ -9,6 +9,8 @@ const ziqlParser = @import("ziqlParser.zig").Parser;
 const utils = @import("stuffs/utils.zig");
 const send = @import("stuffs/utils.zig").send;
 
+const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
+
 const State = enum {
     expect_main_command,
     expect_query,
@@ -53,7 +55,7 @@ pub fn main() !void {
         std.debug.print("No ZIPONDB_PATH environment variable found, please use the command:\n db use path/to/db \nor\n db new /path/to/dir\n", .{});
     }
 
-    const line_buf = try allocator.alloc(u8, 1024 * 50); // TODO: Remove the size limitation
+    const line_buf = try allocator.alloc(u8, BUFFER_SIZE); // TODO: Remove the size limitation
     defer allocator.free(line_buf);
 
     while (true) {
