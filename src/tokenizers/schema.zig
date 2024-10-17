@@ -16,6 +16,8 @@ pub const Token = struct {
         .{ "str", .type_str },
         .{ "bool", .type_bool },
         .{ "date", .type_date },
+        .{ "time", .type_time },
+        .{ "datetime", .type_datetime },
     });
 
     pub fn getType(bytes: []const u8) ?Tag {
@@ -31,6 +33,8 @@ pub const Token = struct {
         type_str,
         type_bool,
         type_date,
+        type_time,
+        type_datetime,
 
         identifier,
         l_paren,

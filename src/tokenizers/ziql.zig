@@ -45,8 +45,12 @@ pub const Token = struct {
         string_literal,
         int_literal,
         float_literal,
+        date_literal,
+        time_literal,
+        datetime_literal,
         bool_literal_true,
         bool_literal_false,
+        uuid_literal,
         identifier,
         equal,
         bang, // !
@@ -89,6 +93,10 @@ pub const Tokenizer = struct {
         start,
         invalid,
         string_literal,
+        date_literal,
+        time_literal,
+        datetime_literal,
+        uuid_literal,
         identifier,
         equal,
         bang,
@@ -212,6 +220,10 @@ pub const Tokenizer = struct {
 
                 .identifier => switch (c) {
                     'a'...'z', 'A'...'Z', '_', '0'...'9' => continue,
+                    '-' => {
+                        state = .uuid_literal;
+                        result.tag = .uuid_literal;
+                    },
                     else => {
                         if (Token.getKeyword(self.buffer[result.loc.start..self.index])) |tag| {
                             result.tag = tag;
@@ -312,6 +324,23 @@ pub const Tokenizer = struct {
                         state = .float;
                         result.tag = .float_literal;
                     },
+                    'a'...'d', 'f'...'z' => {
+                        state = .uuid_literal;
+                        result.tag = .uuid_literal;
+                    },
+                    '/' => {
+                        state = .date_literal;
+                        result.tag = .date_literal;
+                    },
+                    '-' => {
+                        if ((self.index - result.loc.start) == 2) {
+                            state = .time_literal;
+                            result.tag = .time_literal;
+                        } else { // Just in case a uuid have only number as fist part of its UUID
+                            state = .uuid_literal;
+                            result.tag = .uuid_literal;
+                        }
+                    },
                     'e', 'E' => {
                         state = .int_exponent;
                         result.tag = .float_literal;
@@ -348,6 +377,26 @@ pub const Tokenizer = struct {
                         break;
                     },
                 },
+                .date_literal => switch (c) {
+                    '|' => {
+                        state = .datetime_literal;
+                        result.tag = .datetime_literal;
+                    },
+                    '0'...'9', '/' => continue,
+                    else => break,
+                },
+                .time_literal => switch (c) {
+                    '0'...'9', '-', '.' => continue,
+                    else => break,
+                },
+                .datetime_literal => switch (c) {
+                    '0'...'9', '-', '.' => continue,
+                    else => break,
+                },
+                .uuid_literal => switch (c) {
+                    '0'...'9', 'a'...'z', '-' => continue,
+                    else => break,
+                },
             }
         }
 
@@ -368,6 +417,13 @@ test "basic query" {
     try testTokenize("GRAB User [1; name] {}", &.{ .keyword_grab, .identifier, .l_bracket, .int_literal, .semicolon, .identifier, .r_bracket, .l_brace, .r_brace });
     try testTokenize("GRAB User{}|ASCENDING name|", &.{ .keyword_grab, .identifier, .l_brace, .r_brace, .pipe, .identifier, .identifier, .pipe });
     try testTokenize("DELETE User[1]{name='Adrien'}|ASCENDING name, age|", &.{ .keyword_delete, .identifier, .l_bracket, .int_literal, .r_bracket, .l_brace, .identifier, .equal, .string_literal, .r_brace, .pipe, .identifier, .identifier, .comma, .identifier, .pipe });
+}
+
+test "basic date" {
+    try testTokenize("1a5527af-88fb-48c1-8d5c-49c9b73c2379", &.{.uuid_literal});
+    try testTokenize("21/01/1998", &.{.date_literal});
+    try testTokenize("17-55-31.0000", &.{.time_literal});
+    try testTokenize("21/01/1998|17-55-31.0000", &.{.datetime_literal});
 }
 
 fn testTokenize(source: [:0]const u8, expected_token_tags: []const Token.Tag) !void {
