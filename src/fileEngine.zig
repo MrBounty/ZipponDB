@@ -242,7 +242,7 @@ pub const FileEngine = struct {
         var file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
         defer file.close();
 
-        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
+        var output: [BUFFER_SIZE]u8 = undefined;
         var output_fbs = std.io.fixedBufferStream(&output);
         const writer = output_fbs.writer();
 
@@ -301,14 +301,18 @@ pub const FileEngine = struct {
 
             if (!founded) continue;
 
+            // Maybe do a JSON writer wrapper
             out_writer.writeAll("{") catch return FileEngineError.WriteError;
             out_writer.writeAll("id:\"") catch return FileEngineError.WriteError;
             out_writer.print("{s}", .{output_fbs.getWritten()[0..36]}) catch return FileEngineError.WriteError;
             out_writer.writeAll("\", ") catch return FileEngineError.WriteError;
             for (try self.structName2structMembers(struct_name), try self.structName2DataType(struct_name)) |member_name, member_type| {
+                std.debug.print("Member name to send: {s}\n", .{self.locToSlice(member_name)});
+                std.debug.print("Additional data: {d}\n", .{additional_data.member_to_find.items.len});
+
                 token = data_toker.next();
                 // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
-                if (!(additional_data.member_to_find.items.len == 0) or !(additional_data.contains(self.locToSlice(member_name)))) continue;
+                if (!(additional_data.member_to_find.items.len == 0 or additional_data.contains(self.locToSlice(member_name)))) continue;
 
                 // write the member name and = sign
                 out_writer.print("{s}: ", .{self.locToSlice(member_name)}) catch return FileEngineError.WriteError;
@@ -318,21 +322,36 @@ pub const FileEngine = struct {
                         const str_slice = data_toker.getTokenSlice(token);
                         out_writer.print("\"{s}\"", .{str_slice[1 .. str_slice.len - 1]}) catch return FileEngineError.WriteError;
                     },
+                    .date, .time, .datetime => {
+                        const str_slice = data_toker.getTokenSlice(token);
+                        out_writer.print("\"{s}\"", .{str_slice}) catch return FileEngineError.WriteError;
+                    },
                     .str_array => {
                         out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
                         token = data_toker.next();
                         while (token.tag != .r_bracket) : (token = data_toker.next()) {
                             out_writer.writeAll("\"") catch return FileEngineError.WriteError;
                             out_writer.writeAll(data_toker.getTokenSlice(token)[1..(token.loc.end - token.loc.start)]) catch return FileEngineError.WriteError;
-                            out_writer.writeAll("\"") catch return FileEngineError.WriteError;
-                            out_writer.writeAll(" ") catch return FileEngineError.WriteError;
+                            out_writer.writeAll("\", ") catch return FileEngineError.WriteError;
                         }
                         out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
                     },
-                    .int_array, .float_array, .bool_array, .id_array, .date_array, .time_array, .datetime_array => {
+                    .date_array, .time_array, .datetime_array => {
+                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
+                        token = data_toker.next();
+                        while (token.tag != .r_bracket) : (token = data_toker.next()) {
+                            out_writer.writeAll("\"") catch return FileEngineError.WriteError;
+                            out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
+                            out_writer.writeAll("\", ") catch return FileEngineError.WriteError;
+                        }
+                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
+                    },
+                    .int_array, .float_array, .bool_array, .id_array => {
+                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
+                        token = data_toker.next();
                         while (token.tag != .r_bracket) : (token = data_toker.next()) {
                             out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                            out_writer.writeAll(" ") catch return FileEngineError.WriteError;
+                            out_writer.writeAll(", ") catch return FileEngineError.WriteError;
                         }
                         out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
                     },
