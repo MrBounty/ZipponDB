@@ -12,6 +12,7 @@ const SchemaParser = @import("schemaParser.zig").Parser;
 const SchemaTokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const SchemaToken = @import("tokenizers/schema.zig").Token;
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
+const Loc = @import("tokenizers/shared/loc.zig").Loc;
 
 const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
@@ -83,17 +84,60 @@ pub const FileEngine = struct {
     /// An Operation from equal, different, superior, superior_or_equal, ...
     /// The DataType from int, float and str
     /// TODO: Use token from the query for struct_name, member_name and value, to save memory
+    /// TODO: Update to do multiple operation at the same tome on a row
     pub const Condition = struct {
         struct_name: []const u8,
         member_name: []const u8 = undefined,
-        value: []const u8 = undefined, // Could be just one with data_type if using union(enum) or can use ComparisonValue directly
-        operation: enum { equal, different, superior, superior_or_equal, inferior, inferior_or_equal, in } = undefined, // Add more stuff like IN
+        value: []const u8 = undefined,
+        operation: enum { equal, different, superior, superior_or_equal, inferior, inferior_or_equal, in } = undefined,
         data_type: DataType = undefined,
 
-        pub fn init(struct_name: []const u8) Condition {
-            return Condition{ .struct_name = struct_name };
+        pub fn init(struct_loc: []const u8) Condition {
+            return Condition{ .struct_name = struct_loc };
         }
     };
+
+    // --------------------Logs--------------------
+
+    const Level = enum {
+        Debug,
+        Info,
+        Warning,
+        Error,
+        Critical,
+    };
+
+    pub fn resetLog(self: FileEngine, file_name: []const u8) void {
+        const path = std.fmt.allocPrint(self.allocator, "{s}/LOG/{s}.log", .{ self.path_to_ZipponDB_dir, file_name }) catch return;
+        defer self.allocator.free(path);
+
+        std.fs.cwd().deleteFile(path) catch {};
+        _ = std.fs.cwd().createFile(path, .{}) catch return;
+    }
+
+    pub fn log(self: FileEngine, file_name: []const u8, level: Level, comptime format: []const u8, args: anytype) void {
+        const path = std.fmt.allocPrint(self.allocator, "{s}/LOG/{s}.log", .{ self.path_to_ZipponDB_dir, file_name }) catch return;
+        defer self.allocator.free(path);
+
+        const file = std.fs.cwd().openFile(path, .{ .mode = .write_only }) catch return;
+        defer file.close();
+
+        file.seekFromEnd(0) catch return;
+
+        const writer = file.writer();
+        const now = DateTime.now();
+
+        writer.print("Time: {d}/{d}/{d}-{d}:{d}:{d}.{d} - ", .{ now.years, now.months, now.days, now.hours, now.minutes, now.seconds, now.ms }) catch return;
+        switch (level) {
+            .Debug => writer.print("Debug    - ", .{}) catch return,
+            .Info => writer.print("Info     - ", .{}) catch return,
+            .Warning => writer.print("Warning  - ", .{}) catch return,
+            .Error => writer.print("Error    - ", .{}) catch return,
+            .Critical => writer.print("Critical - ", .{}) catch return,
+        }
+        writer.print(format, args) catch return;
+        writer.writeByte('\n') catch return;
+    }
 
     // --------------------Other--------------------
 
@@ -427,6 +471,7 @@ pub const FileEngine = struct {
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
     /// TODO: Change the UUID function to be a B+Tree
     /// TODO: Optimize the shit out of this, it it way too slow rn. Here some ideas
+    /// - Make multiple condition per row
     /// - Array can take a very long time to parse, maybe put them in a seperate file. But string can be too...
     /// - Use the stream directly in the tokenizer
     /// - Use a fixed size and split into other file. Like one file for one member (Because very long, like an array of 1000 value) and another one for everything else
@@ -443,8 +488,6 @@ pub const FileEngine = struct {
             .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff);
-
-        std.debug.print("{s}\n", .{path_buff});
 
         var file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
         defer file.close();
@@ -1036,7 +1079,7 @@ pub const FileEngine = struct {
         file.writeAll(self.null_terminated_schema_buff) catch return FileEngineError.WriteError;
     }
 
-    pub fn locToSlice(self: *FileEngine, loc: SchemaToken.Loc) []const u8 {
+    pub fn locToSlice(self: *FileEngine, loc: Loc) []const u8 {
         return self.null_terminated_schema_buff[loc.start..loc.end];
     }
 
@@ -1054,7 +1097,7 @@ pub const FileEngine = struct {
     }
 
     /// Get the list of all member name for a struct name
-    pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) FileEngineError![]SchemaToken.Loc {
+    pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) FileEngineError![]Loc {
         var i: u16 = 0;
 
         while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) break;

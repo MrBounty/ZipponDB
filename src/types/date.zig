@@ -23,6 +23,10 @@ pub const DateTime = struct {
         return epoch_unix.addSecs(unix);
     }
 
+    pub fn now() Self {
+        return epoch_unix.addYears(1970).addMs(@as(u64, @intCast(std.time.milliTimestamp())));
+    }
+
     /// Caller asserts that this is > epoch
     pub fn init(year: u16, month: u16, day: u16, hr: u16, min: u16, sec: u16, ms: u16) Self {
         return epoch_unix
@@ -33,10 +37,6 @@ pub const DateTime = struct {
             .addMins(min)
             .addSecs(sec)
             .addMs(ms);
-    }
-
-    pub fn now() Self {
-        return initUnixMs(@intCast(std.time.milliTimestamp()));
     }
 
     pub const epoch_unix = Self{

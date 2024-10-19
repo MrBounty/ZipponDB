@@ -79,7 +79,6 @@ pub const Parser = struct {
 
     pub fn deinit(self: *Parser) void {
         self.additional_data.deinit();
-        self.allocator.free(self.struct_name);
     }
 
     // TODO: Update to use ASC and DESC
@@ -152,7 +151,7 @@ pub const Parser = struct {
 
             .expect_struct_name => {
                 // Check if the struct name is in the schema
-                self.struct_name = try self.allocator.dupe(u8, self.toker.getTokenSlice(token));
+                self.struct_name = self.toker.getTokenSlice(token);
                 if (token.tag != .identifier) return printError(
                     "Error: Missing struct name",
                     ZiQlParserError.StructNotFound,

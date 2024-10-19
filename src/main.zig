@@ -39,21 +39,20 @@ pub fn main() !void {
     defer file_engine.deinit();
 
     if (path_env_variable) |path| {
-        std.debug.print("ZIPONDB_PATH environment variable found: {s}\n", .{path});
-
         var to_init = true;
         _ = std.fs.cwd().openDir(path, .{}) catch {
             std.debug.print("Error opening ZipponDB path using environment variable, please select the database using 'db use' or create a new one with 'db new'\n", .{});
-            file_engine = FileEngine.init(allocator, try allocator.dupe(u8, ""));
+            file_engine = FileEngine.init(allocator, "");
             to_init = false;
         };
         if (to_init) {
             file_engine = FileEngine.init(allocator, path);
             try file_engine.checkAndCreateDirectories();
+            file_engine.resetLog("main");
+            file_engine.log("main", .Info, "Found envirionment variable ZIPPONDB_PATH: {s}", .{path});
         }
     } else {
-        file_engine = FileEngine.init(allocator, try allocator.dupe(u8, ""));
-        std.debug.print("No ZIPONDB_PATH environment variable found, please use the command:\n db use path/to/db \nor\n db new /path/to/dir\n", .{});
+        file_engine = FileEngine.init(allocator, "");
     }
 
     const line_buf = try allocator.alloc(u8, BUFFER_SIZE); // TODO: Remove the size limitation
@@ -64,6 +63,8 @@ pub fn main() !void {
         const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(line_buf, '\n');
 
         if (line) |line_str| {
+            file_engine.log("main", .Info, "Query received: {s}", .{line_str});
+
             const null_term_line_str = try allocator.dupeZ(u8, line_str[0..line_str.len]);
             defer allocator.free(null_term_line_str);
 
@@ -270,8 +271,7 @@ pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) voi
     }
 
     parser.parse() catch |err| {
-        std.debug.print("Error: {any}\n", .{err});
-        @panic("=9");
+        file_engine.log("main", .Error, "Error parsing: {any}", .{err});
     };
 }
 

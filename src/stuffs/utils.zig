@@ -1,8 +1,6 @@
 const std = @import("std");
 const ZipponError = @import("errors.zig").ZipponError;
 
-const stdout = std.io.getStdOut().writer();
-
 pub fn getEnvVariables(allocator: std.mem.Allocator, variable: []const u8) ?[]const u8 {
     var env_map = std.process.getEnvMap(allocator) catch return null;
     defer env_map.deinit();
@@ -32,6 +30,24 @@ pub fn getDirTotalSize(dir: std.fs.Dir) !u64 {
     }
     return total;
 }
+
+pub fn getArgsString(allocator: std.mem.Allocator) std.ArrayList(u8) {
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    var buffer = std.ArrayList(u8).init(allocator);
+    var writer = buffer.writer();
+
+    for (args) |arg| {
+        writer.print("{s} ", .{arg});
+    }
+
+    buffer.append(0);
+
+    return buffer;
+}
+
+const stdout = std.io.getStdOut().writer();
 
 // Maybe create a struct for that
 pub fn send(comptime format: []const u8, args: anytype) void {
@@ -77,20 +93,4 @@ pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, sta
 
     send("{s}", .{buffer.items});
     return err;
-}
-
-pub fn getArgsString(allocator: std.mem.Allocator) std.ArrayList(u8) {
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-
-    var buffer = std.ArrayList(u8).init(allocator);
-    var writer = buffer.writer();
-
-    for (args) |arg| {
-        writer.print("{s} ", .{arg});
-    }
-
-    buffer.append(0);
-
-    return buffer;
 }

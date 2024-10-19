@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const DataType = @import("types/dataType.zig").DataType;
 const Toker = @import("tokenizers/schema.zig").Tokenizer;
 const Token = @import("tokenizers/schema.zig").Token;
+const Loc = @import("tokenizers/shared/loc.zig").Loc;
 const send = @import("stuffs/utils.zig").send;
 const printError = @import("stuffs/utils.zig").printError;
 
@@ -34,15 +35,15 @@ pub const Parser = struct {
 
     pub const SchemaStruct = struct {
         allocator: Allocator,
-        name: Token.Loc,
-        members: std.ArrayList(Token.Loc),
+        name: Loc,
+        members: std.ArrayList(Loc),
         types: std.ArrayList(DataType),
 
-        pub fn init(allocator: Allocator, name: Token.Loc) SchemaStruct {
+        pub fn init(allocator: Allocator, name: Loc) SchemaStruct {
             return SchemaStruct{
                 .allocator = allocator,
                 .name = name,
-                .members = std.ArrayList(Token.Loc).init(allocator),
+                .members = std.ArrayList(Loc).init(allocator),
                 .types = std.ArrayList(DataType).init(allocator),
             };
         }

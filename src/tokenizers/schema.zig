@@ -1,14 +1,10 @@
 // From https://github.com/ziglang/zig/blob/master/lib/std/zig/tokenizer.zig
 const std = @import("std");
+const Loc = @import("shared/loc.zig").Loc;
 
 pub const Token = struct {
     tag: Tag,
     loc: Loc,
-
-    pub const Loc = struct {
-        start: usize,
-        end: usize,
-    };
 
     pub const types = std.StaticStringMap(Tag).initComptime(.{
         .{ "int", .type_int },
