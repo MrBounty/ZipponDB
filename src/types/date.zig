@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const string = []const u8;
-const extras = @import("extras");
 const time = @This();
 
 pub const DateTime = struct {
@@ -13,9 +12,8 @@ pub const DateTime = struct {
     days: u8,
     months: u8,
     years: u16,
-    timezone: TimeZone,
 
-    const Self = @This();
+    const Self = @This(); // Pas mal ca
 
     pub fn initUnixMs(unix: u64) Self {
         return epoch_unix.addMs(unix);
@@ -26,14 +24,15 @@ pub const DateTime = struct {
     }
 
     /// Caller asserts that this is > epoch
-    pub fn init(year: u16, month: u16, day: u16, hr: u16, min: u16, sec: u16) Self {
+    pub fn init(year: u16, month: u16, day: u16, hr: u16, min: u16, sec: u16, ms: u16) Self {
         return epoch_unix
             .addYears(year - epoch_unix.years)
             .addMonths(month)
             .addDays(day)
             .addHours(hr)
             .addMins(min)
-            .addSecs(sec);
+            .addSecs(sec)
+            .addMs(ms);
     }
 
     pub fn now() Self {
@@ -47,8 +46,7 @@ pub const DateTime = struct {
         .hours = 0,
         .days = 0,
         .months = 0,
-        .years = 1970, // Why ?
-        .timezone = .UTC,
+        .years = 0,
     };
 
     pub fn eql(self: Self, other: Self) bool {
@@ -58,9 +56,30 @@ pub const DateTime = struct {
             self.hours == other.hours and
             self.days == other.days and
             self.months == other.months and
-            self.years == other.years and
-            self.timezone == other.timezone and
-            self.weekday == other.weekday;
+            self.years == other.years;
+    }
+
+    pub fn compareDate(self: Self, other: Self) bool {
+        return self.days == other.days and
+            self.months == other.months and
+            self.years == other.years;
+    }
+
+    pub fn compareTime(self: Self, other: Self) bool {
+        return self.ms == other.ms and
+            self.seconds == other.seconds and
+            self.minutes == other.minutes and
+            self.hours == other.hours;
+    }
+
+    pub fn compareDatetime(self: Self, other: Self) bool {
+        return self.ms == other.ms and
+            self.seconds == other.seconds and
+            self.minutes == other.minutes and
+            self.hours == other.hours and
+            self.days == other.days and
+            self.months == other.months and
+            self.years == other.years;
     }
 
     // So as long as the count / unit, it continue adding the next unit, smart
@@ -390,20 +409,6 @@ pub const DateTime = struct {
             .ms = self.toUnixMilli() - other_in_the_past.toUnixMilli(),
         };
     }
-
-    pub fn era(self: Self) Era {
-        if (self.years >= 0) return .AD;
-        @compileError("TODO");
-    }
-
-    pub fn weekday(self: Self) WeekDay {
-        var i = self.daysSinceEpoch() % 7;
-        var result = WeekDay.Thu; // weekday of epoch_unix
-        while (i > 0) : (i -= 1) {
-            result = result.next();
-        }
-        return result;
-    }
 };
 
 pub const format = struct {
@@ -417,43 +422,6 @@ pub const format = struct {
     pub const lll = ll ++ " " ++ LT;
     pub const LLLL = "dddd, " ++ LLL;
     pub const llll = "ddd, " ++ lll;
-};
-
-pub const TimeZone = enum {
-    UTC,
-
-    usingnamespace extras.TagNameJsonStringifyMixin(@This());
-};
-
-pub const WeekDay = enum {
-    Sun,
-    Mon,
-    Tue,
-    Wed,
-    Thu,
-    Fri,
-    Sat,
-
-    pub fn next(self: WeekDay) WeekDay {
-        return switch (self) {
-            .Sun => .Mon,
-            .Mon => .Tue,
-            .Tue => .Wed,
-            .Wed => .Thu,
-            .Thu => .Fri,
-            .Fri => .Sat,
-            .Sat => .Sun,
-        };
-    }
-
-    usingnamespace extras.TagNameJsonStringifyMixin(@This());
-};
-
-pub const Era = enum {
-    // BC,
-    AD,
-
-    usingnamespace extras.TagNameJsonStringifyMixin(@This());
 };
 
 pub fn isLeapYear(year: u16) bool {

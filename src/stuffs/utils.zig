@@ -1,4 +1,5 @@
 const std = @import("std");
+const ZipponError = @import("errors.zig").ZipponError;
 
 const stdout = std.io.getStdOut().writer();
 
@@ -43,7 +44,7 @@ pub fn send(comptime format: []const u8, args: anytype) void {
 }
 
 /// Print an error and send it to the user pointing to the token
-pub fn printError(message: []const u8, err: anyerror, query: ?[]const u8, start: ?usize, end: ?usize) anyerror {
+pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, start: ?usize, end: ?usize) ZipponError {
     const allocator = std.heap.page_allocator;
     var buffer = std.ArrayList(u8).init(allocator);
     defer buffer.deinit();
@@ -54,7 +55,7 @@ pub fn printError(message: []const u8, err: anyerror, query: ?[]const u8, start:
     writer.print("{s}\n", .{message}) catch {};
 
     if ((start != null) and (end != null) and (query != null)) {
-        const buffer_query = try allocator.dupe(u8, query.?);
+        const buffer_query = allocator.dupe(u8, query.?) catch return ZipponError.MemoryError;
         defer allocator.free(buffer_query);
 
         std.mem.replaceScalar(u8, buffer_query, '\n', ' ');

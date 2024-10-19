@@ -27,6 +27,22 @@ GRAB User {name = 'Bob' AND {age > 10}}
                             ^    
 ```
 
+# Data types
+
+There is 5 data types for the moment:
+- `int`: 64 bit integer
+- `float`: 64 bit float. Need to have a dot, `1.` is a float `1` is an integer.
+- `bool`: Boolean, can be `true` or `false`
+- `string`: Character array between `''`
+- `UUID`: Id in the UUID format, used for relationship, ect. All struct have an id member.
+- `date`: A date in yyyy/mm/dd
+- `time`: A time in hh:mm:ss.mmmm
+- `datetime`: A date time in yyyy/mm/dd-hh:mm:ss:mmmm
+
+All data types can be an array of those types using `[]` in front of it. So `[]int` is an array of integer.
+
+All data types can also be `null`. Except arrays that can only be empty.
+
 # Examples
 
 ## GRAB
@@ -248,3 +264,35 @@ UPDATE User {name='Bob'} TO (comments REMOVE { at < '2023/12/31'})
 ```
 
 I may include more options later.
+
+# Date
+
+***WIP***
+
+## Date
+
+To write a date, you use this format: `yyyy/mm/dd`.
+Like that: `2024/10/19`.
+
+***Note: You cant use negative years***
+
+## Time
+
+To write a time, you use this format: `hh:mm:ss.mmmmm`.
+Like that: `12:45:00.0000`.
+
+Millisecond and second are optional so this work too: `12:45:00` and `12:45`
+
+
+## Datetime
+
+Mix of both, to write a datetime, you use this format: `yyyy/mm/dd-hh:mm:ss.mmmmm`.
+Like that: `2024/10/19-12:45:00.0000`.
+
+Millisecond and second are optional so this work too: `2024/10/19-12:45:00` and `2024/10/19-12:45`
+
+GRAB User {birthday > 2020/10/19 AND birthday < 2024/01/01 }
+
+GRAB IOT {id = '0000-0000' AND .TemperatureSensor.Temperature.timestamp > 22-45-50.0000}
+GRAB IOT {.TemperatureSensor.TemperatureRecord IN TemperatureRecord{.timestamp > 22-45-50.0000 AND version = 3}}
+GRAB IOT {.TemperatureSensor.TemperatureRecord IN .{timestamp > 22-45-50.0000} AND .TemperatureSensor IN .{version = 3}}

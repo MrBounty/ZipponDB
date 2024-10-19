@@ -1,8 +1,8 @@
 .zig-cache
 .venv
 ZipponDB
+data
 engine
 engine.o
 zig-out
-TODO v0.1.md
-generate_dummy_data.py
+TODO v0.2.md

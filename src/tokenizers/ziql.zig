@@ -95,7 +95,6 @@ pub const Tokenizer = struct {
         string_literal,
         date_literal,
         time_literal,
-        datetime_literal,
         uuid_literal,
         identifier,
         equal,
@@ -103,9 +102,7 @@ pub const Tokenizer = struct {
         angle_bracket_left,
         angle_bracket_right,
         string_literal_backslash,
-        int_exponent,
         float,
-        float_exponent,
         int,
     };
 
@@ -204,7 +201,7 @@ pub const Tokenizer = struct {
                         state = .float;
                         result.tag = .float_literal;
                     },
-                    '0'...'9' => {
+                    '0'...'9', '-' => {
                         state = .int;
                         result.tag = .int_literal;
                     },
@@ -324,7 +321,7 @@ pub const Tokenizer = struct {
                         state = .float;
                         result.tag = .float_literal;
                     },
-                    'a'...'d', 'f'...'z' => {
+                    'a'...'z', '-' => {
                         state = .uuid_literal;
                         result.tag = .uuid_literal;
                     },
@@ -332,35 +329,15 @@ pub const Tokenizer = struct {
                         state = .date_literal;
                         result.tag = .date_literal;
                     },
-                    '-' => {
-                        if ((self.index - result.loc.start) == 2) {
-                            state = .time_literal;
-                            result.tag = .time_literal;
-                        } else { // Just in case a uuid have only number as fist part of its UUID
-                            state = .uuid_literal;
-                            result.tag = .uuid_literal;
-                        }
-                    },
-                    'e', 'E' => {
-                        state = .int_exponent;
-                        result.tag = .float_literal;
+                    ':' => {
+                        state = .time_literal;
+                        result.tag = .time_literal;
                     },
                     '_', '0'...'9' => continue,
                     else => break,
                 },
-                .int_exponent => switch (c) {
-                    '+', '-', '0'...'9' => {
-                        state = .float;
-                    },
-                    else => {
-                        self.index -= 1;
-                        break;
-                    },
-                },
+
                 .float => switch (c) {
-                    'e', 'E' => {
-                        state = .float_exponent;
-                    },
                     '_', '0'...'9' => {
                         continue;
                     },
@@ -368,31 +345,21 @@ pub const Tokenizer = struct {
                         break;
                     },
                 },
-                .float_exponent => switch (c) {
-                    '+', '-', '0'...'9' => {
-                        continue;
-                    },
-                    else => {
-                        self.index -= 1;
-                        break;
-                    },
-                },
+
                 .date_literal => switch (c) {
-                    '|' => {
-                        state = .datetime_literal;
+                    '-' => {
+                        state = .time_literal;
                         result.tag = .datetime_literal;
                     },
                     '0'...'9', '/' => continue,
                     else => break,
                 },
+
                 .time_literal => switch (c) {
-                    '0'...'9', '-', '.' => continue,
+                    '0'...'9', ':', '.' => continue,
                     else => break,
                 },
-                .datetime_literal => switch (c) {
-                    '0'...'9', '-', '.' => continue,
-                    else => break,
-                },
+
                 .uuid_literal => switch (c) {
                     '0'...'9', 'a'...'z', '-' => continue,
                     else => break,
@@ -421,9 +388,9 @@ test "basic query" {
 
 test "basic date" {
     try testTokenize("1a5527af-88fb-48c1-8d5c-49c9b73c2379", &.{.uuid_literal});
-    try testTokenize("21/01/1998", &.{.date_literal});
-    try testTokenize("17-55-31.0000", &.{.time_literal});
-    try testTokenize("21/01/1998|17-55-31.0000", &.{.datetime_literal});
+    try testTokenize("1998/01/21", &.{.date_literal});
+    try testTokenize("17:55:31.0000", &.{.time_literal});
+    try testTokenize("1998/01/21-17:55:31.0000", &.{.datetime_literal});
 }
 
 fn testTokenize(source: [:0]const u8, expected_token_tags: []const Token.Tag) !void {

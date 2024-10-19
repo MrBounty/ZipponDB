@@ -116,7 +116,7 @@ pub const Tokenizer = struct {
                 },
 
                 .identifier => switch (c) {
-                    'a'...'z', 'A'...'Z', '_', '0'...'9', '.' => continue,
+                    'a'...'z', 'A'...'Z', '_', '0'...'9', '.', '/' => continue,
                     else => {
                         if (Token.getKeyword(self.buffer[result.loc.start..self.index])) |tag| {
                             result.tag = tag;

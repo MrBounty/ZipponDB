@@ -13,6 +13,10 @@ pub const Token = struct {
         string_literal,
         int_literal,
         float_literal,
+        uuid_literal,
+        date_literal,
+        time_literal,
+        datetime_literal,
         l_bracket, // [
         r_bracket, // ]
     };
@@ -36,6 +40,9 @@ pub const Tokenizer = struct {
         string_literal,
         float,
         int,
+        uuid_literal,
+        date_literal,
+        time_literal,
     };
 
     pub fn getTokenSlice(self: *Tokenizer, token: Token) []const u8 {
@@ -65,6 +72,11 @@ pub const Tokenizer = struct {
                         state = .string_literal;
                         result.tag = .string_literal;
                     },
+                    'a'...'z' => {
+                        state = .uuid_literal;
+                        result.tag = .uuid_literal;
+                    },
+
                     '0'...'9', '-' => {
                         state = .int;
                         result.tag = .int_literal;
@@ -95,9 +107,22 @@ pub const Tokenizer = struct {
                         state = .float;
                         result.tag = .float_literal;
                     },
-                    '0'...'9' => continue,
+                    'a'...'z', '-' => {
+                        state = .uuid_literal;
+                        result.tag = .uuid_literal;
+                    },
+                    '/' => {
+                        state = .date_literal;
+                        result.tag = .date_literal;
+                    },
+                    ':' => {
+                        state = .time_literal;
+                        result.tag = .time_literal;
+                    },
+                    '_', '0'...'9' => continue,
                     else => break,
                 },
+
                 .float => switch (c) {
                     '0'...'9' => {
                         continue;
@@ -105,6 +130,25 @@ pub const Tokenizer = struct {
                     else => {
                         break;
                     },
+                },
+
+                .date_literal => switch (c) {
+                    '-' => {
+                        state = .time_literal;
+                        result.tag = .datetime_literal;
+                    },
+                    '0'...'9', '/' => continue,
+                    else => break,
+                },
+
+                .time_literal => switch (c) {
+                    '0'...'9', ':', '.' => continue,
+                    else => break,
+                },
+
+                .uuid_literal => switch (c) {
+                    '0'...'9', 'a'...'z', '-' => continue,
+                    else => break,
                 },
             }
         }

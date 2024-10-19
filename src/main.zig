@@ -23,6 +23,7 @@ const State = enum {
     end,
 };
 
+// TODO: If an argument is given when starting the binary, it is the db path
 pub fn main() !void {
     var state: State = .expect_main_command;
 
@@ -44,10 +45,10 @@ pub fn main() !void {
         _ = std.fs.cwd().openDir(path, .{}) catch {
             std.debug.print("Error opening ZipponDB path using environment variable, please select the database using 'db use' or create a new one with 'db new'\n", .{});
             file_engine = FileEngine.init(allocator, try allocator.dupe(u8, ""));
-            to_init = true;
+            to_init = false;
         };
         if (to_init) {
-            file_engine = FileEngine.init(allocator, path_env_variable.?);
+            file_engine = FileEngine.init(allocator, path);
             try file_engine.checkAndCreateDirectories();
         }
     } else {
@@ -73,7 +74,7 @@ pub fn main() !void {
             while ((state != .end) and (state != .quit)) : (token = toker.next()) switch (state) {
                 .expect_main_command => switch (token.tag) {
                     .keyword_run => {
-                        if (!file_engine.usable) {
+                        if (!file_engine.usable()) {
                             send("Error: No database selected. Please use db new or db use.", .{});
                             state = .end;
                             continue;
@@ -82,7 +83,7 @@ pub fn main() !void {
                     },
                     .keyword_db => state = .expect_db_command,
                     .keyword_schema => {
-                        if (!file_engine.usable) {
+                        if (!file_engine.usable()) {
                             send("Error: No database selected. Please use db new or db use.", .{});
                             state = .end;
                             continue;
@@ -116,7 +117,7 @@ pub fn main() !void {
                     .keyword_new => state = .expect_path_to_new_db,
                     .keyword_use => state = .expect_path_to_db,
                     .keyword_metrics => {
-                        if (!file_engine.usable) {
+                        if (!file_engine.usable()) {
                             send("Error: No database selected. Please use db new or db use.", .{});
                             state = .end;
                             continue;

@@ -6,10 +6,7 @@ const Token = @import("tokenizers/schema.zig").Token;
 const send = @import("stuffs/utils.zig").send;
 const printError = @import("stuffs/utils.zig").printError;
 
-const SchemaParserError = error{
-    SynthaxError,
-    FeatureMissing,
-};
+const SchemaParserError = @import("stuffs/errors.zig").SchemaParserError;
 
 const State = enum {
     end,
@@ -35,10 +32,6 @@ pub const Parser = struct {
         };
     }
 
-    // Maybe I the name and member can be Loc, with a start and end, and use the buffer to get back the value
-    // This is how Token works
-    // From my understanding this is the same here. I put slices, that can just a len and a pointer, put I con't save the value itself.
-    // Or maybe I do actually, and an array of pointer would be *[]u8
     pub const SchemaStruct = struct {
         allocator: Allocator,
         name: Token.Loc,
@@ -46,7 +39,12 @@ pub const Parser = struct {
         types: std.ArrayList(DataType),
 
         pub fn init(allocator: Allocator, name: Token.Loc) SchemaStruct {
-            return SchemaStruct{ .allocator = allocator, .name = name, .members = std.ArrayList(Token.Loc).init(allocator), .types = std.ArrayList(DataType).init(allocator) };
+            return SchemaStruct{
+                .allocator = allocator,
+                .name = name,
+                .members = std.ArrayList(Token.Loc).init(allocator),
+                .types = std.ArrayList(DataType).init(allocator),
+            };
         }
 
         pub fn deinit(self: *SchemaStruct) void {
@@ -78,15 +76,27 @@ pub const Parser = struct {
             .expect_struct_name_OR_end => switch (token.tag) {
                 .identifier => {
                     state = .expect_l_paren;
-                    struct_array.append(SchemaStruct.init(self.allocator, token.loc)) catch @panic("Error appending a struct name.");
+                    struct_array.append(SchemaStruct.init(self.allocator, token.loc)) catch return SchemaParserError.MemoryError;
                 },
                 .eof => state = .end,
-                else => return printError("Error parsing schema: Expected a struct name", SchemaParserError.SynthaxError, self.toker.buffer, token.loc.start, token.loc.end),
+                else => return printError(
+                    "Error parsing schema: Expected a struct name",
+                    SchemaParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             .expect_l_paren => switch (token.tag) {
                 .l_paren => state = .expect_member_name,
-                else => return printError("Error parsing schema: Expected (", SchemaParserError.SynthaxError, self.toker.buffer, token.loc.start, token.loc.end),
+                else => return printError(
+                    "Error parsing schema: Expected (",
+                    SchemaParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             .expect_member_name_OR_r_paren => switch (token.tag) {
@@ -98,67 +108,125 @@ pub const Parser = struct {
                     state = .expect_struct_name_OR_end;
                     index += 1;
                 },
-                else => return printError("Error parsing schema: Expected member name or )", SchemaParserError.SynthaxError, self.toker.buffer, token.loc.start, token.loc.end),
+                else => return printError(
+                    "Error parsing schema: Expected member name or )",
+                    SchemaParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             .expect_member_name => {
                 state = .expect_two_dot;
-                struct_array.items[index].members.append(token.loc) catch @panic("Error appending a member name.");
+                struct_array.items[index].members.append(token.loc) catch return SchemaParserError.MemoryError;
             },
 
             .expect_two_dot => switch (token.tag) {
                 .two_dot => state = .expect_value_type,
-                else => return printError("Error parsing schema: Expected :", SchemaParserError.SynthaxError, self.toker.buffer, token.loc.start, token.loc.end),
+                else => return printError(
+                    "Error parsing schema: Expected :",
+                    SchemaParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             .expect_value_type => switch (token.tag) {
                 .type_int => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.int) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.int) catch return SchemaParserError.MemoryError;
                 },
                 .type_str => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.str) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.str) catch return SchemaParserError.MemoryError;
                 },
                 .type_float => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.float) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.float) catch return SchemaParserError.MemoryError;
                 },
                 .type_bool => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.bool) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.bool) catch return SchemaParserError.MemoryError;
                 },
-                .type_date => @panic("Date not yet implemented"),
-                .identifier => @panic("Link not yet implemented"),
+                .type_date => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.date) catch return SchemaParserError.MemoryError;
+                },
+                .type_time => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.time) catch return SchemaParserError.MemoryError;
+                },
+                .type_datetime => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.datetime) catch return SchemaParserError.MemoryError;
+                },
+                .identifier => return SchemaParserError.FeatureMissing,
                 .lr_bracket => state = .expext_array_type,
-                else => return printError("Error parsing schema: Expected data type", SchemaParserError.SynthaxError, self.toker.buffer, token.loc.start, token.loc.end),
+                else => return printError(
+                    "Error parsing schema: Expected data type",
+                    SchemaParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             .expext_array_type => switch (token.tag) {
                 .type_int => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.int_array) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.int_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_str => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.str_array) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.str_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_float => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.float_array) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.float_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_bool => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.bool_array) catch @panic("Error appending a type.");
+                    struct_array.items[index].types.append(DataType.bool_array) catch return SchemaParserError.MemoryError;
                 },
-                .type_date => return printError("Error parsing schema: Data not yet implemented", SchemaParserError.FeatureMissing, self.toker.buffer, token.loc.start, token.loc.end),
-                .identifier => return printError("Error parsing schema: Relationship not yet implemented", SchemaParserError.FeatureMissing, self.toker.buffer, token.loc.start, token.loc.end),
-                else => return printError("Error parsing schema: Expected data type", SchemaParserError.SynthaxError, self.toker.buffer, token.loc.start, token.loc.end),
+                .type_date => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.date_array) catch return SchemaParserError.MemoryError;
+                },
+                .type_time => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.time_array) catch return SchemaParserError.MemoryError;
+                },
+                .type_datetime => {
+                    state = .expect_comma;
+                    struct_array.items[index].types.append(DataType.datetime_array) catch return SchemaParserError.MemoryError;
+                },
+                .identifier => return printError(
+                    "Error parsing schema: Relationship not yet implemented",
+                    SchemaParserError.FeatureMissing,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
+                else => return printError(
+                    "Error parsing schema: Expected data type",
+                    SchemaParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             .expect_comma => switch (token.tag) {
                 .comma => state = .expect_member_name_OR_r_paren,
-                else => return printError("Error parsing schema: Expected ,", SchemaParserError.SynthaxError, self.toker.buffer, token.loc.start, token.loc.end),
+                else => return printError(
+                    "Error parsing schema: Expected ,",
+                    SchemaParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             else => unreachable,
