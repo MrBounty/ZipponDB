@@ -51,7 +51,8 @@ pub const Tokenizer = struct {
 
     pub fn next(self: *Tokenizer) Token {
         // That ugly but work
-        if (self.buffer[self.index] == ' ') self.index += 1;
+        if (self.buffer[self.index] == ';') self.index += 1; // Hardcoded delimiter
+        if (self.buffer[self.index] == ' ') self.index += 1; // Hardcoded delimiter
 
         var state: State = .start;
         var result: Token = .{

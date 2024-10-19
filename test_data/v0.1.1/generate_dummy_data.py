@@ -29,7 +29,7 @@ def run(process, command):
 
 from tqdm import tqdm
 
-for i in tqdm(range(100)):
+for i in tqdm(range(10)):
     process = subprocess.Popen(
         ["zig-out/bin/zippon"], 
         stdin=subprocess.PIPE,

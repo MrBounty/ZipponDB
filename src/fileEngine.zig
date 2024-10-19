@@ -17,6 +17,7 @@ const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
 const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
 const MAX_FILE_SIZE = @import("config.zig").MAX_FILE_SIZE;
+const CSV_DELIMITER = @import("config.zig").CSV_DELIMITER;
 
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
@@ -214,7 +215,7 @@ pub const FileEngine = struct {
             };
             const struct_dir = data_dir.openDir(self.locToSlice(struct_item.name), .{}) catch return FileEngineError.CantOpenDir;
 
-            _ = struct_dir.createFile("0.zippondata", .{}) catch |err| switch (err) {
+            _ = struct_dir.createFile("0.csv", .{}) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
                 else => return FileEngineError.CantMakeFile,
             };
@@ -234,7 +235,7 @@ pub const FileEngine = struct {
 
         var path_buff = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata",
+            "{s}/DATA/{s}/{d}.csv",
             .{ self.path_to_ZipponDB_dir, struct_name, current_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff);
@@ -269,7 +270,11 @@ pub const FileEngine = struct {
                     current_index += 1;
 
                     self.allocator.free(path_buff);
-                    path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata", .{ self.path_to_ZipponDB_dir, struct_name, current_index }) catch @panic("Can't create sub_path for init a DataIterator");
+                    path_buff = std.fmt.allocPrint(
+                        self.allocator,
+                        "{s}/DATA/{s}/{d}.csv",
+                        .{ self.path_to_ZipponDB_dir, struct_name, current_index },
+                    ) catch @panic("Can't create sub_path for init a DataIterator");
 
                     file.close(); // Do I need to close ? I think so
                     file = std.fs.cwd().openFile(path_buff, .{}) catch {
@@ -370,7 +375,7 @@ pub const FileEngine = struct {
 
         var path_buff = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata",
+            "{s}/DATA/{s}/{d}.csv",
             .{ self.path_to_ZipponDB_dir, struct_name, current_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff);
@@ -400,7 +405,7 @@ pub const FileEngine = struct {
                     self.allocator.free(path_buff);
                     path_buff = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata",
+                        "{s}/DATA/{s}/{d}.csv",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_index },
                     ) catch return FileEngineError.MemoryError;
 
@@ -434,10 +439,12 @@ pub const FileEngine = struct {
 
         var path_buff = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata",
+            "{s}/DATA/{s}/{d}.csv",
             .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff);
+
+        std.debug.print("{s}\n", .{path_buff});
 
         var file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
         defer file.close();
@@ -501,7 +508,7 @@ pub const FileEngine = struct {
                     self.allocator.free(path_buff);
                     path_buff = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata",
+                        "{s}/DATA/{s}/{d}.csv",
                         .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index },
                     ) catch return FileEngineError.MemoryError;
 
@@ -532,67 +539,71 @@ pub const FileEngine = struct {
 
             const row_value = data_toker.getTokenSlice(token);
 
-            switch (condition.operation) {
+            found = switch (condition.operation) {
                 .equal => switch (condition.data_type) {
-                    .int => found = compare_value.int == s2t.parseInt(row_value),
-                    .float => found = compare_value.float == s2t.parseFloat(row_value),
-                    .str => found = std.mem.eql(u8, compare_value.str, row_value),
-                    .bool => found = compare_value.bool_ == s2t.parseBool(row_value),
-                    .id => found = compare_value.id.compare(uuid),
-                    .date => found = compare_value.datetime.compareDate(s2t.parseDate(row_value)),
-                    .time => found = compare_value.datetime.compareTime(s2t.parseTime(row_value)),
-                    .datetime => found = compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
+                    .int => compare_value.int == s2t.parseInt(row_value),
+                    .float => compare_value.float == s2t.parseFloat(row_value),
+                    .str => std.mem.eql(u8, compare_value.str, row_value),
+                    .bool => compare_value.bool_ == s2t.parseBool(row_value),
+                    .id => compare_value.id.compare(uuid),
+                    .date => compare_value.datetime.compareDate(s2t.parseDate(row_value)),
+                    .time => compare_value.datetime.compareTime(s2t.parseTime(row_value)),
+                    .datetime => compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
                     else => unreachable,
                 },
 
                 .different => switch (condition.data_type) {
-                    .int => found = compare_value.int != s2t.parseInt(row_value),
-                    .float => found = compare_value.float != s2t.parseFloat(row_value),
-                    .str => found = !std.mem.eql(u8, compare_value.str, row_value),
-                    .bool => found = compare_value.bool_ != s2t.parseBool(row_value),
-                    .date => found = !compare_value.datetime.compareDate(s2t.parseDate(row_value)),
-                    .time => found = !compare_value.datetime.compareTime(s2t.parseTime(row_value)),
-                    .datetime => found = !compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
+                    .int => compare_value.int != s2t.parseInt(row_value),
+                    .float => compare_value.float != s2t.parseFloat(row_value),
+                    .str => !std.mem.eql(u8, compare_value.str, row_value),
+                    .bool => compare_value.bool_ != s2t.parseBool(row_value),
+                    .date => !compare_value.datetime.compareDate(s2t.parseDate(row_value)),
+                    .time => !compare_value.datetime.compareTime(s2t.parseTime(row_value)),
+                    .datetime => !compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
                     else => unreachable,
                 },
 
                 .superior_or_equal => switch (condition.data_type) {
-                    .int => found = compare_value.int <= s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => found = compare_value.float <= s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => found = compare_value.datetime.toUnix() <= s2t.parseDate(row_value).toUnix(),
-                    .time => found = compare_value.datetime.toUnix() <= s2t.parseTime(row_value).toUnix(),
-                    .datetime => found = compare_value.datetime.toUnix() <= s2t.parseDatetime(row_value).toUnix(),
+                    .int => compare_value.int <= s2t.parseInt(data_toker.getTokenSlice(token)),
+                    .float => compare_value.float <= s2t.parseFloat(data_toker.getTokenSlice(token)),
+                    .date => compare_value.datetime.toUnix() <= s2t.parseDate(row_value).toUnix(),
+                    .time => compare_value.datetime.toUnix() <= s2t.parseTime(row_value).toUnix(),
+                    .datetime => compare_value.datetime.toUnix() <= s2t.parseDatetime(row_value).toUnix(),
                     else => unreachable,
                 },
 
                 .superior => switch (condition.data_type) {
-                    .int => found = compare_value.int < s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => found = compare_value.float < s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => found = compare_value.datetime.toUnix() < s2t.parseDate(row_value).toUnix(),
-                    .time => found = compare_value.datetime.toUnix() < s2t.parseTime(row_value).toUnix(),
-                    .datetime => found = compare_value.datetime.toUnix() < s2t.parseDatetime(row_value).toUnix(),
+                    .int => compare_value.int < s2t.parseInt(data_toker.getTokenSlice(token)),
+                    .float => compare_value.float < s2t.parseFloat(data_toker.getTokenSlice(token)),
+                    .date => compare_value.datetime.toUnix() < s2t.parseDate(row_value).toUnix(),
+                    .time => compare_value.datetime.toUnix() < s2t.parseTime(row_value).toUnix(),
+                    .datetime => compare_value.datetime.toUnix() < s2t.parseDatetime(row_value).toUnix(),
                     else => unreachable,
                 },
 
                 .inferior_or_equal => switch (condition.data_type) {
-                    .int => found = compare_value.int >= s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => found = compare_value.float >= s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => found = compare_value.datetime.toUnix() >= s2t.parseDate(row_value).toUnix(),
-                    .time => found = compare_value.datetime.toUnix() >= s2t.parseTime(row_value).toUnix(),
-                    .datetime => found = compare_value.datetime.toUnix() >= s2t.parseDatetime(row_value).toUnix(),
+                    .int => compare_value.int >= s2t.parseInt(data_toker.getTokenSlice(token)),
+                    .float => compare_value.float >= s2t.parseFloat(data_toker.getTokenSlice(token)),
+                    .date => compare_value.datetime.toUnix() >= s2t.parseDate(row_value).toUnix(),
+                    .time => compare_value.datetime.toUnix() >= s2t.parseTime(row_value).toUnix(),
+                    .datetime => compare_value.datetime.toUnix() >= s2t.parseDatetime(row_value).toUnix(),
                     else => unreachable,
                 },
 
                 .inferior => switch (condition.data_type) {
-                    .int => found = compare_value.int > s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => found = compare_value.float > s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => found = compare_value.datetime.toUnix() > s2t.parseDate(row_value).toUnix(),
-                    .time => found = compare_value.datetime.toUnix() > s2t.parseTime(row_value).toUnix(),
-                    .datetime => found = compare_value.datetime.toUnix() > s2t.parseDatetime(row_value).toUnix(),
+                    .int => compare_value.int > s2t.parseInt(data_toker.getTokenSlice(token)),
+                    .float => compare_value.float > s2t.parseFloat(data_toker.getTokenSlice(token)),
+                    .date => compare_value.datetime.toUnix() > s2t.parseDate(row_value).toUnix(),
+                    .time => compare_value.datetime.toUnix() > s2t.parseTime(row_value).toUnix(),
+                    .datetime => compare_value.datetime.toUnix() > s2t.parseDatetime(row_value).toUnix(),
                     else => unreachable,
                 },
 
-                // TODO: Do it for other array and implement in the query language
+                else => false,
+            };
+
+            // TODO: Do it for other array and implement in the query language
+            switch (condition.operation) {
                 .in => switch (condition.data_type) {
                     .id_array => {
                         for (compare_value.id_array.items) |elem| {
@@ -601,6 +612,7 @@ pub const FileEngine = struct {
                     },
                     else => unreachable,
                 },
+                else => {},
             }
 
             if (found) uuid_array.append(uuid) catch return FileEngineError.MemoryError;
@@ -623,7 +635,7 @@ pub const FileEngine = struct {
         if (potential_file_index) |file_index| {
             path = std.fmt.allocPrint(
                 self.allocator,
-                "{s}/DATA/{s}/{d}.zippondata",
+                "{s}/DATA/{s}/{d}.csv",
                 .{ self.path_to_ZipponDB_dir, struct_name, file_index },
             ) catch return FileEngineError.MemoryError;
             file = std.fs.cwd().openFile(path, .{ .mode = .read_write }) catch return FileEngineError.CantOpenFile;
@@ -632,20 +644,22 @@ pub const FileEngine = struct {
 
             path = std.fmt.allocPrint(
                 self.allocator,
-                "{s}/DATA/{s}/{d}.zippondata",
+                "{s}/DATA/{s}/{d}.csv",
                 .{ self.path_to_ZipponDB_dir, struct_name, max_index + 1 },
             ) catch return FileEngineError.MemoryError;
             file = std.fs.cwd().createFile(path, .{}) catch return FileEngineError.CantMakeFile;
         }
 
         file.seekFromEnd(0) catch return FileEngineError.WriteError; // Not really a write error tho
-        file.writer().print("{s}", .{uuid.format_uuid()}) catch return FileEngineError.WriteError;
+        const writer = file.writer();
+        writer.print("{s}", .{uuid.format_uuid()}) catch return FileEngineError.WriteError;
 
         for (try self.structName2structMembers(struct_name)) |member_name| {
-            file.writer().print(" {s}", .{data_map.get(self.locToSlice(member_name)).?}) catch return FileEngineError.WriteError; // Change that for csv
+            writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
+            writer.print("{s}", .{data_map.get(self.locToSlice(member_name)).?}) catch return FileEngineError.WriteError; // Change that for csv
         }
 
-        file.writer().print("\n", .{}) catch return FileEngineError.WriteError;
+        writer.print("\n", .{}) catch return FileEngineError.WriteError;
 
         return uuid;
     }
@@ -661,14 +675,14 @@ pub const FileEngine = struct {
 
         var path_buff = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata",
+            "{s}/DATA/{s}/{d}.csv",
             .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff);
 
         var path_buff2 = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata",
+            "{s}/DATA/{s}/{d}.csv",
             .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff2);
@@ -678,7 +692,7 @@ pub const FileEngine = struct {
         self.allocator.free(path_buff);
         path_buff = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata.new",
+            "{s}/DATA/{s}/{d}.csv.new",
             .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
         ) catch return FileEngineError.MemoryError;
 
@@ -692,10 +706,11 @@ pub const FileEngine = struct {
         var buffered = std.io.bufferedReader(old_file.reader());
         var reader = buffered.reader();
         var founded = false;
+        const number_of_member_in_struct = try self.numberOfMemberInStruct(struct_name);
 
         while (true) {
             output_fbs.reset();
-            reader.streamUntilDelimiter(writer, ' ', null) catch |err| switch (err) {
+            reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch |err| switch (err) {
                 error.EndOfStream => {
                     // When end of file, check if all file was parse, if not update the reader to the next file
                     // TODO: Be able to give an array of file index from the B+Tree to only parse them
@@ -705,14 +720,14 @@ pub const FileEngine = struct {
                     self.allocator.free(path_buff);
                     path_buff = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata",
+                        "{s}/DATA/{s}/{d}.csv",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
                     ) catch return FileEngineError.MemoryError;
 
                     self.allocator.free(path_buff2);
                     path_buff2 = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata.new",
+                        "{s}/DATA/{s}/{d}.csv.new",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
                     ) catch return FileEngineError.MemoryError;
 
@@ -727,12 +742,12 @@ pub const FileEngine = struct {
                     self.allocator.free(path_buff);
                     path_buff = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata",
+                        "{s}/DATA/{s}/{d}.csv",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
                     ) catch return FileEngineError.MemoryError;
 
                     self.allocator.free(path_buff2);
-                    path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.zippondata.new", .{
+                    path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.csv.new", .{
                         self.path_to_ZipponDB_dir,
                         struct_name,
                         current_file_index,
@@ -749,7 +764,9 @@ pub const FileEngine = struct {
                 else => return FileEngineError.StreamError,
             };
 
-            new_file.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
+            const new_writer = new_file.writer();
+
+            new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
 
             // THis is the uuid of the current row
             const uuid = UUID.parse(output_fbs.getWritten()[0..36]) catch return FileEngineError.InvalidUUID;
@@ -766,12 +783,12 @@ pub const FileEngine = struct {
             if (!founded) {
                 // stream until the delimiter
                 output_fbs.reset();
-                new_file.writeAll(" ") catch return FileEngineError.WriteError;
+                new_writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
                 reader.streamUntilDelimiter(writer, '\n', null) catch return FileEngineError.WriteError;
-                new_file.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
-                new_file.writeAll("\n") catch return FileEngineError.WriteError;
+                new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
+                new_writer.writeAll("\n") catch return FileEngineError.WriteError;
             } else {
-                for (try self.structName2structMembers(struct_name), try self.structName2DataType(struct_name)) |member_name, member_type| {
+                for (try self.structName2structMembers(struct_name), try self.structName2DataType(struct_name), 0..) |member_name, member_type, i| {
                     // For all collum in the right order, check if the key is in the map, if so use it to write the new value, otherwise use the old file
                     output_fbs.reset();
                     switch (member_type) {
@@ -779,45 +796,51 @@ pub const FileEngine = struct {
                             reader.streamUntilDelimiter(writer, '\'', null) catch return FileEngineError.StreamError;
                             reader.streamUntilDelimiter(writer, '\'', null) catch return FileEngineError.StreamError;
                         },
-                        .int_array, .float_array, .bool_array, .id_array => {
+                        .int_array, .float_array, .bool_array, .id_array, .date_array, .time_array, .datetime_array => {
                             reader.streamUntilDelimiter(writer, ']', null) catch return FileEngineError.StreamError;
                         },
                         .str_array => {
                             reader.streamUntilDelimiter(writer, ']', null) catch return FileEngineError.StreamError;
                         }, // FIXME: If the string itself contain ], this will be a problem
                         else => {
-                            reader.streamUntilDelimiter(writer, ' ', null) catch return FileEngineError.StreamError;
-                            reader.streamUntilDelimiter(writer, ' ', null) catch return FileEngineError.StreamError;
+                            reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch return FileEngineError.StreamError;
                         },
                     }
 
+                    new_writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
+
                     if (new_data_map.contains(self.locToSlice(member_name))) {
                         // Write the new data
-                        new_file.writer().print(" {s}", .{new_data_map.get(self.locToSlice(member_name)).?}) catch return FileEngineError.WriteError;
+                        new_writer.print("{s}", .{new_data_map.get(self.locToSlice(member_name)).?}) catch return FileEngineError.WriteError;
                     } else {
                         // Write the old data
                         switch (member_type) {
-                            .str => new_file.writeAll(" \'") catch return FileEngineError.WriteError,
-                            .int_array => new_file.writeAll(" ") catch return FileEngineError.WriteError,
-                            .float_array => new_file.writeAll(" ") catch return FileEngineError.WriteError,
-                            .str_array => new_file.writeAll(" ") catch return FileEngineError.WriteError,
-                            .bool_array => new_file.writeAll(" ") catch return FileEngineError.WriteError,
-                            .id_array => new_file.writeAll(" ") catch return FileEngineError.WriteError,
-                            else => new_file.writeAll(" ") catch return FileEngineError.WriteError,
+                            .str => new_writer.writeByte('\'') catch return FileEngineError.WriteError,
+                            else => {},
                         }
-
-                        new_file.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
-
+                        new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
                         switch (member_type) {
-                            .str => new_file.writeAll("\'") catch return FileEngineError.WriteError,
-                            .int_array, .float_array, .bool_array, .id_array => new_file.writeAll("]") catch return FileEngineError.WriteError,
+                            .str => {
+                                new_writer.writeByte('\'') catch return FileEngineError.WriteError;
+                            },
+                            .int_array, .float_array, .bool_array, .id_array, .date_array, .str_array, .time_array, .datetime_array => {
+                                new_writer.writeByte(']') catch return FileEngineError.WriteError;
+                            },
                             else => {},
                         }
                     }
+
+                    if (i == number_of_member_in_struct - 1) continue;
+                    switch (member_type) {
+                        .str, .int_array, .float_array, .bool_array, .id_array, .date_array, .str_array, .time_array, .datetime_array => {
+                            reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch return FileEngineError.StreamError;
+                        },
+                        else => {},
+                    }
                 }
 
-                reader.streamUntilDelimiter(writer, '\n', null) catch return FileEngineError.WriteError;
-                new_file.writeAll("\n") catch return FileEngineError.WriteError;
+                reader.streamUntilDelimiter(writer, '\n', null) catch return FileEngineError.StreamError;
+                new_writer.writeAll("\n") catch return FileEngineError.WriteError;
             }
         }
     }
@@ -830,14 +853,14 @@ pub const FileEngine = struct {
 
         var path_buff = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata",
+            "{s}/DATA/{s}/{d}.csv",
             .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff);
 
         var path_buff2 = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata",
+            "{s}/DATA/{s}/{d}.csv",
             .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff2);
@@ -847,7 +870,7 @@ pub const FileEngine = struct {
         self.allocator.free(path_buff);
         path_buff = std.fmt.allocPrint(
             self.allocator,
-            "{s}/DATA/{s}/{d}.zippondata.new",
+            "{s}/DATA/{s}/{d}.csv.new",
             .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
         ) catch return FileEngineError.MemoryError;
 
@@ -865,7 +888,7 @@ pub const FileEngine = struct {
 
         while (true) {
             output_fbs.reset();
-            reader.streamUntilDelimiter(writer, ' ', null) catch |err| switch (err) {
+            reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch |err| switch (err) {
                 error.EndOfStream => {
                     // When end of file, check if all file was parse, if not update the reader to the next file
                     // TODO: Be able to give an array of file index from the B+Tree to only parse them
@@ -875,14 +898,14 @@ pub const FileEngine = struct {
                     self.allocator.free(path_buff);
                     path_buff = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata",
+                        "{s}/DATA/{s}/{d}.csv",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
                     ) catch return FileEngineError.MemoryError;
 
                     self.allocator.free(path_buff2);
                     path_buff2 = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata.new",
+                        "{s}/DATA/{s}/{d}.csv.new",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
                     ) catch return FileEngineError.MemoryError;
 
@@ -897,14 +920,14 @@ pub const FileEngine = struct {
                     self.allocator.free(path_buff);
                     path_buff = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata",
+                        "{s}/DATA/{s}/{d}.csv",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
                     ) catch return FileEngineError.MemoryError;
 
                     self.allocator.free(path_buff2);
                     path_buff2 = std.fmt.allocPrint(
                         self.allocator,
-                        "{s}/DATA/{s}/{d}.zippondata.new",
+                        "{s}/DATA/{s}/{d}.csv.new",
                         .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
                     ) catch return FileEngineError.MemoryError;
 
@@ -922,6 +945,8 @@ pub const FileEngine = struct {
                 },
             };
 
+            const new_writer = new_file.writer();
+
             // THis is the uuid of the current row
             const uuid = UUID.parse(output_fbs.getWritten()[0..36]) catch return FileEngineError.InvalidUUID;
             founded = false;
@@ -937,13 +962,13 @@ pub const FileEngine = struct {
 
             if (!founded) {
                 // stream until the delimiter
-                new_file.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
+                new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
 
                 output_fbs.reset();
-                new_file.writeAll(" ") catch return FileEngineError.WriteError;
+                new_writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
                 reader.streamUntilDelimiter(writer, '\n', null) catch return FileEngineError.WriteError;
-                new_file.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
-                new_file.writeAll("\n") catch return FileEngineError.WriteError;
+                new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
+                new_writer.writeByte('\n') catch return FileEngineError.WriteError;
             } else {
                 reader.streamUntilDelimiter(writer, '\n', null) catch return FileEngineError.WriteError;
             }
@@ -970,7 +995,7 @@ pub const FileEngine = struct {
         while (iter.next() catch return FileEngineError.DirIterError) |entry| {
             const file_stat = member_dir.statFile(entry.name) catch return FileEngineError.FileStatError;
             if (file_stat.size < MAX_FILE_SIZE) {
-                return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 11)], 10) catch return FileEngineError.InvalidFileIndex; // TODO: Change the slice when start using CSV
+                return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return FileEngineError.InvalidFileIndex; // TODO: Change the slice when start using CSV
             }
         }
         return null;
@@ -1053,6 +1078,17 @@ pub const FileEngine = struct {
         }
 
         return self.struct_array.items[i].types.items;
+    }
+
+    /// Return the number of member of a struct
+    fn numberOfMemberInStruct(self: *FileEngine, struct_name: []const u8) FileEngineError!usize {
+        var i: usize = 0;
+
+        for (try self.structName2structMembers(struct_name)) |_| {
+            i += 1;
+        }
+
+        return i;
     }
 
     /// Chech if the name of a struct is in the current schema

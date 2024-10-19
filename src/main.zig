@@ -269,9 +269,9 @@ pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) voi
         }
     }
 
-    parser.parse() catch |err| switch (err) {
-        error.SynthaxError => {},
-        else => {},
+    parser.parse() catch |err| {
+        std.debug.print("Error: {any}\n", .{err});
+        @panic("=9");
     };
 }
 
