@@ -307,9 +307,6 @@ pub const FileEngine = struct {
             out_writer.print("{s}", .{output_fbs.getWritten()[0..36]}) catch return FileEngineError.WriteError;
             out_writer.writeAll("\", ") catch return FileEngineError.WriteError;
             for (try self.structName2structMembers(struct_name), try self.structName2DataType(struct_name)) |member_name, member_type| {
-                std.debug.print("Member name to send: {s}\n", .{self.locToSlice(member_name)});
-                std.debug.print("Additional data: {d}\n", .{additional_data.member_to_find.items.len});
-
                 token = data_toker.next();
                 // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
                 if (!(additional_data.member_to_find.items.len == 0 or additional_data.contains(self.locToSlice(member_name)))) continue;

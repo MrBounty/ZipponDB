@@ -6,6 +6,7 @@ pub const ZiQlParserError = error{
     FeatureMissing,
     ParsingValueError,
     ConditionError,
+    WriteError,
 };
 
 pub const SchemaParserError = error{

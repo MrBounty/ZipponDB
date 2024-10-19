@@ -100,6 +100,22 @@ pub const Parser = struct {
         send("{s}", .{buffer.items});
     }
 
+    pub fn sendUUIDs(self: *Parser, uuid_list: []UUID) ZiQlParserError!void {
+        var buffer = std.ArrayList(u8).init(self.allocator);
+        defer buffer.deinit();
+
+        const writer = buffer.writer();
+        writer.writeByte('[') catch return ZiQlParserError.WriteError;
+        for (uuid_list) |uuid| {
+            writer.writeByte('"') catch return ZiQlParserError.WriteError;
+            writer.writeAll(&uuid.format_uuid()) catch return ZiQlParserError.WriteError;
+            writer.writeAll("\", ") catch return ZiQlParserError.WriteError;
+        }
+        writer.writeByte(']') catch return ZiQlParserError.WriteError;
+
+        send("{s}", .{buffer.items});
+    }
+
     pub fn parse(self: *Parser) !void {
         var token = self.toker.next();
         var keep_next = false; // Use in the loop to prevent to get the next token when continue. Just need to make it true and it is reset at every loop
@@ -217,9 +233,9 @@ pub const Parser = struct {
             // TODO: Optimize so it doesnt use parseFilter but just parse the file and directly check the condition. Here I end up parsing 2 times.
             .filter_and_update => switch (token.tag) {
                 .l_brace => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    token = try self.parseFilter(&array, self.struct_name, true);
+                    var uuids = std.ArrayList(UUID).init(self.allocator);
+                    defer uuids.deinit();
+                    token = try self.parseFilter(&uuids, self.struct_name, true);
 
                     if (token.tag != .keyword_to) return printError(
                         "Error: Expected TO",
@@ -242,7 +258,8 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map);
 
-                    try self.file_engine.updateEntities(self.struct_name, array.items, data_map);
+                    try self.file_engine.updateEntities(self.struct_name, uuids.items, data_map);
+                    try self.sendUUIDs(uuids.items);
                     self.state = .end;
                 },
                 .keyword_to => {
@@ -277,21 +294,19 @@ pub const Parser = struct {
 
             .filter_and_delete => switch (token.tag) {
                 .l_brace => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    _ = try self.parseFilter(&array, self.struct_name, true);
-
-                    const deleted_count = try self.file_engine.deleteEntities(self.struct_name, array.items);
-                    std.debug.print("Successfully deleted {d} {s}\n", .{ deleted_count, self.struct_name });
+                    var uuids = std.ArrayList(UUID).init(self.allocator);
+                    defer uuids.deinit();
+                    _ = try self.parseFilter(&uuids, self.struct_name, true);
+                    _ = try self.file_engine.deleteEntities(self.struct_name, uuids.items);
+                    try self.sendUUIDs(uuids.items);
                     self.state = .end;
                 },
                 .eof => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    try self.file_engine.getAllUUIDList(self.struct_name, &array);
-
-                    const deleted_count = try self.file_engine.deleteEntities(self.struct_name, array.items);
-                    std.debug.print("Successfully deleted all {d} {s}\n", .{ deleted_count, self.struct_name });
+                    var uuids = std.ArrayList(UUID).init(self.allocator);
+                    defer uuids.deinit();
+                    try self.file_engine.getAllUUIDList(self.struct_name, &uuids);
+                    _ = try self.file_engine.deleteEntities(self.struct_name, uuids.items);
+                    try self.sendUUIDs(uuids.items);
                     self.state = .end;
                 },
                 else => return printError(
@@ -338,7 +353,18 @@ pub const Parser = struct {
                     send("ZipponDB error: Couln't write new data to file", .{});
                     continue;
                 };
-                send("Successfully added new {s} with UUID: {s}", .{ self.struct_name, uuid.format_uuid() });
+
+                var buffer = std.ArrayList(u8).init(self.allocator);
+                defer buffer.deinit();
+
+                const writer = buffer.writer();
+                writer.writeByte('[') catch return ZiQlParserError.WriteError;
+                writer.writeByte('"') catch return ZiQlParserError.WriteError;
+                writer.writeAll(&uuid.format_uuid()) catch return ZiQlParserError.WriteError;
+                writer.writeAll("\"") catch return ZiQlParserError.WriteError;
+                writer.writeByte(']') catch return ZiQlParserError.WriteError;
+                send("{s}", .{buffer.items});
+
                 self.state = .end;
             },
 
