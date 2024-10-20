@@ -135,7 +135,11 @@ pub const FileEngine = struct {
         const now = DateTime.now();
 
         // TODO: Use a format to add the 0 to be 00:00 and not 0:0
-        writer.print("Time: {d}/{d}/{d}-{d}:{d}:{d}.{d} - ", .{ now.years, now.months, now.days, now.hours, now.minutes, now.seconds, now.ms }) catch return;
+        var date_format_buffer = std.ArrayList(u8).init(self.allocator);
+        defer date_format_buffer.deinit();
+
+        now.format("YYYY/MM/DD-HH:mm:ss.SSSS", date_format_buffer.writer()) catch return;
+        writer.print("Time: {s} - ", .{date_format_buffer.items}) catch return;
         switch (level) {
             .Debug => writer.print("Debug    - ", .{}) catch return,
             .Info => writer.print("Info     - ", .{}) catch return,

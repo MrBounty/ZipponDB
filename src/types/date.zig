@@ -237,9 +237,7 @@ pub const DateTime = struct {
     }
 
     /// fmt is based on https://momentjs.com/docs/#/displaying/format/
-    pub fn format(self: Self, comptime fmt: string, options: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = options;
-
+    pub fn format(self: Self, comptime fmt: string, writer: anytype) !void {
         if (fmt.len == 0) @compileError("DateTime: format string can't be empty");
 
         @setEvalBranchQuota(100000);
