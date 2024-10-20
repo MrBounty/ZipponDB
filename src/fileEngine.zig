@@ -264,12 +264,12 @@ pub const FileEngine = struct {
         var data_dir = std.fs.cwd().openDir(path, .{}) catch return FileEngineError.CantOpenDir;
         defer data_dir.close();
 
-        for (self.struct_array.items) |struct_item| {
-            data_dir.makeDir(self.locToSlice(struct_item.name)) catch |err| switch (err) {
+        for (self.struct_array.items) |schema_struct| {
+            data_dir.makeDir(schema_struct.name) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
                 else => return FileEngineError.CantMakeDir,
             };
-            const struct_dir = data_dir.openDir(self.locToSlice(struct_item.name), .{}) catch return FileEngineError.CantOpenDir;
+            const struct_dir = data_dir.openDir(schema_struct.name, .{}) catch return FileEngineError.CantOpenDir;
 
             _ = struct_dir.createFile("0.csv", .{}) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
@@ -370,10 +370,10 @@ pub const FileEngine = struct {
             for (try self.structName2structMembers(struct_name), try self.structName2DataType(struct_name)) |member_name, member_type| {
                 token = data_toker.next();
                 // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
-                if (!(additional_data.member_to_find.items.len == 0 or additional_data.contains(self.locToSlice(member_name)))) continue;
+                if (!(additional_data.member_to_find.items.len == 0 or additional_data.contains(member_name))) continue;
 
                 // write the member name and = sign
-                out_writer.print("{s}: ", .{self.locToSlice(member_name)}) catch return FileEngineError.WriteError;
+                out_writer.print("{s}: ", .{member_name}) catch return FileEngineError.WriteError;
 
                 switch (member_type) {
                     .str => {
@@ -590,8 +590,8 @@ pub const FileEngine = struct {
             const uuid = UUID.parse(output_fbs.getWritten()[0..36]) catch return FileEngineError.InvalidUUID;
 
             // Skip unwanted token
-            for (try self.structName2structMembers(condition.struct_name)) |mn| {
-                if (std.mem.eql(u8, self.locToSlice(mn), condition.member_name)) break;
+            for (try self.structName2structMembers(condition.struct_name)) |member_name| {
+                if (std.mem.eql(u8, member_name, condition.member_name)) break;
                 _ = data_toker.next();
             }
             token = data_toker.next();
@@ -716,7 +716,7 @@ pub const FileEngine = struct {
 
         for (try self.structName2structMembers(struct_name)) |member_name| {
             writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
-            writer.print("{s}", .{data_map.get(self.locToSlice(member_name)).?}) catch return FileEngineError.WriteError; // Change that for csv
+            writer.print("{s}", .{data_map.get(member_name).?}) catch return FileEngineError.WriteError; // Change that for csv
         }
 
         writer.print("\n", .{}) catch return FileEngineError.WriteError;
@@ -869,9 +869,9 @@ pub const FileEngine = struct {
 
                     new_writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
 
-                    if (new_data_map.contains(self.locToSlice(member_name))) {
+                    if (new_data_map.contains(member_name)) {
                         // Write the new data
-                        new_writer.print("{s}", .{new_data_map.get(self.locToSlice(member_name)).?}) catch return FileEngineError.WriteError;
+                        new_writer.print("{s}", .{new_data_map.get(member_name).?}) catch return FileEngineError.WriteError;
                     } else {
                         // Write the old data
                         switch (member_type) {
@@ -1096,17 +1096,13 @@ pub const FileEngine = struct {
         file.writeAll(self.null_terminated_schema_buff) catch return FileEngineError.WriteError;
     }
 
-    pub fn locToSlice(self: *FileEngine, loc: Loc) []const u8 {
-        return self.null_terminated_schema_buff[loc.start..loc.end];
-    }
-
     /// Get the type of the member
     pub fn memberName2DataType(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!DataType {
         var i: u16 = 0;
 
         for (try self.structName2structMembers(struct_name)) |mn| {
             const dtypes = try self.structName2DataType(struct_name);
-            if (std.mem.eql(u8, self.locToSlice(mn), member_name)) return dtypes[i];
+            if (std.mem.eql(u8, mn, member_name)) return dtypes[i];
             i += 1;
         }
 
@@ -1114,10 +1110,10 @@ pub const FileEngine = struct {
     }
 
     /// Get the list of all member name for a struct name
-    pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) FileEngineError![]Loc {
+    pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) FileEngineError![][]const u8 {
         var i: u16 = 0;
 
-        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) break;
+        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) break;
 
         if (i == self.struct_array.items.len) {
             return FileEngineError.StructNotFound;
@@ -1130,10 +1126,10 @@ pub const FileEngine = struct {
         var i: u16 = 0;
 
         while (i < self.struct_array.items.len) : (i += 1) {
-            if (std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) break;
+            if (std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) break;
         }
 
-        if (i == self.struct_array.items.len and !std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) {
+        if (i == self.struct_array.items.len and !std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) {
             return FileEngineError.StructNotFound;
         }
 
@@ -1154,14 +1150,14 @@ pub const FileEngine = struct {
     /// Chech if the name of a struct is in the current schema
     pub fn isStructNameExists(self: *FileEngine, struct_name: []const u8) bool {
         var i: u16 = 0;
-        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.locToSlice(self.struct_array.items[i].name), struct_name)) return true;
+        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) return true;
         return false;
     }
 
     /// Check if a struct have the member name
     pub fn isMemberNameInStruct(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!bool {
         for (try self.structName2structMembers(struct_name)) |mn| { // I do not return an error here because I should already check before is the struct exist
-            if (std.mem.eql(u8, self.locToSlice(mn), member_name)) return true;
+            if (std.mem.eql(u8, mn, member_name)) return true;
         }
         return false;
     }
@@ -1174,7 +1170,7 @@ pub const FileEngine = struct {
         const writer = error_message_buffer.writer();
 
         for (all_struct_member) |mn| {
-            if (map.contains(self.locToSlice(mn))) count += 1 else writer.print(" {s},", .{self.locToSlice(mn)}) catch return FileEngineError.WriteError; // TODO: Handle missing print better
+            if (map.contains(mn)) count += 1 else writer.print(" {s},", .{mn}) catch return FileEngineError.WriteError; // TODO: Handle missing print better
         }
 
         return ((count == all_struct_member.len) and (count == map.count()));

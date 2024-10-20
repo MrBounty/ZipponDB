@@ -30,7 +30,7 @@ pub const AdditionalData = struct {
 // This is name in: [name]
 // There is an additional data because it can be [friend [1; name]]
 pub const AdditionalDataMember = struct {
-    name: []const u8, // Use loc
+    name: []const u8,
     additional_data: AdditionalData,
 
     pub fn init(allocator: Allocator, name: []const u8) AdditionalDataMember {

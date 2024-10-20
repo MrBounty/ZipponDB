@@ -35,15 +35,15 @@ pub const Parser = struct {
 
     pub const SchemaStruct = struct {
         allocator: Allocator,
-        name: Loc,
-        members: std.ArrayList(Loc),
+        name: []const u8,
+        members: std.ArrayList([]const u8),
         types: std.ArrayList(DataType),
 
-        pub fn init(allocator: Allocator, name: Loc) SchemaStruct {
+        pub fn init(allocator: Allocator, name: []const u8) SchemaStruct {
             return SchemaStruct{
                 .allocator = allocator,
                 .name = name,
-                .members = std.ArrayList(Loc).init(allocator),
+                .members = std.ArrayList([]const u8).init(allocator),
                 .types = std.ArrayList(DataType).init(allocator),
             };
         }
@@ -77,7 +77,7 @@ pub const Parser = struct {
             .expect_struct_name_OR_end => switch (token.tag) {
                 .identifier => {
                     state = .expect_l_paren;
-                    struct_array.append(SchemaStruct.init(self.allocator, token.loc)) catch return SchemaParserError.MemoryError;
+                    struct_array.append(SchemaStruct.init(self.allocator, self.toker.getTokenSlice(token))) catch return SchemaParserError.MemoryError;
                 },
                 .eof => state = .end,
                 else => return printError(
@@ -120,7 +120,7 @@ pub const Parser = struct {
 
             .expect_member_name => {
                 state = .expect_two_dot;
-                struct_array.items[index].members.append(token.loc) catch return SchemaParserError.MemoryError;
+                struct_array.items[index].members.append(self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
             },
 
             .expect_two_dot => switch (token.tag) {
