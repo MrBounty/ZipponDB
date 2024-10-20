@@ -70,13 +70,13 @@ pub const FileEngine = struct {
         float: f64,
         str: []const u8,
         bool_: bool,
-        id: UUID,
+        link: UUID,
         datetime: DateTime,
         int_array: std.ArrayList(i64),
         str_array: std.ArrayList([]const u8),
         float_array: std.ArrayList(f64),
         bool_array: std.ArrayList(bool),
-        id_array: std.ArrayList(UUID),
+        link_array: std.ArrayList(UUID),
         datetime_array: std.ArrayList(DateTime),
     };
 
@@ -404,7 +404,7 @@ pub const FileEngine = struct {
                         }
                         out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
                     },
-                    .int_array, .float_array, .bool_array, .id_array => {
+                    .int_array, .float_array, .bool_array => {
                         out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
                         token = data_toker.next();
                         while (token.tag != .r_bracket) : (token = data_toker.next()) {
@@ -413,6 +413,10 @@ pub const FileEngine = struct {
                         }
                         out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
                     },
+
+                    .link => out_writer.writeAll("false") catch return FileEngineError.WriteError, // TODO: Get and send data
+                    .link_array => out_writer.writeAll("false") catch return FileEngineError.WriteError, // TODO: Get and send data
+
                     else => out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError, //write the value as if
                 }
                 out_writer.writeAll(", ") catch return FileEngineError.WriteError;
@@ -517,7 +521,7 @@ pub const FileEngine = struct {
             .str => compare_value = ComparisonValue{ .str = condition.value },
             .float => compare_value = ComparisonValue{ .float = s2t.parseFloat(condition.value) },
             .bool => compare_value = ComparisonValue{ .bool_ = s2t.parseBool(condition.value) },
-            .id => compare_value = ComparisonValue{ .id = UUID.parse(condition.value) catch return FileEngineError.InvalidUUID },
+            .link => compare_value = ComparisonValue{ .link = UUID.parse(condition.value) catch return FileEngineError.InvalidUUID },
             .date => compare_value = ComparisonValue{ .datetime = s2t.parseDate(condition.value) },
             .time => compare_value = ComparisonValue{ .datetime = s2t.parseTime(condition.value) },
             .datetime => compare_value = ComparisonValue{ .datetime = s2t.parseDatetime(condition.value) },
@@ -525,7 +529,7 @@ pub const FileEngine = struct {
             .str_array => compare_value = ComparisonValue{ .str_array = s2t.parseArrayStr(self.allocator, condition.value) },
             .float_array => compare_value = ComparisonValue{ .float_array = s2t.parseArrayFloat(self.allocator, condition.value) },
             .bool_array => compare_value = ComparisonValue{ .bool_array = s2t.parseArrayBool(self.allocator, condition.value) },
-            .id_array => compare_value = ComparisonValue{ .id_array = s2t.parseArrayUUID(self.allocator, condition.value) },
+            .link_array => compare_value = ComparisonValue{ .link_array = s2t.parseArrayUUID(self.allocator, condition.value) },
             .date_array => compare_value = ComparisonValue{ .datetime_array = s2t.parseArrayDate(self.allocator, condition.value) },
             .time_array => compare_value = ComparisonValue{ .datetime_array = s2t.parseArrayTime(self.allocator, condition.value) },
             .datetime_array => compare_value = ComparisonValue{ .datetime_array = s2t.parseArrayDatetime(self.allocator, condition.value) },
@@ -534,12 +538,12 @@ pub const FileEngine = struct {
             switch (condition.data_type) {
                 .int_array => compare_value.int_array.deinit(),
                 .str_array => {
-                    for (compare_value.str_array.items) |value| self.allocator.free(value);
+                    for (compare_value.str_array.items) |value| self.allocator.free(value); // TODO: Remove that, I should need to free them one by one as condition.value keep it in memory
                     compare_value.str_array.deinit();
                 },
                 .float_array => compare_value.float_array.deinit(),
                 .bool_array => compare_value.bool_array.deinit(),
-                .id_array => compare_value.id_array.deinit(),
+                .link_array => compare_value.link_array.deinit(),
                 .datetime_array => compare_value.datetime_array.deinit(),
                 else => {},
             }
@@ -600,7 +604,7 @@ pub const FileEngine = struct {
                     .float => compare_value.float == s2t.parseFloat(row_value),
                     .str => std.mem.eql(u8, compare_value.str, row_value),
                     .bool => compare_value.bool_ == s2t.parseBool(row_value),
-                    .id => compare_value.id.compare(uuid),
+                    .link => compare_value.link.compare(uuid),
                     .date => compare_value.datetime.compareDate(s2t.parseDate(row_value)),
                     .time => compare_value.datetime.compareTime(s2t.parseTime(row_value)),
                     .datetime => compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
@@ -612,6 +616,7 @@ pub const FileEngine = struct {
                     .float => compare_value.float != s2t.parseFloat(row_value),
                     .str => !std.mem.eql(u8, compare_value.str, row_value),
                     .bool => compare_value.bool_ != s2t.parseBool(row_value),
+                    .link => !compare_value.link.compare(uuid),
                     .date => !compare_value.datetime.compareDate(s2t.parseDate(row_value)),
                     .time => !compare_value.datetime.compareTime(s2t.parseTime(row_value)),
                     .datetime => !compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
@@ -660,8 +665,8 @@ pub const FileEngine = struct {
             // TODO: Do it for other array and implement in the query language
             switch (condition.operation) {
                 .in => switch (condition.data_type) {
-                    .id_array => {
-                        for (compare_value.id_array.items) |elem| {
+                    .link_array => {
+                        for (compare_value.link_array.items) |elem| {
                             if (elem.compare(uuid)) uuid_array.append(uuid) catch return FileEngineError.MemoryError;
                         }
                     },
@@ -851,7 +856,7 @@ pub const FileEngine = struct {
                             reader.streamUntilDelimiter(writer, '\'', null) catch return FileEngineError.StreamError;
                             reader.streamUntilDelimiter(writer, '\'', null) catch return FileEngineError.StreamError;
                         },
-                        .int_array, .float_array, .bool_array, .id_array, .date_array, .time_array, .datetime_array => {
+                        .int_array, .float_array, .bool_array, .link_array, .date_array, .time_array, .datetime_array => {
                             reader.streamUntilDelimiter(writer, ']', null) catch return FileEngineError.StreamError;
                         },
                         .str_array => {
@@ -878,7 +883,7 @@ pub const FileEngine = struct {
                             .str => {
                                 new_writer.writeByte('\'') catch return FileEngineError.WriteError;
                             },
-                            .int_array, .float_array, .bool_array, .id_array, .date_array, .str_array, .time_array, .datetime_array => {
+                            .int_array, .float_array, .bool_array, .link_array, .date_array, .str_array, .time_array, .datetime_array => {
                                 new_writer.writeByte(']') catch return FileEngineError.WriteError;
                             },
                             else => {},
@@ -887,7 +892,7 @@ pub const FileEngine = struct {
 
                     if (i == number_of_member_in_struct - 1) continue;
                     switch (member_type) {
-                        .str, .int_array, .float_array, .bool_array, .id_array, .date_array, .str_array, .time_array, .datetime_array => {
+                        .str, .int_array, .float_array, .bool_array, .link_array, .date_array, .str_array, .time_array, .datetime_array => {
                             reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch return FileEngineError.StreamError;
                         },
                         else => {},

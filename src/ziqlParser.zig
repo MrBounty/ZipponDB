@@ -574,8 +574,19 @@ pub const Parser = struct {
                         ),
                     },
 
-                    .str, .id => switch (token.tag) {
+                    .str => switch (token.tag) {
                         .string_literal => condition.value = self.toker.getTokenSlice(token),
+                        else => return printError(
+                            "Error: Expected string",
+                            ZiQlParserError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        ),
+                    },
+
+                    .link => switch (token.tag) {
+                        .uuid_literal => condition.value = self.toker.getTokenSlice(token),
                         else => return printError(
                             "Error: Expected string",
                             ZiQlParserError.SynthaxError,
@@ -641,7 +652,7 @@ pub const Parser = struct {
                         condition.value = self.toker.buffer[start_index..token.loc.end];
                     },
 
-                    .id_array => {
+                    .link_array => {
                         const start_index = token.loc.start;
                         token = try self.checkTokensInArray(.uuid_literal);
                         condition.value = self.toker.buffer[start_index..token.loc.end];
@@ -699,7 +710,7 @@ pub const Parser = struct {
         // TODO: Mqke q function outside the Parser
         switch (condition.operation) {
             .equal => switch (condition.data_type) {
-                .int, .float, .str, .bool, .id, .date, .time, .datetime => {},
+                .int, .float, .str, .bool, .link, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, str, bool, date, time, datetime can be compare with =.",
                     ZiQlParserError.ConditionError,
@@ -710,7 +721,7 @@ pub const Parser = struct {
             },
 
             .different => switch (condition.data_type) {
-                .int, .float, .str, .bool, .id, .date, .time, .datetime => {},
+                .int, .float, .str, .bool, .link, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, str, bool, date, time, datetime can be compare with !=.",
                     ZiQlParserError.ConditionError,
@@ -972,7 +983,7 @@ pub const Parser = struct {
                             self.state = .expect_comma_OR_end;
                         },
                         .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -985,7 +996,7 @@ pub const Parser = struct {
                     },
                     .date => switch (token.tag) {
                         .date_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -998,7 +1009,7 @@ pub const Parser = struct {
                     },
                     .time => switch (token.tag) {
                         .time_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1011,7 +1022,7 @@ pub const Parser = struct {
                     },
                     .datetime => switch (token.tag) {
                         .datetime_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1024,7 +1035,7 @@ pub const Parser = struct {
                     },
                     .str => switch (token.tag) {
                         .string_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1035,9 +1046,9 @@ pub const Parser = struct {
                             token.loc.end,
                         ),
                     },
-                    .id => switch (token.tag) {
+                    .link => switch (token.tag) {
                         .uuid_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
+                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1048,12 +1059,11 @@ pub const Parser = struct {
                             token.loc.end,
                         ),
                     },
-                    // TODO: Maybe upgrade that to use multiple state
                     .int_array => switch (token.tag) {
                         .l_bracket => {
                             const start_index = token.loc.start;
                             token = try self.checkTokensInArray(.int_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1068,7 +1078,7 @@ pub const Parser = struct {
                         .l_bracket => {
                             const start_index = token.loc.start;
                             token = try self.checkTokensInArray(.float_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1099,7 +1109,7 @@ pub const Parser = struct {
                                 }
                             }
                             // Maybe change that as it just recreate a string that is already in the buffer
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1114,7 +1124,7 @@ pub const Parser = struct {
                         .l_bracket => {
                             const start_index = token.loc.start;
                             token = try self.checkTokensInArray(.string_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1125,11 +1135,11 @@ pub const Parser = struct {
                             token.loc.end,
                         ),
                     },
-                    .id_array => switch (token.tag) {
+                    .link_array => switch (token.tag) {
                         .l_bracket => {
                             const start_index = token.loc.start;
                             token = try self.checkTokensInArray(.uuid_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1144,7 +1154,7 @@ pub const Parser = struct {
                         .l_bracket => {
                             const start_index = token.loc.start;
                             token = try self.checkTokensInArray(.date_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1159,7 +1169,7 @@ pub const Parser = struct {
                         .l_bracket => {
                             const start_index = token.loc.start;
                             token = try self.checkTokensInArray(.time_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
@@ -1174,7 +1184,7 @@ pub const Parser = struct {
                         .l_bracket => {
                             const start_index = token.loc.start;
                             token = try self.checkTokensInArray(.datetime_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch @panic("Couln't add string of array in data map");
+                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                             self.state = .expect_comma_OR_end;
                         },
                         else => return printError(
