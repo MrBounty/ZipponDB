@@ -39,11 +39,15 @@ pub fn main() !void {
     defer file_engine.deinit();
 
     if (path_env_variable) |path| {
+        std.debug.print("Found envirionment variable ZIPPONDB_PATH: {s}.\n", .{path});
         var to_init = true;
         _ = std.fs.cwd().openDir(path, .{}) catch {
-            std.debug.print("Error opening ZipponDB path using environment variable, please select the database using 'db use' or create a new one with 'db new'\n", .{});
-            file_engine = FileEngine.init(allocator, "");
-            to_init = false;
+            std.debug.print("{s} directory not found, creating it\n", .{path});
+            std.fs.cwd().makeDir(path) catch {
+                std.debug.print("{s} couldnt be make. Please use 'db new' or 'db use'.\n", .{path});
+                file_engine = FileEngine.init(allocator, "");
+                to_init = false;
+            };
         };
         if (to_init) {
             file_engine = FileEngine.init(allocator, path);
@@ -51,11 +55,28 @@ pub fn main() !void {
             //file_engine.createLog("main");
             file_engine.log("main", .Info, "Found envirionment variable ZIPPONDB_PATH: {s}", .{path});
         }
+
+        // Check if the db have a schema
+        if (!file_engine.isSchemaFileInDir()) {
+            std.debug.print("Database don't have any schema. Checking if ZIPPONDB_SCHEMA env variable exist.\n", .{});
+            const schema_env_variable = utils.getEnvVariables(allocator, "ZIPPONDB_SCHEMA");
+            if (schema_env_variable) |schema| {
+                std.debug.print("Found envirionment variable ZIPPONDB_SCHEMA {s}.\n", .{schema});
+                file_engine.initDataFolder(schema) catch {
+                    std.debug.print("Couldn't use {s} as schema.\n", .{schema});
+                };
+            } else {
+                std.debug.print("No envirionment variable ZIPPONDB_SCHEMA found.\n", .{});
+            }
+        } else {
+            std.debug.print("Database have a schema.\n", .{});
+        }
     } else {
+        std.debug.print("No envirionment variable ZIPPONDB_PATH found.\n", .{});
         file_engine = FileEngine.init(allocator, "");
     }
 
-    const line_buf = try allocator.alloc(u8, BUFFER_SIZE); // TODO: Remove the size limitation
+    const line_buf = try allocator.alloc(u8, BUFFER_SIZE);
     defer allocator.free(line_buf);
 
     while (true) {

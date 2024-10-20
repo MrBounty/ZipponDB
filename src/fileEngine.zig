@@ -1082,6 +1082,18 @@ pub const FileEngine = struct {
         return count - 1;
     }
 
+    pub fn isSchemaFileInDir(self: *FileEngine) bool {
+        const path = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/schema.zipponschema",
+            .{self.path_to_ZipponDB_dir},
+        ) catch return false;
+        defer self.allocator.free(path);
+
+        _ = std.fs.cwd().openDir(path, .{ .iterate = true }) catch return false;
+        return true;
+    }
+
     pub fn writeSchemaFile(self: *FileEngine) FileEngineError!void {
         var zippon_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{}) catch return FileEngineError.MemoryError;
         defer zippon_dir.close();
