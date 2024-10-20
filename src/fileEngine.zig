@@ -115,6 +115,13 @@ pub const FileEngine = struct {
         _ = std.fs.cwd().createFile(path, .{}) catch return;
     }
 
+    pub fn createLog(self: FileEngine, file_name: []const u8) void {
+        const path = std.fmt.allocPrint(self.allocator, "{s}/LOG/{s}.log", .{ self.path_to_ZipponDB_dir, file_name }) catch return;
+        defer self.allocator.free(path);
+
+        _ = std.fs.cwd().createFile(path, .{}) catch return;
+    }
+
     pub fn log(self: FileEngine, file_name: []const u8, level: Level, comptime format: []const u8, args: anytype) void {
         const path = std.fmt.allocPrint(self.allocator, "{s}/LOG/{s}.log", .{ self.path_to_ZipponDB_dir, file_name }) catch return;
         defer self.allocator.free(path);
@@ -127,6 +134,7 @@ pub const FileEngine = struct {
         const writer = file.writer();
         const now = DateTime.now();
 
+        // TODO: Use a format to add the 0 to be 00:00 and not 0:0
         writer.print("Time: {d}/{d}/{d}-{d}:{d}:{d}.{d} - ", .{ now.years, now.months, now.days, now.hours, now.minutes, now.seconds, now.ms }) catch return;
         switch (level) {
             .Debug => writer.print("Debug    - ", .{}) catch return,
@@ -1150,12 +1158,14 @@ pub const FileEngine = struct {
     }
 
     // Return true if the map have all the member name as key and not more
-    pub fn checkIfAllMemberInMap(self: *FileEngine, struct_name: []const u8, map: *std.StringHashMap([]const u8)) FileEngineError!bool {
+    pub fn checkIfAllMemberInMap(self: *FileEngine, struct_name: []const u8, map: *std.StringHashMap([]const u8), error_message_buffer: *std.ArrayList(u8)) FileEngineError!bool {
         const all_struct_member = try self.structName2structMembers(struct_name);
         var count: u16 = 0;
 
+        const writer = error_message_buffer.writer();
+
         for (all_struct_member) |mn| {
-            if (map.contains(self.locToSlice(mn))) count += 1 else std.debug.print("Missing: {s}\n", .{self.locToSlice(mn)}); // TODO: Handle missing print better
+            if (map.contains(self.locToSlice(mn))) count += 1 else writer.print(" {s},", .{self.locToSlice(mn)}) catch return FileEngineError.WriteError; // TODO: Handle missing print better
         }
 
         return ((count == all_struct_member.len) and (count == map.count()));

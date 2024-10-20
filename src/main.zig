@@ -48,7 +48,7 @@ pub fn main() !void {
         if (to_init) {
             file_engine = FileEngine.init(allocator, path);
             try file_engine.checkAndCreateDirectories();
-            file_engine.resetLog("main");
+            //file_engine.createLog("main");
             file_engine.log("main", .Info, "Found envirionment variable ZIPPONDB_PATH: {s}", .{path});
         }
     } else {

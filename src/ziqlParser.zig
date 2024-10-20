@@ -336,12 +336,19 @@ pub const Parser = struct {
                 defer data_map.deinit();
                 try self.parseNewData(&data_map);
 
+                var error_message_buffer = std.ArrayList(u8).init(self.allocator);
+                defer error_message_buffer.deinit();
+                const error_message_buffer_writer = error_message_buffer.writer();
+                error_message_buffer_writer.writeAll("Error missing: ") catch return ZipponError.WriteError;
+
                 // TODO: Print the entire list of missing
-                if (!(self.file_engine.checkIfAllMemberInMap(self.struct_name, &data_map) catch {
+                if (!(self.file_engine.checkIfAllMemberInMap(self.struct_name, &data_map, &error_message_buffer) catch {
                     return ZiQlParserError.StructNotFound;
                 })) {
+                    _ = error_message_buffer.pop();
+                    _ = error_message_buffer.pop();
                     return printError(
-                        "Error: Missing member",
+                        error_message_buffer.items,
                         ZiQlParserError.MemberMissing,
                         self.toker.buffer,
                         token.loc.start,
