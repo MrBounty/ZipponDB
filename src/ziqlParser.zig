@@ -7,6 +7,7 @@ const Token = @import("tokenizers/ziql.zig").Token;
 const UUID = @import("types/uuid.zig").UUID;
 const AND = @import("types/uuid.zig").AND;
 const OR = @import("types/uuid.zig").OR;
+const DataType = @import("types/dataType.zig").DataType;
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const AdditionalDataMember = @import("stuffs/additionalData.zig").AdditionalDataMember;
 const send = @import("stuffs/utils.zig").send;
@@ -543,155 +544,69 @@ pub const Parser = struct {
             },
 
             .expect_value => {
-                switch (condition.data_type) {
-                    .int => switch (token.tag) {
-                        .int_literal => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected int",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
+                const start_index = token.loc.start;
+                const expected_tag: ?Token.Tag = switch (condition.data_type) {
+                    .int => .int_literal,
+                    .float => .float_literal,
+                    .str => .string_literal,
+                    .link => .uuid_literal,
+                    .bool => null, // handle bool separately
+                    .date => .date_literal,
+                    .time => .time_literal,
+                    .datetime => .datetime_literal,
+                    .int_array => .int_literal,
+                    .float_array => .float_literal,
+                    .link_array => .uuid_literal,
+                    .str_array => .string_literal,
+                    .bool_array => null, // handle bool array separately
+                    .date_array => .date_literal,
+                    .time_array => .time_literal,
+                    .datetime_array => .datetime_literal,
+                };
 
-                    .float => switch (token.tag) {
-                        .float_literal => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected float",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-
-                    .str => switch (token.tag) {
-                        .string_literal => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected string",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-
-                    .link => switch (token.tag) {
-                        .uuid_literal => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected string",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-
-                    .bool => switch (token.tag) {
-                        .bool_literal_true, .bool_literal_false => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected bool",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-
-                    .date => switch (token.tag) {
-                        .date_literal => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected date",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-
-                    .time => switch (token.tag) {
-                        .time_literal => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected time",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-
-                    .datetime => switch (token.tag) {
-                        .datetime_literal => condition.value = self.toker.getTokenSlice(token),
-                        else => return printError(
-                            "Error: Expected datetime",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-
-                    .int_array => {
-                        const start_index = token.loc.start;
-                        token = try self.checkTokensInArray(.int_literal);
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
-
-                    .float_array => {
-                        const start_index = token.loc.start;
-                        token = try self.checkTokensInArray(.float_literal);
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
-
-                    .link_array => {
-                        const start_index = token.loc.start;
-                        token = try self.checkTokensInArray(.uuid_literal);
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
-
-                    .str_array => {
-                        const start_index = token.loc.start;
-                        token = try self.checkTokensInArray(.string_literal);
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
-
-                    .bool_array => {
-                        const start_index = token.loc.start;
+                if (expected_tag) |tag| {
+                    if (condition.data_type.is_array()) {
+                        token = try self.checkTokensInArray(tag);
+                    } else {
+                        if (token.tag != tag) {
+                            return printError(
+                                "Error: Wrong type", // TODO: Print the expected type
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            );
+                        }
+                    }
+                } else {
+                    // handle bool and bool array separately
+                    if (condition.data_type == .bool) {
+                        if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
+                            return printError(
+                                "Error: Expected bool",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            );
+                        }
+                    } else if (condition.data_type == .bool_array) {
                         token = self.toker.next();
-                        while (token.tag != Token.Tag.r_bracket) : (token = self.toker.next()) {
-                            switch (token.tag) {
-                                .bool_literal_false, .bool_literal_true => continue,
-                                else => return printError(
-                                    "Error: Expected bool or ].",
+                        while (token.tag != .r_bracket) : (token = self.toker.next()) {
+                            if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
+                                return printError(
+                                    "Error: Expected bool or ]",
                                     ZiQlParserError.SynthaxError,
                                     self.toker.buffer,
                                     token.loc.start,
                                     token.loc.end,
-                                ),
+                                );
                             }
                         }
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
-
-                    .date_array => {
-                        const start_index = token.loc.start;
-                        token = try self.checkTokensInArray(.date_literal);
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
-
-                    .time_array => {
-                        const start_index = token.loc.start;
-                        token = try self.checkTokensInArray(.time_literal);
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
-
-                    .datetime_array => {
-                        const start_index = token.loc.start;
-                        token = try self.checkTokensInArray(.datetime_literal);
-                        condition.value = self.toker.buffer[start_index..token.loc.end];
-                    },
+                    }
                 }
+
+                condition.value = self.toker.buffer[start_index..token.loc.end];
                 state = .end;
             },
 
@@ -1212,19 +1127,16 @@ pub const Parser = struct {
     // Utils
 
     /// Check if all token in an array is of one specific type
-    fn checkTokensInArray(self: Parser, comptime tag: Token.Tag) ZipponError!Token {
+    fn checkTokensInArray(self: Parser, tag: Token.Tag) ZipponError!Token {
         var token = self.toker.next();
         while (token.tag != .r_bracket) : (token = self.toker.next()) {
-            switch (token.tag) {
-                tag => continue,
-                else => return printError(
-                    "Error: Wrong type.",
-                    ZiQlParserError.SynthaxError,
-                    self.toker.buffer,
-                    token.loc.start,
-                    token.loc.end,
-                ),
-            }
+            if (token.tag != tag) return printError(
+                "Error: Wrong type.",
+                ZiQlParserError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
         }
         return token;
     }
