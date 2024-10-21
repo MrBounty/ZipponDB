@@ -550,7 +550,6 @@ pub const Parser = struct {
                     .float => .float_literal,
                     .str => .string_literal,
                     .link => .uuid_literal,
-                    .bool => null, // handle bool separately
                     .date => .date_literal,
                     .time => .time_literal,
                     .datetime => .datetime_literal,
@@ -558,10 +557,10 @@ pub const Parser = struct {
                     .float_array => .float_literal,
                     .link_array => .uuid_literal,
                     .str_array => .string_literal,
-                    .bool_array => null, // handle bool array separately
                     .date_array => .date_literal,
                     .time_array => .time_literal,
                     .datetime_array => .datetime_literal,
+                    .bool, .bool_array => null, // handle bool separately
                 };
 
                 if (expected_tag) |tag| {
@@ -853,257 +852,104 @@ pub const Parser = struct {
 
             .expect_new_value => {
                 const data_type = self.file_engine.memberName2DataType(struct_name, member_name) catch return ZiQlParserError.StructNotFound;
-                // Too much code duplicate, to update
-                switch (data_type) {
-                    .int => switch (token.tag) {
-                        .int_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected int",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .float => switch (token.tag) {
-                        .float_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch @panic("Could not add member name and value to map in getMapOfMember");
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected float",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .bool => switch (token.tag) {
-                        .bool_literal_true => {
-                            member_map.put(member_name, "1") catch @panic("Could not add member name and value to map in getMapOfMember");
-                            state = .expect_comma_OR_end;
-                        },
-                        .bool_literal_false => {
-                            member_map.put(member_name, "0") catch @panic("Could not add member name and value to map in getMapOfMember");
-                            state = .expect_comma_OR_end;
-                        },
-                        .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected bool: true false",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .date => switch (token.tag) {
-                        .date_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected date",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .time => switch (token.tag) {
-                        .time_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected time",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .datetime => switch (token.tag) {
-                        .datetime_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected datetime",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .str => switch (token.tag) {
-                        .string_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected string between ''",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .link => switch (token.tag) {
-                        .uuid_literal, .keyword_null => {
-                            member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected uuid",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .int_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
-                            token = try self.checkTokensInArray(.int_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .float_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
-                            token = try self.checkTokensInArray(.float_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .bool_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
+                const start_index = token.loc.start;
 
-                            // Same as the function checkTokensInArray.
-                            // Just that I can only use one tag at the time using the function. And need 2 here
+                const expected_tag: ?Token.Tag = switch (data_type) {
+                    .int => .int_literal,
+                    .float => .float_literal,
+                    .str => .string_literal,
+                    .link => .uuid_literal,
+                    .date => .date_literal,
+                    .time => .time_literal,
+                    .datetime => .datetime_literal,
+                    .int_array => .int_literal,
+                    .float_array => .float_literal,
+                    .link_array => .uuid_literal,
+                    .str_array => .string_literal,
+                    .date_array => .date_literal,
+                    .time_array => .time_literal,
+                    .datetime_array => .datetime_literal,
+                    // Handle bool and arrays separately
+                    .bool, .bool_array => null,
+                };
+
+                if (expected_tag) |tag| {
+                    if (data_type.is_array()) {
+                        if (token.tag != .l_bracket) {
+                            return printError(
+                                "Error: Expected [ to start an array",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            );
+                        }
+                        token = try self.checkTokensInArray(tag);
+                    } else {
+                        if (token.tag != tag and token.tag != .keyword_null) {
+                            return printError(
+                                "Error: Expected {s}",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            );
+                        }
+                    }
+
+                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
+                } else {
+                    // Handle bool and bool array
+                    switch (data_type) {
+                        .bool => {
+                            switch (token.tag) {
+                                .bool_literal_true => {
+                                    member_map.put(member_name, "1") catch @panic("Could not add member name and value to map in getMapOfMember");
+                                },
+                                .bool_literal_false => {
+                                    member_map.put(member_name, "0") catch @panic("Could not add member name and value to map in getMapOfMember");
+                                },
+                                .keyword_null => {
+                                    member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
+                                },
+                                else => return printError(
+                                    "Error: Expected bool: true, false, or null",
+                                    ZiQlParserError.SynthaxError,
+                                    self.toker.buffer,
+                                    token.loc.start,
+                                    token.loc.end,
+                                ),
+                            }
+                        },
+                        .bool_array => {
+                            if (token.tag != .l_bracket) {
+                                return printError(
+                                    "Error: Expected [ to start an array",
+                                    ZiQlParserError.SynthaxError,
+                                    self.toker.buffer,
+                                    token.loc.start,
+                                    token.loc.end,
+                                );
+                            }
                             token = self.toker.next();
                             while (token.tag != .r_bracket) : (token = self.toker.next()) {
-                                switch (token.tag) {
-                                    .bool_literal_false, .bool_literal_true => continue,
-                                    else => return printError(
-                                        "Error: Expected bool or ].",
+                                if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
+                                    return printError(
+                                        "Error: Expected bool or ]",
                                         ZiQlParserError.SynthaxError,
                                         self.toker.buffer,
                                         token.loc.start,
                                         token.loc.end,
-                                    ),
+                                    );
                                 }
                             }
-                            // Maybe change that as it just recreate a string that is already in the buffer
                             member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
                         },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .str_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
-                            token = try self.checkTokensInArray(.string_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .link_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
-                            token = try self.checkTokensInArray(.uuid_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .date_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
-                            token = try self.checkTokensInArray(.date_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .time_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
-                            token = try self.checkTokensInArray(.time_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
-                    .datetime_array => switch (token.tag) {
-                        .l_bracket => {
-                            const start_index = token.loc.start;
-                            token = try self.checkTokensInArray(.datetime_literal);
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                            state = .expect_comma_OR_end;
-                        },
-                        else => return printError(
-                            "Error: Expected [ to start an array",
-                            ZiQlParserError.SynthaxError,
-                            self.toker.buffer,
-                            token.loc.start,
-                            token.loc.end,
-                        ),
-                    },
+                        else => unreachable,
+                    }
                 }
+
+                state = .expect_comma_OR_end;
             },
 
             .expect_comma_OR_end => {
