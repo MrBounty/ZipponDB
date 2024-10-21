@@ -283,17 +283,15 @@ pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) voi
     var toker = ziqlTokenizer.init(null_term_query_str);
 
     var parser = ziqlParser.init(allocator, &toker, file_engine);
-    defer {
-        parser.deinit();
-        switch (gpa.deinit()) {
-            .ok => {},
-            .leak => std.log.debug("We fucked it up bro...\n", .{}),
-        }
-    }
 
     parser.parse() catch |err| {
         file_engine.log("main", .Error, "Error parsing: {any}", .{err});
     };
+
+    switch (gpa.deinit()) {
+        .ok => {},
+        .leak => std.log.debug("We fucked it up bro...\n", .{}),
+    }
 }
 
 // TODO: Put that in the FileEngine

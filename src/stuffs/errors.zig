@@ -1,3 +1,5 @@
+// TODO: Only use a single and big ZipponError
+
 pub const ZiQlParserError = error{
     SynthaxError,
     MemberNotFound,
@@ -7,6 +9,7 @@ pub const ZiQlParserError = error{
     ParsingValueError,
     ConditionError,
     WriteError,
+    AndOrError,
 };
 
 pub const SchemaParserError = error{
