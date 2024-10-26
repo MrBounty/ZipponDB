@@ -100,61 +100,6 @@ pub const FileEngine = struct {
         }
     };
 
-    // --------------------Logs--------------------
-    // Make a lib out of it I think, like ZipponData, a ZipponLog
-
-    const Level = enum {
-        Debug,
-        Info,
-        Warning,
-        Error,
-        Critical,
-    };
-
-    pub fn resetLog(self: FileEngine, file_name: []const u8) void {
-        const path = std.fmt.allocPrint(self.allocator, "{s}/LOG/{s}.log", .{ self.path_to_ZipponDB_dir, file_name }) catch return;
-        defer self.allocator.free(path);
-
-        std.fs.cwd().deleteFile(path) catch {};
-        _ = std.fs.cwd().createFile(path, .{}) catch return;
-    }
-
-    pub fn createLog(self: FileEngine, file_name: []const u8) void {
-        const path = std.fmt.allocPrint(self.allocator, "{s}/LOG/{s}.log", .{ self.path_to_ZipponDB_dir, file_name }) catch return;
-        defer self.allocator.free(path);
-
-        _ = std.fs.cwd().createFile(path, .{}) catch return;
-    }
-
-    pub fn log(self: FileEngine, file_name: []const u8, level: Level, comptime format: []const u8, args: anytype) void {
-        const path = std.fmt.allocPrint(self.allocator, "{s}/LOG/{s}.log", .{ self.path_to_ZipponDB_dir, file_name }) catch return;
-        defer self.allocator.free(path);
-
-        const file = std.fs.cwd().openFile(path, .{ .mode = .write_only }) catch return;
-        defer file.close();
-
-        file.seekFromEnd(0) catch return;
-
-        const writer = file.writer();
-        const now = DateTime.now();
-
-        // TODO: Use a format to add the 0 to be 00:00 and not 0:0
-        var date_format_buffer = std.ArrayList(u8).init(self.allocator);
-        defer date_format_buffer.deinit();
-
-        now.format("YYYY/MM/DD-HH:mm:ss.SSSS", date_format_buffer.writer()) catch return;
-        writer.print("Time: {s} - ", .{date_format_buffer.items}) catch return;
-        switch (level) {
-            .Debug => writer.print("Debug    - ", .{}) catch return,
-            .Info => writer.print("Info     - ", .{}) catch return,
-            .Warning => writer.print("Warning  - ", .{}) catch return,
-            .Error => writer.print("Error    - ", .{}) catch return,
-            .Critical => writer.print("Critical - ", .{}) catch return,
-        }
-        writer.print(format, args) catch return;
-        writer.writeByte('\n') catch return;
-    }
-
     // --------------------Other--------------------
 
     pub fn readSchemaFile(allocator: Allocator, sub_path: []const u8, buffer: []u8) FileEngineError!usize {
@@ -234,9 +179,14 @@ pub const FileEngine = struct {
         path_buff = std.fmt.allocPrint(self.allocator, "{s}/LOG", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
+            error.PathAlreadyExists => return,
             else => return FileEngineError.CantMakeDir,
         };
+
+        self.allocator.free(path_buff);
+        path_buff = std.fmt.allocPrint(self.allocator, "{s}/LOG/log", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+
+        _ = cwd.createFile(path_buff, .{}) catch return FileEngineError.CantMakeFile;
     }
 
     /// Request a path to a schema file and then create the struct folder

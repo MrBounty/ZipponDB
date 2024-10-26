@@ -1,7 +1,7 @@
 const std = @import("std");
 const ZipponError = @import("errors.zig").ZipponError;
 
-pub fn getEnvVariables(allocator: std.mem.Allocator, variable: []const u8) ?[]const u8 {
+pub fn getEnvVariable(allocator: std.mem.Allocator, variable: []const u8) ?[]const u8 {
     var env_map = std.process.getEnvMap(allocator) catch return null;
     defer env_map.deinit();
 
