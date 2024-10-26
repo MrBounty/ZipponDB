@@ -23,6 +23,8 @@ const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
 const MAX_FILE_SIZE = @import("config.zig").MAX_FILE_SIZE;
 const CSV_DELIMITER = @import("config.zig").CSV_DELIMITER;
 
+const log = std.log.scoped(.fileEngine);
+
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
 pub const FileEngine = struct {
@@ -288,7 +290,7 @@ pub const FileEngine = struct {
 
                     file.close(); // Do I need to close ? I think so
                     file = std.fs.cwd().openFile(path_buff, .{}) catch {
-                        std.debug.print("Error trying to open {s}\n", .{path_buff});
+                        log.err("Error trying to open {s}\n", .{path_buff});
                         @panic("Can't open file to update a data iterator");
                     };
 
@@ -954,7 +956,7 @@ pub const FileEngine = struct {
                     continue;
                 }, // file read till the end
                 else => {
-                    std.debug.print("Error while reading file: {any}\n", .{err});
+                    log.err("Error while reading file: {any}", .{err});
                     break;
                 },
             };

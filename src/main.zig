@@ -70,13 +70,13 @@ pub fn myLog(
 
 // TODO: If an argument is given when starting the binary, it is the db path
 pub fn main() !void {
-    var state: State = .expect_main_command;
+    errdefer log.warn("Main function ended with an error", .{});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     defer switch (gpa.deinit()) {
         .ok => {},
-        .leak => std.log.debug("We fucked it up bro...\n", .{}),
+        .leak => log.debug("We fucked it up bro...\n", .{}),
     };
 
     var file_engine = try initFileEngine.init(allocator, null);
@@ -86,7 +86,7 @@ pub fn main() !void {
     defer allocator.free(line_buf);
 
     while (true) {
-        std.debug.print("> ", .{});
+        std.debug.print("> ", .{}); // TODO: Find something better than just std.debug.print
         const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(line_buf, '\n');
 
         if (line) |line_str| {
@@ -97,7 +97,7 @@ pub fn main() !void {
 
             var toker = cliTokenizer.init(null_term_line_str);
             var token = toker.next();
-            state = .expect_main_command;
+            var state = State.expect_main_command;
 
             while ((state != .end) and (state != .quit)) : (token = toker.next()) switch (state) {
                 .expect_main_command => switch (token.tag) {
@@ -333,7 +333,7 @@ const initFileEngine = struct {
         if (!file_engine.isSchemaFileInDir()) {
             try initSchema(allocator, &file_engine);
         } else {
-            std.debug.print("Database has a schema.\n", .{});
+            log.info("Database has a schema.\n", .{});
         }
 
         return file_engine;
@@ -359,7 +359,7 @@ const initFileEngine = struct {
         if (schema) |s| {
             log.debug("Found environment variable ZIPPONDB_SCHEMA: {s}.", .{s});
             file_engine.initDataFolder(s) catch {
-                std.debug.print("Couldn't use {s} as schema.\n", .{s});
+                log.warn("Couldn't use {s} as schema.\n", .{s});
             };
         } else {
             log.debug("No environment variable ZIPPONDB_SCHEMA found.", .{});
