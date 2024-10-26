@@ -613,7 +613,6 @@ pub const Parser = struct {
         };
 
         // Check if the condition is valid
-        // TODO: Mqke q function outside the Parser
         switch (condition.operation) {
             .equal => switch (condition.data_type) {
                 .int, .float, .str, .bool, .link, .date, .time, .datetime => {},

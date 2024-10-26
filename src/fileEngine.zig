@@ -1,10 +1,13 @@
 const std = @import("std");
 const utils = @import("stuffs/utils.zig");
+const s2t = @import("types/stringToType.zig");
+const zid = @import("ZipponData");
 const Allocator = std.mem.Allocator;
+
+// TODO: Clean that
 const UUID = @import("types/uuid.zig").UUID;
 const DateTime = @import("types/date.zig").DateTime;
 const DataType = @import("types/dataType.zig").DataType;
-const s2t = @import("types/stringToType.zig");
 const FileTokenizer = @import("tokenizers/file.zig").Tokenizer;
 const FileToken = @import("tokenizers/file.zig").Token;
 const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
@@ -98,6 +101,7 @@ pub const FileEngine = struct {
     };
 
     // --------------------Logs--------------------
+    // Make a lib out of it I think, like ZipponData, a ZipponLog
 
     const Level = enum {
         Debug,
@@ -1188,24 +1192,3 @@ pub const FileEngine = struct {
         return ((count == all_struct_member.len) and (count == map.count()));
     }
 };
-
-test "Get list of UUID using condition" {
-    const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
-    const allocator = std.testing.allocator;
-
-    const path = try allocator.dupe(u8, TEST_DATA_DIR);
-    var file_engine = FileEngine.init(allocator, path);
-    defer file_engine.deinit();
-
-    var uuid_array = std.ArrayList(UUID).init(allocator);
-    defer uuid_array.deinit();
-
-    const condition = FileEngine.Condition{ .struct_name = "User", .member_name = "email", .value = "adrien@mail.com", .operation = .equal, .data_type = .str };
-    try file_engine.getUUIDListUsingCondition(condition, &uuid_array);
-}
-
-// FIXME:
-// You were adding proper error to the file engine and implement the date.
-// Next step is trying build until all error are gone
-//
-// Next step also is to implement date to the schema parser and also add that only parser Error are allow

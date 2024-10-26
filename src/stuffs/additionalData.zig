@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 /// This is the [] part
-/// IDK if saving it into the Parser struct is a good idea
+/// TODO: Include the part ".friends.comments" in "GRAB User.firends.comments {age > 10}"
 pub const AdditionalData = struct {
     entity_count_to_find: usize = 0,
     member_to_find: std.ArrayList(AdditionalDataMember),
