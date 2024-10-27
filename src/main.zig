@@ -13,6 +13,7 @@ const utils = @import("stuffs/utils.zig");
 const send = @import("stuffs/utils.zig").send;
 
 const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
+const HELP_MESSAGE = @import("config.zig").HELP_MESSAGE;
 
 const State = enum {
     expect_main_command,
@@ -119,18 +120,7 @@ pub fn main() !void {
                         state = .expect_schema_command;
                     },
                     .keyword_help => {
-                        send("{s}", .{
-                            \\Welcome to ZipponDB v0.1.1!
-                            \\
-                            \\Available commands:
-                            \\run       To run a query.
-                            \\db        Create or chose a database.
-                            \\schema    Initialize the database schema.
-                            \\quit      Stop the CLI with memory safety.
-                            \\
-                            \\ For more informations: https://github.com/MrBounty/ZipponDB
-                            \\
-                        });
+                        send("{s}", .{HELP_MESSAGE.main});
                         state = .end;
                     },
                     .keyword_quit => state = .quit,
@@ -159,15 +149,7 @@ pub fn main() !void {
                         state = .end;
                     },
                     .keyword_help => {
-                        send("{s}", .{
-                            \\Available commands:
-                            \\new       Create a new database using a path to a sub folder.
-                            \\use       Select another ZipponDB folder to use as database.
-                            \\metrics   Print some metrics of the current database.
-                            \\
-                            \\ For more informations: https://github.com/MrBounty/ZipponDB
-                            \\
-                        });
+                        send("{s}", .{HELP_MESSAGE.db});
                         state = .end;
                     },
                     else => {
@@ -237,14 +219,7 @@ pub fn main() !void {
                     },
                     .keyword_init => state = .expect_path_to_schema,
                     .keyword_help => {
-                        send("{s}", .{
-                            \\Available commands:
-                            \\describe  Print the schema use by the currently selected database.
-                            \\init      Take the path to a schema file and initialize the database.
-                            \\
-                            \\ For more informations: https://github.com/MrBounty/ZipponDB
-                            \\
-                        });
+                        send("{s}", .{HELP_MESSAGE.schema});
                         state = .end;
                     },
                     else => {
