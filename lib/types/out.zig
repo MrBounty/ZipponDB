@@ -1,3 +1,11 @@
+// This file is just to expose what I need to grab
+
+pub const UUID = @import("uuid.zig").UUID;
+pub const DateTime = @import("date.zig").DateTime;
+pub const OR = @import("uuid.zig").OR;
+pub const AND = @import("uuid.zig").AND;
+pub const s2t = @import("stringToType.zig");
+
 /// Suported dataType for the DB
 /// Maybe start using a unionenum
 pub const DataType = enum {

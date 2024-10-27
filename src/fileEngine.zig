@@ -1,21 +1,24 @@
 const std = @import("std");
 const utils = @import("stuffs/utils.zig");
-const s2t = @import("types/stringToType.zig");
+const dtype = @import("dtype");
+const s2t = dtype.s2t;
 const zid = @import("ZipponData");
 const Allocator = std.mem.Allocator;
 
-// TODO: Clean that
-const UUID = @import("types/uuid.zig").UUID;
-const DateTime = @import("types/date.zig").DateTime;
-const DataType = @import("types/dataType.zig").DataType;
+const UUID = dtype.UUID;
+const DateTime = dtype.DateTime;
+const DataType = dtype.DataType;
+
 const FileTokenizer = @import("tokenizers/file.zig").Tokenizer;
 const FileToken = @import("tokenizers/file.zig").Token;
-const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
-const SchemaParser = @import("schemaParser.zig").Parser;
 const SchemaTokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const SchemaToken = @import("tokenizers/schema.zig").Token;
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const Loc = @import("tokenizers/shared/loc.zig").Loc;
+
+// TODO: Move that to another struct, not in the file engine
+const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
+const SchemaParser = @import("schemaParser.zig").Parser;
 
 const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
@@ -33,7 +36,6 @@ pub const FileEngine = struct {
     null_terminated_schema_buff: [:0]u8,
     struct_array: std.ArrayList(SchemaStruct),
 
-    // TODO: Check is all DATA folder are ok. Meaning there is all struct dir, at least one zippon file and all file are 0.zippondata or csv later
     pub fn init(allocator: Allocator, path: []const u8) FileEngine {
         const path_to_ZipponDB_dir = path;
 

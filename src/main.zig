@@ -1,16 +1,16 @@
 const std = @import("std");
+const utils = @import("stuffs/utils.zig");
+const send = utils.send;
 const Allocator = std.mem.Allocator;
 
-// TODO: Clean that
-const DateTime = @import("types/date.zig").DateTime;
 const FileEngine = @import("fileEngine.zig").FileEngine;
+
 const cliTokenizer = @import("tokenizers/cli.zig").Tokenizer;
 const cliToken = @import("tokenizers/cli.zig").Token;
+
 const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("tokenizers/ziql.zig").Token;
 const ziqlParser = @import("ziqlParser.zig").Parser;
-const utils = @import("stuffs/utils.zig");
-const send = @import("stuffs/utils.zig").send;
 
 const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
 const HELP_MESSAGE = @import("config.zig").HELP_MESSAGE;
@@ -47,7 +47,7 @@ pub fn myLog(
 
     const potential_file: ?std.fs.File = std.fs.cwd().openFile(log_path, .{ .mode = .write_only }) catch null;
 
-    const now = DateTime.now();
+    const now = @import("dtype").DateTime.now();
     var date_format_buffer = std.ArrayList(u8).init(log_allocator);
     defer date_format_buffer.deinit();
     now.format("YYYY/MM/DD-HH:mm:ss.SSSS", date_format_buffer.writer()) catch return;

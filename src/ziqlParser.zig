@@ -4,10 +4,13 @@ const FileEngine = @import("fileEngine.zig").FileEngine;
 const Condition = @import("fileEngine.zig").FileEngine.Condition;
 const Tokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const Token = @import("tokenizers/ziql.zig").Token;
-const UUID = @import("types/uuid.zig").UUID;
-const AND = @import("types/uuid.zig").AND;
-const OR = @import("types/uuid.zig").OR;
-const DataType = @import("types/dataType.zig").DataType;
+
+const dtype = @import("dtype");
+const UUID = dtype.UUID;
+const AND = dtype.AND;
+const OR = dtype.OR;
+const DataType = dtype.DataType;
+
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const AdditionalDataMember = @import("stuffs/additionalData.zig").AdditionalDataMember;
 const send = @import("stuffs/utils.zig").send;

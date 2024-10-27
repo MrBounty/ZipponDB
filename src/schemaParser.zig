@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const DataType = @import("types/dataType.zig").DataType;
+const DataType = @import("dtype").DataType;
 const Toker = @import("tokenizers/schema.zig").Tokenizer;
 const Token = @import("tokenizers/schema.zig").Token;
 const Loc = @import("tokenizers/shared/loc.zig").Loc;
