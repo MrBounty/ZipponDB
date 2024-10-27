@@ -109,7 +109,7 @@ pub const FileEngine = struct {
     // --------------------Other--------------------
 
     pub fn readSchemaFile(allocator: Allocator, sub_path: []const u8, buffer: []u8) FileEngineError!usize {
-        const path = std.fmt.allocPrint(allocator, "{s}/schema.zipponschema", .{sub_path}) catch return FileEngineError.MemoryError;
+        const path = std.fmt.allocPrint(allocator, "{s}/schema", .{sub_path}) catch return FileEngineError.MemoryError;
         defer allocator.free(path);
 
         const file = std.fs.cwd().openFile(path, .{}) catch return FileEngineError.CantOpenFile;
@@ -653,7 +653,7 @@ pub const FileEngine = struct {
 
     // --------------------Change existing files--------------------
 
-    // Do I need a map here ? Cant I use something else ?
+    // TODO: Change map to use a []Data from ZipponData
     pub fn writeEntity(self: *FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) FileEngineError!UUID {
         const uuid = UUID.init();
 
@@ -1013,6 +1013,8 @@ pub const FileEngine = struct {
 
     /// Get the index of the first file that is bellow the size limit. If not found, return null
     fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) FileEngineError!?usize {
+        log.debug("Getting first usable index file for {s} at {s}", .{ struct_name, self.path_to_ZipponDB_dir });
+
         const path = std.fmt.allocPrint(
             self.allocator,
             "{s}/DATA/{s}",
@@ -1057,12 +1059,12 @@ pub const FileEngine = struct {
     pub fn isSchemaFileInDir(self: *FileEngine) bool {
         const path = std.fmt.allocPrint(
             self.allocator,
-            "{s}/schema.zipponschema",
+            "{s}/schema",
             .{self.path_to_ZipponDB_dir},
         ) catch return false;
         defer self.allocator.free(path);
 
-        _ = std.fs.cwd().openDir(path, .{ .iterate = true }) catch return false;
+        _ = std.fs.cwd().openFile(path, .{}) catch return false;
         return true;
     }
 
@@ -1070,12 +1072,12 @@ pub const FileEngine = struct {
         var zippon_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{}) catch return FileEngineError.MemoryError;
         defer zippon_dir.close();
 
-        zippon_dir.deleteFile("schema.zipponschema") catch |err| switch (err) {
+        zippon_dir.deleteFile("schema") catch |err| switch (err) {
             error.FileNotFound => {},
             else => return FileEngineError.DeleteFileError,
         };
 
-        var file = zippon_dir.createFile("schema.zipponschema", .{}) catch return FileEngineError.CantMakeFile;
+        var file = zippon_dir.createFile("schema", .{}) catch return FileEngineError.CantMakeFile;
         defer file.close();
         file.writeAll(self.null_terminated_schema_buff) catch return FileEngineError.WriteError;
     }

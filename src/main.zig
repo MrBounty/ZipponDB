@@ -288,7 +288,6 @@ const initFileEngine = struct {
         }
 
         const path = utils.getEnvVariable(allocator, "ZIPPONDB_PATH");
-        defer if (path) |p| allocator.free(p);
 
         if (path) |p| {
             log_path = try std.fmt.bufPrint(&log_buff, "{s}/LOG/log", .{p});
