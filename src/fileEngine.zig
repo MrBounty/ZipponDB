@@ -1069,7 +1069,7 @@ pub const FileEngine = struct {
 
     /// Get the type of the member
     pub fn memberName2DataType(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!DataType {
-        var i: u16 = 0;
+        var i: usize = 0;
 
         for (try self.structName2structMembers(struct_name)) |mn| {
             const dtypes = try self.structName2DataType(struct_name);
@@ -1080,9 +1080,20 @@ pub const FileEngine = struct {
         return FileEngineError.MemberNotFound;
     }
 
+    pub fn memberName2DataIndex(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!usize {
+        var i: usize = 0;
+
+        for (try self.structName2structMembers(struct_name)) |mn| {
+            if (std.mem.eql(u8, mn, member_name)) return i;
+            i += 1;
+        }
+
+        return FileEngineError.MemberNotFound;
+    }
+
     /// Get the list of all member name for a struct name
     pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) FileEngineError![][]const u8 {
-        var i: u16 = 0;
+        var i: usize = 0;
 
         while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) break;
 

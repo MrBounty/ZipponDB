@@ -542,7 +542,10 @@ pub const Parser = struct {
                         struct_name,
                         self.toker.getTokenSlice(token),
                     ) catch return ZiQlParserError.MemberNotFound;
-                    condition.member_name = self.toker.getTokenSlice(token);
+                    condition.data_index = self.file_engine.memberName2DataIndex(
+                        struct_name,
+                        self.toker.getTokenSlice(token),
+                    ) catch return ZiQlParserError.MemberNotFound;
                     state = State.expect_operation;
                 },
                 else => return printError(

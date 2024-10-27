@@ -47,11 +47,10 @@ const LogicalOperator = enum {
 };
 
 pub const Condition = struct {
-    member_name: []const u8 = undefined,
     value: []const u8 = undefined,
     operation: ComparisonOperator = undefined,
     data_type: DataType = undefined,
-    // data_index: usize TODO: add this member, this is the position in the row of the value, to use in the evaluate method
+    data_index: usize = undefined, // Index in the file
 };
 
 const FilterNode = union(enum) {
@@ -196,8 +195,8 @@ pub const Filter = struct {
                 self.printNode(logical.right.*);
                 std.debug.print(" ) ", .{});
             },
-            .condition => |condition| std.debug.print("{s} {s} {s} |{any}|", .{
-                condition.member_name,
+            .condition => |condition| std.debug.print("{d} {s} {s} |{any}|", .{
+                condition.data_index,
                 condition.operation.str(),
                 condition.value,
                 condition.data_type,

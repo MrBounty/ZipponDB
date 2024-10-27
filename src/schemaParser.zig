@@ -38,7 +38,7 @@ pub const Parser = struct {
         name: []const u8,
         members: std.ArrayList([]const u8),
         types: std.ArrayList(DataType),
-        links: std.StringHashMap([]const u8),
+        links: std.StringHashMap([]const u8), // Map key as member_name and value as struct_name, like a dtype
 
         pub fn init(allocator: Allocator, name: []const u8) SchemaStruct {
             return SchemaStruct{
