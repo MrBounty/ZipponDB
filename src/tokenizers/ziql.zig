@@ -72,9 +72,14 @@ pub const Token = struct {
 pub const Tokenizer = struct {
     buffer: [:0]const u8,
     index: usize,
+    last_token: Token = undefined,
 
     pub fn getTokenSlice(self: *Tokenizer, token: Token) []const u8 {
         return self.buffer[token.loc.start..token.loc.end];
+    }
+
+    pub fn last(self: Tokenizer) Token {
+        return self.last_token;
     }
 
     pub fn init(buffer: [:0]const u8) Tokenizer {
@@ -364,6 +369,7 @@ pub const Tokenizer = struct {
         }
 
         result.loc.end = self.index;
+        self.last_token = result;
         return result;
     }
 };

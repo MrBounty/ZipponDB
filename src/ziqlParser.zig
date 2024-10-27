@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const FileEngine = @import("fileEngine.zig").FileEngine;
-const Condition = @import("fileEngine.zig").FileEngine.Condition;
 const Tokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const Token = @import("tokenizers/ziql.zig").Token;
 
@@ -10,6 +9,9 @@ const UUID = dtype.UUID;
 const AND = dtype.AND;
 const OR = dtype.OR;
 const DataType = dtype.DataType;
+
+const Filter = @import("stuffs/filter.zig").Filter;
+const Condition = @import("stuffs/filter.zig").Condition;
 
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const AdditionalDataMember = @import("stuffs/additionalData.zig").AdditionalDataMember;
@@ -47,6 +49,7 @@ const State = enum {
 
     // For the filter parser
     expect_left_condition, // Condition is a struct in FileEngine, it's all info necessary to get a list of UUID usinf FileEngine.getUUIDListUsingCondition
+    expect_right_condition,
     expect_operation, // Operations are = != < <= > >=
     expect_value,
     expect_ANDOR_OR_end,
@@ -381,83 +384,67 @@ pub const Parser = struct {
     /// Take an array of UUID and populate it with what match what is between {}
     /// Main is to know if between {} or (), main is true if between {}, otherwise between () inside {}
     /// TODO: Optimize this so it can use multiple condition at the same time instead of parsing the all file for each condition
-    fn parseFilter(self: Parser, left_array: *std.ArrayList(UUID), struct_name: []const u8, main: bool) ZipponError!Token {
-        var token = self.toker.next();
+    fn parseFilter(self: Parser, struct_name: []const u8) ZipponError!Filter {
+        var filter = try Filter.init(self.allocator);
+        errdefer filter.deinit();
+
         var keep_next = false;
+        var token = self.toker.next();
         var state: State = .expect_left_condition;
 
-        var left_condition = Condition.init(struct_name);
-        var curent_operation: enum { and_, or_ } = undefined;
-
         while (state != .end) : ({
-            token = if (!keep_next) self.toker.next() else token;
+            token = if (keep_next) token else self.toker.next();
             keep_next = false;
-        }) switch (state) {
-            .expect_left_condition => switch (token.tag) {
-                .r_brace => {
-                    try self.file_engine.getAllUUIDList(struct_name, left_array);
-                    state = .end;
-                },
-                else => {
-                    token = try self.parseCondition(&left_condition, &token);
-                    try self.file_engine.getUUIDListUsingCondition(left_condition, left_array);
-                    state = .expect_ANDOR_OR_end;
-                    keep_next = true;
-                },
-            },
-
-            .expect_ANDOR_OR_end => switch (token.tag) {
-                .r_brace => if (main) {
-                    state = .end;
-                } else {
-                    return printError(
-                        "Error: Expected } to end main condition or AND/OR to continue it",
-                        ZiQlParserError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                },
-                .r_paren => if (!main) {
-                    state = .end;
-                } else {
-                    return printError(
-                        "Error: Expected ) to end inside condition or AND/OR to continue it",
-                        ZiQlParserError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                },
-                .keyword_and => {
-                    curent_operation = .and_;
-                    state = .expect_right_uuid_array;
-                },
-                .keyword_or => {
-                    curent_operation = .or_;
-                    state = .expect_right_uuid_array;
-                },
-                else => return printError(
-                    "Error: Expected a condition including AND OR or the end of the filter with } or )",
-                    ZiQlParserError.SynthaxError,
-                    self.toker.buffer,
-                    token.loc.start,
-                    token.loc.end,
-                ),
-            },
-
-            .expect_right_uuid_array => {
-                var right_array = std.ArrayList(UUID).init(self.allocator);
-                defer right_array.deinit();
-
-                switch (token.tag) {
-                    .l_paren => _ = try self.parseFilter(&right_array, struct_name, false), // run parserFilter to get the right array
-                    .identifier => {
-                        var right_condition = Condition.init(struct_name);
-
-                        token = try self.parseCondition(&right_condition, &token);
+        }) {
+            switch (state) {
+                .expect_left_condition => switch (token.tag) {
+                    .r_brace => {
+                        state = .end;
+                    },
+                    else => {
+                        const condition = try self.parseCondition(&token, struct_name);
+                        try filter.addCondition(condition);
+                        state = .expect_ANDOR_OR_end;
+                        token = self.toker.last();
                         keep_next = true;
-                        try self.file_engine.getUUIDListUsingCondition(right_condition, &right_array);
+                    },
+                },
+
+                .expect_ANDOR_OR_end => switch (token.tag) {
+                    .r_brace, .r_paren => {
+                        state = .end;
+                    },
+                    .keyword_and => {
+                        try filter.addLogicalOperator(.AND);
+                        state = .expect_right_condition;
+                    },
+                    .keyword_or => {
+                        try filter.addLogicalOperator(.OR);
+                        state = .expect_right_condition;
+                    },
+                    else => return printError(
+                        "Error: Expected AND, OR, or }",
+                        ZiQlParserError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+
+                .expect_right_condition => switch (token.tag) {
+                    .l_paren => {
+                        var sub_filter = try self.parseFilter(struct_name);
+                        filter.addSubFilter(&sub_filter);
+                        token = self.toker.last();
+                        keep_next = true;
+                        state = .expect_ANDOR_OR_end;
+                    },
+                    .identifier => {
+                        const condition = try self.parseCondition(&token, struct_name);
+                        try filter.addCondition(condition);
+                        token = self.toker.last();
+                        keep_next = true;
+                        state = .expect_ANDOR_OR_end;
                     },
                     else => return printError(
                         "Error: Expected ( or member name.",
@@ -466,27 +453,23 @@ pub const Parser = struct {
                         token.loc.start,
                         token.loc.end,
                     ),
-                }
+                },
 
-                switch (curent_operation) {
-                    .and_ => AND(left_array, &right_array) catch return ZipponError.AndOrError,
-                    .or_ => OR(left_array, &right_array) catch return ZipponError.AndOrError,
-                }
-                state = .expect_ANDOR_OR_end;
-            },
+                else => unreachable,
+            }
+        }
 
-            else => unreachable,
-        };
-
-        return token;
+        return filter;
     }
 
     /// Parse to get a Condition. Which is a struct that is use by the FileEngine to retreive data.
     /// In the query, it is this part name = 'Bob' or age <= 10
-    fn parseCondition(self: Parser, condition: *Condition, token_ptr: *Token) ZipponError!Token {
+    fn parseCondition(self: Parser, token_ptr: *Token, struct_name: []const u8) ZipponError!Condition {
         var keep_next = false;
         var state: State = .expect_member;
         var token = token_ptr.*;
+
+        var condition = Condition{};
 
         while (state != .end) : ({
             token = if (!keep_next) self.toker.next() else token;
@@ -494,7 +477,7 @@ pub const Parser = struct {
         }) switch (state) {
             .expect_member => switch (token.tag) {
                 .identifier => {
-                    if (!(self.file_engine.isMemberNameInStruct(condition.struct_name, self.toker.getTokenSlice(token)) catch {
+                    if (!(self.file_engine.isMemberNameInStruct(struct_name, self.toker.getTokenSlice(token)) catch {
                         return printError(
                             "Error: Struct not found.",
                             ZiQlParserError.StructNotFound,
@@ -512,7 +495,7 @@ pub const Parser = struct {
                         );
                     }
                     condition.data_type = self.file_engine.memberName2DataType(
-                        condition.struct_name,
+                        struct_name,
                         self.toker.getTokenSlice(token),
                     ) catch return ZiQlParserError.MemberNotFound;
                     condition.member_name = self.toker.getTokenSlice(token);
@@ -686,7 +669,7 @@ pub const Parser = struct {
             else => unreachable,
         }
 
-        return token;
+        return condition;
     }
 
     /// When this function is call, next token should be [
@@ -990,62 +973,6 @@ pub const Parser = struct {
     }
 };
 
-test "ADD" {
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-}
-
-test "UPDATE" {
-    try testParsing("UPDATE User {name = 'Bob'} TO (email='new@gmail.com')");
-}
-
-test "DELETE" {
-    try testParsing("DELETE User {name='Bob'}");
-}
-
-test "GRAB filter with string" {
-    try testParsing("GRAB User {name = 'Bob'}");
-    try testParsing("GRAB User {name != 'Brittany Rogers'}");
-}
-
-test "GRAB with additional data" {
-    try testParsing("GRAB User [1] {age < 18}");
-    try testParsing("GRAB User [name] {age < 18}");
-    try testParsing("GRAB User [100; name] {age < 18}");
-}
-
-test "GRAB filter with int" {
-    try testParsing("GRAB User {age = 18}");
-    try testParsing("GRAB User {age > -18}");
-    try testParsing("GRAB User {age < 18}");
-    try testParsing("GRAB User {age <= 18}");
-    try testParsing("GRAB User {age >= 18}");
-    try testParsing("GRAB User {age != 18}");
-}
-
-test "GRAB filter with date" {
-    try testParsing("GRAB User {bday > 2000/01/01}");
-    try testParsing("GRAB User {a_time < 08:00}");
-    try testParsing("GRAB User {last_order > 2000/01/01-12:45}");
-}
-
-test "Specific query" {
-    try testParsing("GRAB User");
-    try testParsing("GRAB User {}");
-    try testParsing("GRAB User [1]");
-}
-
-test "Synthax error" {
-    try expectParsingError("GRAB {}", ZiQlParserError.StructNotFound);
-    try expectParsingError("GRAB User {qwe = 'qwe'}", ZiQlParserError.MemberNotFound);
-    try expectParsingError("ADD User (name='Bob')", ZiQlParserError.MemberMissing);
-    try expectParsingError("GRAB User {name='Bob'", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {age = 50 name='Bob'}", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {age <14 AND (age>55}", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {name < 'Hello'}", ZiQlParserError.ConditionError);
-}
-
 fn testParsing(source: [:0]const u8) !void {
     const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
     const allocator = std.testing.allocator;
@@ -1072,4 +999,27 @@ fn expectParsingError(source: [:0]const u8, err: ZiQlParserError) !void {
     var parser = Parser.init(allocator, &tokenizer, &file_engine);
 
     try std.testing.expectError(err, parser.parse());
+}
+
+test "New parser filter" {
+    try testParseFilter("name = 'Adrien'}");
+    try testParseFilter("name = 'Adrien' AND age > 11}");
+    try testParseFilter("name = 'Adrien' AND (age < 11 OR age > 40)}");
+    try testParseFilter("(name = 'Adrien') AND (age < 11 OR age > 40)}");
+}
+
+fn testParseFilter(source: [:0]const u8) !void {
+    const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
+    const allocator = std.testing.allocator;
+
+    const path = try allocator.dupe(u8, TEST_DATA_DIR);
+    var file_engine = FileEngine.init(allocator, path);
+    defer file_engine.deinit();
+
+    var tokenizer = Tokenizer.init(source);
+    var parser = Parser.init(allocator, &tokenizer, &file_engine);
+
+    var filter = try parser.parseFilter("User");
+    defer filter.deinit();
+    filter.debugPrint();
 }

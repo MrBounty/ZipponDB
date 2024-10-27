@@ -16,6 +16,8 @@ const SchemaToken = @import("tokenizers/schema.zig").Token;
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const Loc = @import("tokenizers/shared/loc.zig").Loc;
 
+const Condition = @import("stuffs/filter.zig").Condition;
+
 // TODO: Move that to another struct, not in the file engine
 const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
 const SchemaParser = @import("schemaParser.zig").Parser;
@@ -87,23 +89,6 @@ pub const FileEngine = struct {
         bool_array: std.ArrayList(bool),
         link_array: std.ArrayList(UUID),
         datetime_array: std.ArrayList(DateTime),
-    };
-
-    /// use to parse file. It take a struct name and member name to know what to parse.
-    /// An Operation from equal, different, superior, superior_or_equal, ...
-    /// The DataType from int, float and str
-    /// TODO: Use token from the query for struct_name, member_name and value, to save memory
-    /// TODO: Update to do multiple operation at the same tome on a row
-    pub const Condition = struct {
-        struct_name: []const u8,
-        member_name: []const u8 = undefined,
-        value: []const u8 = undefined,
-        operation: enum { equal, different, superior, superior_or_equal, inferior, inferior_or_equal, in } = undefined,
-        data_type: DataType = undefined,
-
-        pub fn init(struct_loc: []const u8) Condition {
-            return Condition{ .struct_name = struct_loc };
-        }
     };
 
     // --------------------Other--------------------
