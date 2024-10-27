@@ -48,8 +48,7 @@ const State = enum {
     expect_comma_OR_r_bracket,
 
     // For the filter parser
-    expect_left_condition, // Condition is a struct in FileEngine, it's all info necessary to get a list of UUID usinf FileEngine.getUUIDListUsingCondition
-    expect_right_condition,
+    expect_condition,
     expect_operation, // Operations are = != < <= > >=
     expect_value,
     expect_ANDOR_OR_end,
@@ -390,48 +389,17 @@ pub const Parser = struct {
 
         var keep_next = false;
         var token = self.toker.next();
-        var state: State = .expect_left_condition;
+        var state: State = .expect_condition;
 
         while (state != .end) : ({
             token = if (keep_next) token else self.toker.next();
             keep_next = false;
         }) {
             switch (state) {
-                .expect_left_condition => switch (token.tag) {
+                .expect_condition => switch (token.tag) {
                     .r_brace => {
                         state = .end;
                     },
-                    else => {
-                        const condition = try self.parseCondition(&token, struct_name);
-                        try filter.addCondition(condition);
-                        state = .expect_ANDOR_OR_end;
-                        token = self.toker.last();
-                        keep_next = true;
-                    },
-                },
-
-                .expect_ANDOR_OR_end => switch (token.tag) {
-                    .r_brace, .r_paren => {
-                        state = .end;
-                    },
-                    .keyword_and => {
-                        try filter.addLogicalOperator(.AND);
-                        state = .expect_right_condition;
-                    },
-                    .keyword_or => {
-                        try filter.addLogicalOperator(.OR);
-                        state = .expect_right_condition;
-                    },
-                    else => return printError(
-                        "Error: Expected AND, OR, or }",
-                        ZiQlParserError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    ),
-                },
-
-                .expect_right_condition => switch (token.tag) {
                     .l_paren => {
                         var sub_filter = try self.parseFilter(struct_name);
                         filter.addSubFilter(&sub_filter);
@@ -447,7 +415,28 @@ pub const Parser = struct {
                         state = .expect_ANDOR_OR_end;
                     },
                     else => return printError(
-                        "Error: Expected ( or member name.",
+                        "Error: Expected ( or condition.",
+                        ZiQlParserError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+
+                .expect_ANDOR_OR_end => switch (token.tag) {
+                    .r_brace, .r_paren => {
+                        state = .end;
+                    },
+                    .keyword_and => {
+                        try filter.addLogicalOperator(.AND);
+                        state = .expect_condition;
+                    },
+                    .keyword_or => {
+                        try filter.addLogicalOperator(.OR);
+                        state = .expect_condition;
+                    },
+                    else => return printError(
+                        "Error: Expected AND, OR, or }",
                         ZiQlParserError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
@@ -1001,11 +990,13 @@ fn expectParsingError(source: [:0]const u8, err: ZiQlParserError) !void {
     try std.testing.expectError(err, parser.parse());
 }
 
-test "New parser filter" {
+test "Parse filter" {
     try testParseFilter("name = 'Adrien'}");
     try testParseFilter("name = 'Adrien' AND age > 11}");
     try testParseFilter("name = 'Adrien' AND (age < 11 OR age > 40)}");
     try testParseFilter("(name = 'Adrien') AND (age < 11 OR age > 40)}");
+    try testParseFilter("(name = 'Adrien' OR name = 'Bob') AND (age < 11 OR age > 40)}");
+    try testParseFilter("(name = 'Adrien' OR name = 'Bob') AND (age < 11 OR age > 40 AND (age != 20))}");
 }
 
 fn testParseFilter(source: [:0]const u8) !void {
@@ -1021,5 +1012,7 @@ fn testParseFilter(source: [:0]const u8) !void {
 
     var filter = try parser.parseFilter("User");
     defer filter.deinit();
+    std.debug.print("{s}\n", .{source});
     filter.debugPrint();
+    std.debug.print("\n", .{});
 }

@@ -1,8 +1,18 @@
+// Should do a tree like that:
+//            AND
+//         /      \
+//        OR      OR
+//       / \      / \
+//    name name age age
+//    ='A' ='B' >80 <20
+//
+// For {(name = 'Adrien' OR name = 'Bob') AND (age > 80 OR age < 20)}
+
 const std = @import("std");
 const ZipponError = @import("errors.zig").ZipponError;
 const DataType = @import("dtype").DataType;
 
-pub const ComparisonOperator = enum {
+const ComparisonOperator = enum {
     equal,
     different,
     superior,
@@ -24,7 +34,7 @@ pub const ComparisonOperator = enum {
     }
 };
 
-pub const LogicalOperator = enum {
+const LogicalOperator = enum {
     AND,
     OR,
 
@@ -44,7 +54,7 @@ pub const Condition = struct {
     // data_index: usize TODO: add this member, this is the position in the row of the value, to use in the evaluate method
 };
 
-pub const FilterNode = union(enum) {
+const FilterNode = union(enum) {
     condition: Condition,
     logical: struct {
         operator: LogicalOperator,
@@ -173,9 +183,8 @@ pub const Filter = struct {
     }
 
     pub fn debugPrint(self: Filter) void {
-        std.debug.print("\n\n", .{});
         self.printNode(self.root.*);
-        std.debug.print("\n\n", .{});
+        std.debug.print("\n", .{});
     }
 
     fn printNode(self: Filter, node: FilterNode) void {
