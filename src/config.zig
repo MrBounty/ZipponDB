@@ -3,7 +3,7 @@ pub const MAX_FILE_SIZE = 5e+6; // 5Mb
 pub const CSV_DELIMITER = ';'; // TODO: Delete
 
 // Testing
-pub const TEST_DATA_DIR = "test_data/v0.1.2"; // Maybe put that directly in the build
+pub const TEST_DATA_DIR = "data"; // Maybe put that directly in the build
 
 // Debug
 pub const DONT_SEND = true;

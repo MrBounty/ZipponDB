@@ -1,0 +1,13 @@
+.{
+    .name = "ZipponDB",
+    .version = "0.1.4",
+    .dependencies = .{
+        .ZipponData = .{
+            .url = "git+https://github.com/MrBounty/ZipponData",
+            .hash = "12200f2c24233d72c195c1daf04d07f3af22418593f7bbe8a75e54fe6817866f4564",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}
