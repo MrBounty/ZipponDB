@@ -188,22 +188,23 @@ TODO: Create a tech doc of what is happening inside.
 - [X] File engine  
 
 #### v0.2 - Usable  
-- [ ] B+Tree  
 - [ ] Relationships  
-- [ ] Date
+- [ ] Optimized data file
+- [X] Date
 - [ ] Linked query
-- [ ] Docker  
+- [ ] Optimization  
+- [X] Logs
 
 #### v0.3 - QoL  
 - [ ] Schema migration   
 - [ ] Dump/Bump data  
 - [ ] Recovery
 - [ ] Better CLI
-- [ ] Logs
 
 ### Beta
 #### v0.4 - Usability  
 - [ ] Server  
+- [ ] Docker  
 - [ ] Config file
 - [ ] Python interface  
 - [ ] Go interface  
@@ -216,7 +217,6 @@ TODO: Create a tech doc of what is happening inside.
 - [ ] Transaction  
 - [ ] Multi threading
 - [ ] Lock manager 
-- [ ] Optimized data file
 
 #### v0.7 - Safety  
 - [ ] Auth  
