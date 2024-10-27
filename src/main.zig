@@ -308,7 +308,7 @@ const initFileEngine = struct {
         if (!file_engine.isSchemaFileInDir()) {
             try initSchema(allocator, &file_engine);
         } else {
-            log.info("Database has a schema.\n", .{});
+            log.info("Database has a schema.", .{});
         }
 
         return file_engine;
@@ -317,7 +317,7 @@ const initFileEngine = struct {
     fn ensureDirectoryExists(path: []const u8) !void {
         _ = std.fs.cwd().openDir(path, .{}) catch |err| {
             if (err == error.FileNotFound) {
-                log.info("{s} directory not found, creating it\n", .{path});
+                log.info("{s} directory not found, creating it", .{path});
                 try std.fs.cwd().makeDir(path);
                 return;
             } else {

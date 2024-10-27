@@ -7,6 +7,7 @@ pub const TEST_DATA_DIR = "test_data/v0.1.2"; // Maybe put that directly in the 
 
 // Debug
 pub const DONT_SEND = true;
+pub const RESET_LOG_AT_RESTART = false; // If true, will reset the log file at the start of the db, otherwise just keep adding to it
 
 // Help message
 pub const HELP_MESSAGE = struct {

@@ -22,9 +22,11 @@ const SchemaParser = @import("schemaParser.zig").Parser;
 
 const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
-const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
-const MAX_FILE_SIZE = @import("config.zig").MAX_FILE_SIZE;
-const CSV_DELIMITER = @import("config.zig").CSV_DELIMITER;
+const config = @import("config.zig");
+const BUFFER_SIZE = config.BUFFER_SIZE;
+const MAX_FILE_SIZE = config.MAX_FILE_SIZE;
+const CSV_DELIMITER = config.CSV_DELIMITER;
+const RESET_LOG_AT_RESTART = config.RESET_LOG_AT_RESTART;
 
 const log = std.log.scoped(.fileEngine);
 
@@ -117,6 +119,7 @@ pub const FileEngine = struct {
         return len;
     }
 
+    // FIXME: This got an error, idk why
     pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) FileEngineError!void {
         const path = std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path);
@@ -183,14 +186,25 @@ pub const FileEngine = struct {
         path_buff = std.fmt.allocPrint(self.allocator, "{s}/LOG", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
-            error.PathAlreadyExists => return,
+            error.PathAlreadyExists => {},
             else => return FileEngineError.CantMakeDir,
         };
 
         self.allocator.free(path_buff);
         path_buff = std.fmt.allocPrint(self.allocator, "{s}/LOG/log", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
-        _ = cwd.createFile(path_buff, .{}) catch return FileEngineError.CantMakeFile;
+        if (RESET_LOG_AT_RESTART) {
+            _ = cwd.createFile(path_buff, .{}) catch return FileEngineError.CantMakeFile;
+        } else {
+            const log_dir = cwd.openDir(path_buff[0..(path_buff.len - 4)], .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+            var iter = log_dir.iterate();
+
+            var founded = false;
+            while (iter.next() catch return FileEngineError.DirIterError) |entry| {
+                if (std.mem.eql(u8, entry.name, "log")) founded = true;
+            }
+            if (!founded) _ = cwd.createFile(path_buff, .{}) catch return FileEngineError.CantMakeFile;
+        }
     }
 
     /// Request a path to a schema file and then create the struct folder
