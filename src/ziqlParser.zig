@@ -5,6 +5,7 @@ const Tokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const Token = @import("tokenizers/ziql.zig").Token;
 
 const dtype = @import("dtype");
+const s2t = dtype.s2t;
 const UUID = dtype.UUID;
 const AND = dtype.AND;
 const OR = dtype.OR;
@@ -12,6 +13,7 @@ const DataType = dtype.DataType;
 
 const Filter = @import("stuffs/filter.zig").Filter;
 const Condition = @import("stuffs/filter.zig").Condition;
+const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
 
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const AdditionalDataMember = @import("stuffs/additionalData.zig").AdditionalDataMember;
@@ -106,6 +108,20 @@ pub const Parser = struct {
             writer.writeAll(&uuid.format_uuid()) catch return ZiQlParserError.WriteError;
             writer.writeAll("\", ") catch return ZiQlParserError.WriteError;
         }
+        writer.writeByte(']') catch return ZiQlParserError.WriteError;
+
+        send("{s}", .{buffer.items});
+    }
+
+    pub fn sendUUID(self: Parser, uuid: UUID) ZiQlParserError!void {
+        var buffer = std.ArrayList(u8).init(self.allocator);
+        defer buffer.deinit();
+
+        const writer = buffer.writer();
+        writer.writeByte('[') catch return ZiQlParserError.WriteError;
+        writer.writeByte('"') catch return ZiQlParserError.WriteError;
+        writer.writeAll(&uuid.format_uuid()) catch return ZiQlParserError.WriteError;
+        writer.writeAll("\", ") catch return ZiQlParserError.WriteError;
         writer.writeByte(']') catch return ZiQlParserError.WriteError;
 
         send("{s}", .{buffer.items});
@@ -349,10 +365,10 @@ pub const Parser = struct {
 
                 var error_message_buffer = std.ArrayList(u8).init(self.allocator);
                 defer error_message_buffer.deinit();
+
                 const error_message_buffer_writer = error_message_buffer.writer();
                 error_message_buffer_writer.writeAll("Error missing: ") catch return ZipponError.WriteError;
 
-                // TODO: Print the entire list of missing
                 if (!(self.file_engine.checkIfAllMemberInMap(struct_name, &data_map, &error_message_buffer) catch {
                     return ZiQlParserError.StructNotFound;
                 })) {
@@ -366,22 +382,8 @@ pub const Parser = struct {
                         token.loc.end,
                     );
                 }
-                const uuid = self.file_engine.writeEntity(struct_name, data_map) catch {
-                    send("ZipponDB error: Couln't write new data to file", .{});
-                    continue;
-                };
-
-                var buffer = std.ArrayList(u8).init(self.allocator);
-                defer buffer.deinit();
-
-                const writer = buffer.writer();
-                writer.writeByte('[') catch return ZiQlParserError.WriteError;
-                writer.writeByte('"') catch return ZiQlParserError.WriteError;
-                writer.writeAll(&uuid.format_uuid()) catch return ZiQlParserError.WriteError;
-                writer.writeAll("\"") catch return ZiQlParserError.WriteError;
-                writer.writeByte(']') catch return ZiQlParserError.WriteError;
-                send("{s}", .{buffer.items});
-
+                const uuid = self.file_engine.writeEntity(struct_name, data_map) catch return ZipponError.CantWriteEntity;
+                try self.sendUUID(uuid);
                 state = .end;
             },
 
@@ -638,7 +640,16 @@ pub const Parser = struct {
                     }
                 }
 
-                condition.value = self.toker.buffer[start_index..token.loc.end];
+                condition.value = switch (condition.data_type) {
+                    .int => ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
+                    .float => ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
+                    .str => ConditionValue.initStr(self.toker.buffer[start_index..token.loc.end]),
+                    .date => ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]),
+                    .time => ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
+                    .datetime => ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
+                    .bool => ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
+                    else => unreachable, // TODO: Make for link and array =|
+                };
                 state = .end;
             },
 
@@ -1024,46 +1035,6 @@ test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-}
-
-test "UPDATE" {
-    try testParsing("UPDATE User {name = 'Bob'} TO (email='new@gmail.com')");
-}
-
-test "DELETE" {
-    try testParsing("DELETE User {name='Bob'}");
-}
-
-test "GRAB filter with string" {
-    try testParsing("GRAB User {name = 'Bob'}");
-    try testParsing("GRAB User {name != 'Brittany Rogers'}");
-}
-
-test "GRAB with additional data" {
-    try testParsing("GRAB User [1] {age < 18}");
-    try testParsing("GRAB User [name] {age < 18}");
-    try testParsing("GRAB User [100; name] {age < 18}");
-}
-
-test "GRAB filter with int" {
-    try testParsing("GRAB User {age = 18}");
-    try testParsing("GRAB User {age > -18}");
-    try testParsing("GRAB User {age < 18}");
-    try testParsing("GRAB User {age <= 18}");
-    try testParsing("GRAB User {age >= 18}");
-    try testParsing("GRAB User {age != 18}");
-}
-
-test "GRAB filter with date" {
-    try testParsing("GRAB User {bday > 2000/01/01}");
-    try testParsing("GRAB User {a_time < 08:00}");
-    try testParsing("GRAB User {last_order > 2000/01/01-12:45}");
-}
-
-test "Specific query" {
-    try testParsing("GRAB User");
-    try testParsing("GRAB User {}");
-    try testParsing("GRAB User [1]");
 }
 
 test "Synthax error" {

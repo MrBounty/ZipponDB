@@ -74,10 +74,22 @@ pub fn build(b: *std.Build) void {
     tests5.root_module.addImport("ZipponData", b.dependency("ZipponData", .{}).module("ZipponData"));
     const run_tests5 = b.addRunArtifact(tests5);
 
+    const tests6 = b.addTest(.{
+        .root_source_file = b.path("src/stuffs/filter.zig"),
+        .target = target,
+        .optimize = optimize,
+        .name = "Filter tree",
+        .test_runner = b.path("test_runner.zig"),
+    });
+    tests6.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
+    tests6.root_module.addImport("ZipponData", b.dependency("ZipponData", .{}).module("ZipponData"));
+    const run_tests6 = b.addRunArtifact(tests6);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests1.step);
     test_step.dependOn(&run_tests2.step);
     test_step.dependOn(&run_tests3.step);
     test_step.dependOn(&run_tests4.step);
     test_step.dependOn(&run_tests5.step);
+    test_step.dependOn(&run_tests6.step);
 }

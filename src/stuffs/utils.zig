@@ -77,7 +77,7 @@ pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, sta
         writer.print("    \n", .{}) catch {}; // Align with the message
     }
 
-    log.debug("Parsing error: {s}", .{buffer.items});
+    // log.debug("Parsing error: {s}", .{buffer.items});
 
     send("{s}", .{buffer.items});
     return err;

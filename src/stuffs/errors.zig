@@ -10,6 +10,7 @@ pub const ZiQlParserError = error{
     ConditionError,
     WriteError,
     AndOrError,
+    CantWriteEntity,
 };
 
 pub const SchemaParserError = error{
@@ -41,6 +42,8 @@ pub const FileEngineError = error{
     RenameFileError,
     StructNotFound,
     MemberNotFound,
+    ZipponDataError,
+    AllocEncodError,
 };
 
 pub const ZipponError = ZiQlParserError || FileEngineError || SchemaParserError;

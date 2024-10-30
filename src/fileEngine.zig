@@ -76,21 +76,6 @@ pub const FileEngine = struct {
         return !std.mem.eql(u8, "", self.path_to_ZipponDB_dir);
     }
 
-    const ComparisonValue = union {
-        int: i64,
-        float: f64,
-        str: []const u8,
-        bool_: bool,
-        link: UUID,
-        datetime: DateTime,
-        int_array: std.ArrayList(i64),
-        str_array: std.ArrayList([]const u8),
-        float_array: std.ArrayList(f64),
-        bool_array: std.ArrayList(bool),
-        link_array: std.ArrayList(UUID),
-        datetime_array: std.ArrayList(DateTime),
-    };
-
     // --------------------Other--------------------
 
     pub fn readSchemaFile(allocator: Allocator, sub_path: []const u8, buffer: []u8) FileEngineError!usize {
@@ -228,10 +213,7 @@ pub const FileEngine = struct {
             };
             const struct_dir = data_dir.openDir(schema_struct.name, .{}) catch return FileEngineError.CantOpenDir;
 
-            _ = struct_dir.createFile("0.csv", .{}) catch |err| switch (err) {
-                error.PathAlreadyExists => {},
-                else => return FileEngineError.CantMakeFile,
-            };
+            zid.createFile("0.zid", struct_dir) catch return FileEngineError.CantMakeFile;
         }
 
         try self.writeSchemaFile();
@@ -442,241 +424,33 @@ pub const FileEngine = struct {
     }
 
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
-    /// TODO: Change the UUID function to be a B+Tree
-    /// TODO: Optimize the shit out of this, it it way too slow rn. Here some ideas
-    /// - Make multiple condition per row
-    /// - Array can take a very long time to parse, maybe put them in a seperate file. But string can be too...
-    /// - Use the stream directly in the tokenizer
-    /// - Use a fixed size and split into other file. Like one file for one member (Because very long, like an array of 1000 value) and another one for everything else
-    ///     The threselhold can be like if the average len is > 400 character. So UUID would take less that 10% of the storage
-    /// - Save data in a more compact way
-    /// - Multithreading, each thread take a list of files and we mix them at the end
-    pub fn getUUIDListUsingCondition(self: *FileEngine, condition: Condition, uuid_array: *std.ArrayList(UUID)) FileEngineError!void {
-        const max_file_index = try self.maxFileIndex(condition.struct_name);
-        var current_index: usize = 0;
-
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.csv",
-            .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-
-        var file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-        defer file.close();
-
-        var output: [BUFFER_SIZE]u8 = undefined;
-        var output_fbs = std.io.fixedBufferStream(&output);
-        const writer = output_fbs.writer();
-
-        var buffered = std.io.bufferedReader(file.reader());
-        var reader = buffered.reader();
-
-        var compare_value: ComparisonValue = undefined;
-        switch (condition.data_type) {
-            .int => compare_value = ComparisonValue{ .int = s2t.parseInt(condition.value) },
-            .str => compare_value = ComparisonValue{ .str = condition.value },
-            .float => compare_value = ComparisonValue{ .float = s2t.parseFloat(condition.value) },
-            .bool => compare_value = ComparisonValue{ .bool_ = s2t.parseBool(condition.value) },
-            .link => compare_value = ComparisonValue{ .link = UUID.parse(condition.value) catch return FileEngineError.InvalidUUID },
-            .date => compare_value = ComparisonValue{ .datetime = s2t.parseDate(condition.value) },
-            .time => compare_value = ComparisonValue{ .datetime = s2t.parseTime(condition.value) },
-            .datetime => compare_value = ComparisonValue{ .datetime = s2t.parseDatetime(condition.value) },
-            .int_array => compare_value = ComparisonValue{ .int_array = s2t.parseArrayInt(self.allocator, condition.value) },
-            .str_array => compare_value = ComparisonValue{ .str_array = s2t.parseArrayStr(self.allocator, condition.value) },
-            .float_array => compare_value = ComparisonValue{ .float_array = s2t.parseArrayFloat(self.allocator, condition.value) },
-            .bool_array => compare_value = ComparisonValue{ .bool_array = s2t.parseArrayBool(self.allocator, condition.value) },
-            .link_array => compare_value = ComparisonValue{ .link_array = s2t.parseArrayUUID(self.allocator, condition.value) },
-            .date_array => compare_value = ComparisonValue{ .datetime_array = s2t.parseArrayDate(self.allocator, condition.value) },
-            .time_array => compare_value = ComparisonValue{ .datetime_array = s2t.parseArrayTime(self.allocator, condition.value) },
-            .datetime_array => compare_value = ComparisonValue{ .datetime_array = s2t.parseArrayDatetime(self.allocator, condition.value) },
-        }
-        defer {
-            switch (condition.data_type) {
-                .int_array => compare_value.int_array.deinit(),
-                .str_array => {
-                    for (compare_value.str_array.items) |value| self.allocator.free(value); // TODO: Remove that, I should need to free them one by one as condition.value keep it in memory
-                    compare_value.str_array.deinit();
-                },
-                .float_array => compare_value.float_array.deinit(),
-                .bool_array => compare_value.bool_array.deinit(),
-                .link_array => compare_value.link_array.deinit(),
-                .datetime_array => compare_value.datetime_array.deinit(),
-                else => {},
-            }
-        }
-
-        var token: FileToken = undefined;
-        var found = false;
-
-        while (true) {
-            output_fbs.reset();
-            reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) {
-                error.EndOfStream => {
-                    // When end of file, check if all file was parse, if not update the reader to the next file
-                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
-                    output_fbs.reset(); // clear buffer before exit
-
-                    if (current_index == max_file_index) break;
-
-                    current_index += 1;
-
-                    self.allocator.free(path_buff);
-                    path_buff = std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/DATA/{s}/{d}.csv",
-                        .{ self.path_to_ZipponDB_dir, condition.struct_name, current_index },
-                    ) catch return FileEngineError.MemoryError;
-
-                    file.close(); // Do I need to close ? I think so
-                    file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-
-                    buffered = std.io.bufferedReader(file.reader());
-                    reader = buffered.reader();
-                    continue;
-                }, // file read till the end
-                else => return FileEngineError.StreamError,
-            };
-
-            // Maybe use the stream directly to prevent duplicate the data
-            // But I would need to change the Tokenizer a lot...
-            const null_terminated_string = self.allocator.dupeZ(u8, output_fbs.getWritten()[37..]) catch return FileEngineError.MemoryError;
-            defer self.allocator.free(null_terminated_string);
-
-            var data_toker = FileTokenizer.init(null_terminated_string);
-            const uuid = UUID.parse(output_fbs.getWritten()[0..36]) catch return FileEngineError.InvalidUUID;
-
-            // Skip unwanted token
-            for (try self.structName2structMembers(condition.struct_name)) |member_name| {
-                if (std.mem.eql(u8, member_name, condition.member_name)) break;
-                _ = data_toker.next();
-            }
-            token = data_toker.next();
-
-            const row_value = data_toker.getTokenSlice(token);
-
-            found = switch (condition.operation) {
-                .equal => switch (condition.data_type) {
-                    .int => compare_value.int == s2t.parseInt(row_value),
-                    .float => compare_value.float == s2t.parseFloat(row_value),
-                    .str => std.mem.eql(u8, compare_value.str, row_value),
-                    .bool => compare_value.bool_ == s2t.parseBool(row_value),
-                    .link => compare_value.link.compare(uuid),
-                    .date => compare_value.datetime.compareDate(s2t.parseDate(row_value)),
-                    .time => compare_value.datetime.compareTime(s2t.parseTime(row_value)),
-                    .datetime => compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
-                    else => unreachable,
-                },
-
-                .different => switch (condition.data_type) {
-                    .int => compare_value.int != s2t.parseInt(row_value),
-                    .float => compare_value.float != s2t.parseFloat(row_value),
-                    .str => !std.mem.eql(u8, compare_value.str, row_value),
-                    .bool => compare_value.bool_ != s2t.parseBool(row_value),
-                    .link => !compare_value.link.compare(uuid),
-                    .date => !compare_value.datetime.compareDate(s2t.parseDate(row_value)),
-                    .time => !compare_value.datetime.compareTime(s2t.parseTime(row_value)),
-                    .datetime => !compare_value.datetime.compareDatetime(s2t.parseDatetime(row_value)),
-                    else => unreachable,
-                },
-
-                .superior_or_equal => switch (condition.data_type) {
-                    .int => compare_value.int <= s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => compare_value.float <= s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => compare_value.datetime.toUnix() <= s2t.parseDate(row_value).toUnix(),
-                    .time => compare_value.datetime.toUnix() <= s2t.parseTime(row_value).toUnix(),
-                    .datetime => compare_value.datetime.toUnix() <= s2t.parseDatetime(row_value).toUnix(),
-                    else => unreachable,
-                },
-
-                .superior => switch (condition.data_type) {
-                    .int => compare_value.int < s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => compare_value.float < s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => compare_value.datetime.toUnix() < s2t.parseDate(row_value).toUnix(),
-                    .time => compare_value.datetime.toUnix() < s2t.parseTime(row_value).toUnix(),
-                    .datetime => compare_value.datetime.toUnix() < s2t.parseDatetime(row_value).toUnix(),
-                    else => unreachable,
-                },
-
-                .inferior_or_equal => switch (condition.data_type) {
-                    .int => compare_value.int >= s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => compare_value.float >= s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => compare_value.datetime.toUnix() >= s2t.parseDate(row_value).toUnix(),
-                    .time => compare_value.datetime.toUnix() >= s2t.parseTime(row_value).toUnix(),
-                    .datetime => compare_value.datetime.toUnix() >= s2t.parseDatetime(row_value).toUnix(),
-                    else => unreachable,
-                },
-
-                .inferior => switch (condition.data_type) {
-                    .int => compare_value.int > s2t.parseInt(data_toker.getTokenSlice(token)),
-                    .float => compare_value.float > s2t.parseFloat(data_toker.getTokenSlice(token)),
-                    .date => compare_value.datetime.toUnix() > s2t.parseDate(row_value).toUnix(),
-                    .time => compare_value.datetime.toUnix() > s2t.parseTime(row_value).toUnix(),
-                    .datetime => compare_value.datetime.toUnix() > s2t.parseDatetime(row_value).toUnix(),
-                    else => unreachable,
-                },
-
-                else => false,
-            };
-
-            // TODO: Do it for other array and implement in the query language
-            switch (condition.operation) {
-                .in => switch (condition.data_type) {
-                    .link_array => {
-                        for (compare_value.link_array.items) |elem| {
-                            if (elem.compare(uuid)) uuid_array.append(uuid) catch return FileEngineError.MemoryError;
-                        }
-                    },
-                    else => unreachable,
-                },
-                else => {},
-            }
-
-            if (found) uuid_array.append(uuid) catch return FileEngineError.MemoryError;
-        }
+    /// TODO: Use the new filter and DataIterator
+    pub fn getUUIDListUsingCondition(_: *FileEngine, _: Condition, _: *std.ArrayList(UUID)) FileEngineError!void {
+        return;
     }
 
     // --------------------Change existing files--------------------
 
-    // TODO: Change map to use a []Data from ZipponData
-    pub fn writeEntity(self: *FileEngine, struct_name: []const u8, data_map: std.StringHashMap([]const u8)) FileEngineError!UUID {
+    // TODO: Make it in batch too
+    pub fn writeEntity(self: *FileEngine, struct_name: []const u8, map: std.StringHashMap([]const u8)) FileEngineError!UUID {
         const uuid = UUID.init();
 
-        const potential_file_index = try self.getFirstUsableIndexFile(struct_name);
-        var file: std.fs.File = undefined;
-        defer file.close();
+        const file_index = try self.getFirstUsableIndexFile(struct_name);
 
-        var path: []const u8 = undefined;
+        const path = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/DATA/{s}/{d}.zid",
+            .{ self.path_to_ZipponDB_dir, struct_name, file_index },
+        ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path);
 
-        if (potential_file_index) |file_index| {
-            path = std.fmt.allocPrint(
-                self.allocator,
-                "{s}/DATA/{s}/{d}.csv",
-                .{ self.path_to_ZipponDB_dir, struct_name, file_index },
-            ) catch return FileEngineError.MemoryError;
-            file = std.fs.cwd().openFile(path, .{ .mode = .read_write }) catch return FileEngineError.CantOpenFile;
-        } else {
-            const max_index = try self.maxFileIndex(struct_name);
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const data = try self.orderedNewData(arena.allocator(), struct_name, map);
 
-            path = std.fmt.allocPrint(
-                self.allocator,
-                "{s}/DATA/{s}/{d}.csv",
-                .{ self.path_to_ZipponDB_dir, struct_name, max_index + 1 },
-            ) catch return FileEngineError.MemoryError;
-            file = std.fs.cwd().createFile(path, .{}) catch return FileEngineError.CantMakeFile;
-        }
-
-        file.seekFromEnd(0) catch return FileEngineError.WriteError; // Not really a write error tho
-        const writer = file.writer();
-        writer.print("{s}", .{uuid.format_uuid()}) catch return FileEngineError.WriteError;
-
-        for (try self.structName2structMembers(struct_name)) |member_name| {
-            writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
-            writer.print("{s}", .{data_map.get(member_name).?}) catch return FileEngineError.WriteError; // Change that for csv
-        }
-
-        writer.print("\n", .{}) catch return FileEngineError.WriteError;
+        var writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
+        writer.write(data) catch return FileEngineError.ZipponDataError;
+        writer.flush() catch return FileEngineError.ZipponDataError;
 
         return uuid;
     }
@@ -994,13 +768,89 @@ pub const FileEngine = struct {
         return deleted_count;
     }
 
+    // --------------------ZipponData utils--------------------
+
+    // Function that take a map from the parseNewData and return an ordered array of Data
+    pub fn orderedNewData(self: *FileEngine, allocator: Allocator, struct_name: []const u8, map: std.StringHashMap([]const u8)) FileEngineError![]const zid.Data {
+        const members = try self.structName2structMembers(struct_name);
+        const types = try self.structName2DataType(struct_name);
+
+        var datas = allocator.alloc(zid.Data, members.len) catch return FileEngineError.MemoryError;
+
+        for (members, types, 0..) |member, dt, i| {
+            switch (dt) {
+                .int => datas[i] = zid.Data.initInt(s2t.parseInt(map.get(member).?)),
+                .float => datas[i] = zid.Data.initFloat(s2t.parseFloat(map.get(member).?)),
+                .bool => datas[i] = zid.Data.initBool(s2t.parseBool(map.get(member).?)),
+                .date => datas[i] = zid.Data.initUnix(s2t.parseDate(map.get(member).?).toUnix()),
+                .time => datas[i] = zid.Data.initUnix(s2t.parseTime(map.get(member).?).toUnix()),
+                .datetime => datas[i] = zid.Data.initUnix(s2t.parseDatetime(map.get(member).?).toUnix()),
+                .str => datas[i] = zid.Data.initStr(map.get(member).?),
+                .link => {
+                    const uuid = UUID.parse(map.get(member).?) catch return FileEngineError.InvalidUUID;
+                    datas[i] = zid.Data{ .UUID = uuid.bytes };
+                },
+                .int_array => {
+                    var array = s2t.parseArrayInt(allocator, map.get(member).?);
+                    defer array.deinit();
+
+                    datas[i] = zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                },
+                .float_array => {
+                    var array = s2t.parseArrayFloat(allocator, map.get(member).?);
+                    defer array.deinit();
+
+                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                },
+                .str_array => {
+                    var array = s2t.parseArrayStr(allocator, map.get(member).?);
+                    defer array.deinit();
+
+                    datas[i] = zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                },
+                .bool_array => {
+                    var array = s2t.parseArrayBool(allocator, map.get(member).?);
+                    defer array.deinit();
+
+                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Bool(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                },
+                .link_array => {
+                    const array = s2t.parseArrayUUIDBytes(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer self.allocator.free(array);
+
+                    datas[i] = zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, array) catch return FileEngineError.AllocEncodError);
+                },
+                .date_array => {
+                    var array = s2t.parseArrayDateUnix(allocator, map.get(member).?);
+                    defer array.deinit();
+
+                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                },
+                .time_array => {
+                    var array = s2t.parseArrayTimeUnix(allocator, map.get(member).?);
+                    defer array.deinit();
+
+                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                },
+                .datetime_array => {
+                    var array = s2t.parseArrayDatetimeUnix(allocator, map.get(member).?);
+                    defer array.deinit();
+
+                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                },
+            }
+        }
+
+        return datas;
+    }
+
     // --------------------Schema utils--------------------
 
-    /// Get the index of the first file that is bellow the size limit. If not found, return null
-    fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) FileEngineError!?usize {
+    /// Get the index of the first file that is bellow the size limit. If not found, create a new file
+    fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) FileEngineError!usize {
         log.debug("Getting first usable index file for {s} at {s}", .{ struct_name, self.path_to_ZipponDB_dir });
 
-        const path = std.fmt.allocPrint(
+        var path = std.fmt.allocPrint(
             self.allocator,
             "{s}/DATA/{s}",
             .{ self.path_to_ZipponDB_dir, struct_name },
@@ -1010,14 +860,27 @@ pub const FileEngine = struct {
         var member_dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
         defer member_dir.close();
 
+        var i: usize = 0;
         var iter = member_dir.iterate();
         while (iter.next() catch return FileEngineError.DirIterError) |entry| {
+            i += 1;
             const file_stat = member_dir.statFile(entry.name) catch return FileEngineError.FileStatError;
             if (file_stat.size < MAX_FILE_SIZE) {
-                return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return FileEngineError.InvalidFileIndex; // TODO: Change the slice when start using CSV
+                // Cant I just return i ? It is supossed that files are ordered. I think I already check and it is not
+                return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return FileEngineError.InvalidFileIndex; // INFO: Hardcoded len of file extension
             }
         }
-        return null;
+
+        i += 1;
+        path = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/DATA/{s}/{d}.zid",
+            .{ self.path_to_ZipponDB_dir, struct_name, i },
+        ) catch return FileEngineError.MemoryError;
+
+        zid.createFile(path, null) catch return FileEngineError.ZipponDataError;
+
+        return i;
     }
 
     /// Iterate over all file of a struct and return the index of the last file.

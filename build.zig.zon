@@ -3,8 +3,8 @@
     .version = "0.1.4",
     .dependencies = .{
         .ZipponData = .{
-            .url = "git+https://github.com/MrBounty/ZipponData",
-            .hash = "12200f2c24233d72c195c1daf04d07f3af22418593f7bbe8a75e54fe6817866f4564",
+            .url = "git+https://github.com/MrBounty/ZipponData#2ec9cc00e0d798e741d63f91cde18af0f9bf1bce",
+            .hash = "12206c4cac549a5d1beab62fe1c45388cec0bcc5aac96da8175eccd8abbeb6d41913",
         },
     },
     .paths = .{

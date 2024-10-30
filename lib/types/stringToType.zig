@@ -2,13 +2,15 @@ const std = @import("std");
 const UUID = @import("uuid.zig").UUID;
 const DateTime = @import("date.zig").DateTime;
 
+// FIXME: Stop returning arrayList and use toOwnedSlice instead
+
 // TODO: Put those functions somewhere else
-pub fn parseInt(value_str: []const u8) i64 {
-    return std.fmt.parseInt(i64, value_str, 10) catch return 0;
+pub fn parseInt(value_str: []const u8) i32 {
+    return std.fmt.parseInt(i32, value_str, 10) catch return 0;
 }
 
-pub fn parseArrayInt(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList(i64) {
-    var array = std.ArrayList(i64).init(allocator);
+pub fn parseArrayInt(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList(i32) {
+    var array = std.ArrayList(i32).init(allocator);
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
@@ -57,6 +59,17 @@ pub fn parseArrayDate(allocator: std.mem.Allocator, array_str: []const u8) std.A
     return array;
 }
 
+pub fn parseArrayDateUnix(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList(u64) {
+    var array = std.ArrayList(u64).init(allocator);
+
+    var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
+    while (it.next()) |x| {
+        array.append(parseDate(x).toUnix()) catch {};
+    }
+
+    return array;
+}
+
 pub fn parseTime(value_str: []const u8) DateTime {
     const hours: u16 = std.fmt.parseInt(u16, value_str[0..2], 10) catch 0;
     const minutes: u16 = std.fmt.parseInt(u16, value_str[3..5], 10) catch 0;
@@ -72,6 +85,17 @@ pub fn parseArrayTime(allocator: std.mem.Allocator, array_str: []const u8) std.A
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
         array.append(parseTime(x)) catch {};
+    }
+
+    return array;
+}
+
+pub fn parseArrayTimeUnix(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList(u64) {
+    var array = std.ArrayList(u64).init(allocator);
+
+    var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
+    while (it.next()) |x| {
+        array.append(parseTime(x).toUnix()) catch {};
     }
 
     return array;
@@ -100,6 +124,17 @@ pub fn parseArrayDatetime(allocator: std.mem.Allocator, array_str: []const u8) s
     return array;
 }
 
+pub fn parseArrayDatetimeUnix(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList(u64) {
+    var array = std.ArrayList(u64).init(allocator);
+
+    var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
+    while (it.next()) |x| {
+        array.append(parseDatetime(x).toUnix()) catch {};
+    }
+
+    return array;
+}
+
 pub fn parseArrayBool(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList(bool) {
     var array = std.ArrayList(bool).init(allocator);
 
@@ -123,6 +158,18 @@ pub fn parseArrayUUID(allocator: std.mem.Allocator, array_str: []const u8) std.A
     return array;
 }
 
+pub fn parseArrayUUIDBytes(allocator: std.mem.Allocator, array_str: []const u8) ![]const [16]u8 {
+    var array = std.ArrayList([16]u8).init(allocator);
+
+    var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
+    while (it.next()) |x| {
+        const uuid = UUID.parse(x) catch continue;
+        array.append(uuid.bytes) catch continue;
+    }
+
+    return try array.toOwnedSlice();
+}
+
 // FIXME: I think it will not work if there is a ' inside the string, even \', need to fix that
 pub fn parseArrayStr(allocator: std.mem.Allocator, array_str: []const u8) std.ArrayList([]const u8) {
     var array = std.ArrayList([]const u8).init(allocator);
@@ -135,7 +182,7 @@ pub fn parseArrayStr(allocator: std.mem.Allocator, array_str: []const u8) std.Ar
         array.append(x_copy) catch {};
     }
 
-    allocator.free(array.pop()); // Remove the last because empty like the first one
+    if (array.items.len > 0) allocator.free(array.pop()); // Remove the last because empty like the first one
 
     return array;
 }
@@ -145,7 +192,7 @@ test "Value parsing: Int" {
 
     // Int
     const values: [3][]const u8 = .{ "1", "42", "Hello" };
-    const expected_values: [3]i64 = .{ 1, 42, 0 };
+    const expected_values: [3]i32 = .{ 1, 42, 0 };
     for (values, 0..) |value, i| {
         try std.testing.expect(parseInt(value) == expected_values[i]);
     }
@@ -154,8 +201,8 @@ test "Value parsing: Int" {
     const array_str = "[1 14 44 42 hello]";
     const array = parseArrayInt(allocator, array_str);
     defer array.deinit();
-    const expected_array: [5]i64 = .{ 1, 14, 44, 42, 0 };
-    try std.testing.expect(std.mem.eql(i64, array.items, &expected_array));
+    const expected_array: [5]i32 = .{ 1, 14, 44, 42, 0 };
+    try std.testing.expect(std.mem.eql(i32, array.items, &expected_array));
 }
 
 test "Value parsing: Float" {
