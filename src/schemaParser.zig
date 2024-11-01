@@ -1,4 +1,5 @@
 const std = @import("std");
+const zid = @import("ZipponData");
 const Allocator = std.mem.Allocator;
 const DataType = @import("dtype").DataType;
 const Toker = @import("tokenizers/schema.zig").Tokenizer;
@@ -20,6 +21,7 @@ const State = enum {
     expext_array_type,
     expect_two_dot,
     expect_comma,
+    add_struct,
 };
 
 pub const Parser = struct {
@@ -38,30 +40,68 @@ pub const Parser = struct {
     pub const SchemaStruct = struct {
         allocator: Allocator,
         name: []const u8,
-        members: std.ArrayList([]const u8),
-        types: std.ArrayList(DataType),
+        members: [][]const u8,
+        types: []DataType,
+        zid_schema: []zid.DType,
         links: std.StringHashMap([]const u8), // Map key as member_name and value as struct_name, like a dtype
+        uuid_file_index: std.AutoHashMap([16]u8, u64), // Map UUID to the index of the file they are store in
 
-        pub fn init(allocator: Allocator, name: []const u8) SchemaStruct {
+        pub fn init(
+            allocator: Allocator,
+            name: []const u8,
+            members: [][]const u8,
+            types: []DataType,
+            links: std.StringHashMap([]const u8),
+        ) SchemaParserError!SchemaStruct {
             return SchemaStruct{
                 .allocator = allocator,
                 .name = name,
-                .members = std.ArrayList([]const u8).init(allocator),
-                .types = std.ArrayList(DataType).init(allocator),
-                .links = std.StringHashMap([]const u8).init(allocator),
+                .members = members,
+                .types = types,
+                .zid_schema = SchemaStruct.fileDataSchema(allocator, types) catch return SchemaParserError.MemoryError,
+                .links = links,
+                .uuid_file_index = std.AutoHashMap([16]u8, u64).init(allocator),
             };
         }
 
         pub fn deinit(self: *SchemaStruct) void {
-            self.types.deinit();
-            self.members.deinit();
+            self.allocator.free(self.members);
+            self.allocator.free(self.types);
+            self.allocator.free(self.zid_schema);
             self.links.deinit();
+            self.uuid_file_index.deinit();
+        }
+
+        fn fileDataSchema(allocator: Allocator, dtypes: []DataType) SchemaParserError![]zid.DType {
+            var schema = std.ArrayList(zid.DType).init(allocator);
+            schema.append(zid.DType.UUID) catch return SchemaParserError.MemoryError;
+
+            for (dtypes) |dt| {
+                schema.append(switch (dt) {
+                    DataType.int => zid.DType.Int,
+                    DataType.float => zid.DType.Float,
+                    DataType.str => zid.DType.Str,
+                    DataType.bool => zid.DType.Bool,
+                    DataType.link => zid.DType.UUID,
+                    DataType.date => zid.DType.Unix,
+                    DataType.time => zid.DType.Unix,
+                    DataType.datetime => zid.DType.Unix,
+                    DataType.int_array => zid.DType.IntArray,
+                    DataType.float_array => zid.DType.FloatArray,
+                    DataType.str_array => zid.DType.StrArray,
+                    DataType.bool_array => zid.DType.BoolArray,
+                    DataType.link_array => zid.DType.UUIDArray,
+                    DataType.date_array => zid.DType.UnixArray,
+                    DataType.time_array => zid.DType.UnixArray,
+                    DataType.datetime_array => zid.DType.UnixArray,
+                }) catch return SchemaParserError.MemoryError;
+            }
+            return schema.toOwnedSlice() catch return SchemaParserError.MemoryError;
         }
     };
 
     pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
         var state: State = .expect_struct_name_OR_end;
-        var index: usize = 0;
         var keep_next = false;
 
         errdefer {
@@ -76,6 +116,14 @@ pub const Parser = struct {
 
         var member_token: Token = undefined;
 
+        var name: []const u8 = undefined;
+        var member_list = std.ArrayList([]const u8).init(self.allocator);
+        defer member_list.deinit();
+        var type_list = std.ArrayList(DataType).init(self.allocator);
+        defer type_list.deinit();
+        var links = std.StringHashMap([]const u8).init(self.allocator);
+        defer links.deinit();
+
         var token = self.toker.next();
         while ((state != .end) and (state != .invalid)) : ({
             token = if (!keep_next) self.toker.next() else token;
@@ -84,7 +132,7 @@ pub const Parser = struct {
             .expect_struct_name_OR_end => switch (token.tag) {
                 .identifier => {
                     state = .expect_l_paren;
-                    struct_array.append(SchemaStruct.init(self.allocator, self.toker.getTokenSlice(token))) catch return SchemaParserError.MemoryError;
+                    name = self.toker.getTokenSlice(token);
                 },
                 .eof => state = .end,
                 else => return printError(
@@ -112,10 +160,7 @@ pub const Parser = struct {
                     state = .expect_member_name;
                     keep_next = true;
                 },
-                .r_paren => {
-                    state = .expect_struct_name_OR_end;
-                    index += 1;
-                },
+                .r_paren => state = .add_struct,
                 else => return printError(
                     "Error parsing schema: Expected member name or )",
                     SchemaParserError.SynthaxError,
@@ -125,9 +170,29 @@ pub const Parser = struct {
                 ),
             },
 
+            .add_struct => {
+                std.debug.print("Adding new schema\n", .{});
+
+                struct_array.append(try SchemaStruct.init(
+                    self.allocator,
+                    name,
+                    member_list.toOwnedSlice() catch return SchemaParserError.MemoryError,
+                    type_list.toOwnedSlice() catch return SchemaParserError.MemoryError,
+                    try links.clone(),
+                )) catch return SchemaParserError.MemoryError;
+
+                links.deinit();
+                links = std.StringHashMap([]const u8).init(self.allocator);
+
+                member_list = std.ArrayList([]const u8).init(self.allocator);
+                type_list = std.ArrayList(DataType).init(self.allocator);
+
+                state = .expect_struct_name_OR_end;
+            },
+
             .expect_member_name => {
                 state = .expect_two_dot;
-                struct_array.items[index].members.append(self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
+                member_list.append(self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
                 member_token = token;
             },
 
@@ -145,36 +210,36 @@ pub const Parser = struct {
             .expect_value_type => switch (token.tag) {
                 .type_int => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.int) catch return SchemaParserError.MemoryError;
+                    type_list.append(.int) catch return SchemaParserError.MemoryError;
                 },
                 .type_str => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.str) catch return SchemaParserError.MemoryError;
+                    type_list.append(.str) catch return SchemaParserError.MemoryError;
                 },
                 .type_float => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.float) catch return SchemaParserError.MemoryError;
+                    type_list.append(.float) catch return SchemaParserError.MemoryError;
                 },
                 .type_bool => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.bool) catch return SchemaParserError.MemoryError;
+                    type_list.append(.bool) catch return SchemaParserError.MemoryError;
                 },
                 .type_date => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.date) catch return SchemaParserError.MemoryError;
+                    type_list.append(.date) catch return SchemaParserError.MemoryError;
                 },
                 .type_time => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.time) catch return SchemaParserError.MemoryError;
+                    type_list.append(.time) catch return SchemaParserError.MemoryError;
                 },
                 .type_datetime => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.datetime) catch return SchemaParserError.MemoryError;
+                    type_list.append(.datetime) catch return SchemaParserError.MemoryError;
                 },
                 .identifier => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.link) catch return SchemaParserError.MemoryError;
-                    struct_array.items[index].links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
+                    type_list.append(.link) catch return SchemaParserError.MemoryError;
+                    links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
                 },
                 .lr_bracket => state = .expext_array_type,
                 else => return printError(
@@ -189,36 +254,36 @@ pub const Parser = struct {
             .expext_array_type => switch (token.tag) {
                 .type_int => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.int_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(DataType.int_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_str => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.str_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(DataType.str_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_float => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.float_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(DataType.float_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_bool => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.bool_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(DataType.bool_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_date => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.date_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(DataType.date_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_time => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.time_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(DataType.time_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_datetime => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(DataType.datetime_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(DataType.datetime_array) catch return SchemaParserError.MemoryError;
                 },
                 .identifier => {
                     state = .expect_comma;
-                    struct_array.items[index].types.append(.link) catch return SchemaParserError.MemoryError;
-                    struct_array.items[index].links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
+                    type_list.append(.link) catch return SchemaParserError.MemoryError;
+                    links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
                 },
                 else => return printError(
                     "Error parsing schema: Expected data type",

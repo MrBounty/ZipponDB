@@ -43,24 +43,29 @@ pub const FileEngine = struct {
     pub fn init(allocator: Allocator, path: []const u8) FileEngineError!FileEngine {
         const path_to_ZipponDB_dir = path;
 
-        var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return FileEngineError.MemoryError;
+        var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return FileEngineError.MemoryError; // TODO: Use a list
         defer allocator.free(schema_buf);
 
         const len: usize = FileEngine.readSchemaFile(allocator, path_to_ZipponDB_dir, schema_buf) catch 0;
         const null_terminated_schema_buff = allocator.dupeZ(u8, schema_buf[0..len]) catch return FileEngineError.MemoryError;
+        errdefer allocator.free(null_terminated_schema_buff);
 
         var toker = SchemaTokenizer.init(null_terminated_schema_buff);
         var parser = SchemaParser.init(&toker, allocator);
 
         var struct_array = std.ArrayList(SchemaStruct).init(allocator);
-        parser.parse(&struct_array) catch {};
+        parser.parse(&struct_array) catch return FileEngineError.SchemaNotConform;
 
-        return FileEngine{
+        var file_engine = FileEngine{
             .allocator = allocator,
             .path_to_ZipponDB_dir = path_to_ZipponDB_dir,
             .null_terminated_schema_buff = null_terminated_schema_buff,
             .struct_array = struct_array.toOwnedSlice() catch return FileEngineError.MemoryError,
         };
+
+        try file_engine.populateAllUUIDToFileIndexMap();
+
+        return file_engine;
     }
 
     pub fn deinit(self: *FileEngine) void {
@@ -220,6 +225,33 @@ pub const FileEngine = struct {
     }
 
     // --------------------Read and parse files--------------------
+
+    // For all struct in shema, add the UUID/index_file into the map
+    pub fn populateAllUUIDToFileIndexMap(self: *FileEngine) FileEngineError!void {
+        for (self.struct_array) |*sstruct| { // Stand for schema struct
+            const max_file_index = try self.maxFileIndex(sstruct.name);
+
+            var path_buff = std.fmt.allocPrint(
+                self.allocator,
+                "{s}/DATA/{s}",
+                .{ self.path_to_ZipponDB_dir, sstruct.name },
+            ) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(path_buff);
+
+            const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+
+            for (0..(max_file_index + 1)) |i| {
+                self.allocator.free(path_buff);
+                path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+
+                var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+                defer iter.deinit();
+                while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
+                    sstruct.uuid_file_index.put(row[0].UUID, i) catch return FileEngineError.MemoryError;
+                }
+            }
+        }
+    }
 
     /// Take a list of UUID and, a buffer array and the additional data to write into the buffer the JSON to send
     /// TODO: Optimize
@@ -775,9 +807,12 @@ pub const FileEngine = struct {
         const members = try self.structName2structMembers(struct_name);
         const types = try self.structName2DataType(struct_name);
 
-        var datas = allocator.alloc(zid.Data, members.len) catch return FileEngineError.MemoryError;
+        var datas = allocator.alloc(zid.Data, (members.len + 1)) catch return FileEngineError.MemoryError;
 
-        for (members, types, 0..) |member, dt, i| {
+        const new_uuid = UUID.init();
+        datas[0] = zid.Data.initUUID(new_uuid.bytes);
+
+        for (members, types, 1..) |member, dt, i| {
             switch (dt) {
                 .int => datas[i] = zid.Data.initInt(s2t.parseInt(map.get(member).?)),
                 .float => datas[i] = zid.Data.initFloat(s2t.parseFloat(map.get(member).?)),
@@ -964,7 +999,7 @@ pub const FileEngine = struct {
             return FileEngineError.StructNotFound;
         }
 
-        return self.struct_array[i].members.items;
+        return self.struct_array[i].members;
     }
 
     pub fn structName2DataType(self: *FileEngine, struct_name: []const u8) FileEngineError![]const DataType {
@@ -978,7 +1013,7 @@ pub const FileEngine = struct {
             return FileEngineError.StructNotFound;
         }
 
-        return self.struct_array[i].types.items;
+        return self.struct_array[i].types;
     }
 
     /// Return the number of member of a struct
