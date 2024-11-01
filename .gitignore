@@ -6,3 +6,4 @@ engine
 engine.o
 zig-out
 TODO v0.2.md
+*.py

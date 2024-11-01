@@ -14,6 +14,7 @@ const FileToken = @import("tokenizers/file.zig").Token;
 const SchemaTokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const SchemaToken = @import("tokenizers/schema.zig").Token;
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
+const Filter = @import("stuffs/filter.zig").Filter;
 const Loc = @import("tokenizers/shared/loc.zig").Loc;
 
 const Condition = @import("stuffs/filter.zig").Condition;
@@ -253,165 +254,148 @@ pub const FileEngine = struct {
         }
     }
 
-    /// Take a list of UUID and, a buffer array and the additional data to write into the buffer the JSON to send
-    /// TODO: Optimize
-    /// FIXME: Array of string are not working
-    pub fn parseAndWriteToSend(self: *FileEngine, struct_name: []const u8, uuids: []UUID, buffer: *std.ArrayList(u8), additional_data: AdditionalData) FileEngineError!void {
-        const max_file_index = try self.maxFileIndex(struct_name);
-        var current_index: usize = 0;
-
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.csv",
-            .{ self.path_to_ZipponDB_dir, struct_name, current_index },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-
-        var file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-        defer file.close();
-
-        var output: [BUFFER_SIZE]u8 = undefined;
-        var output_fbs = std.io.fixedBufferStream(&output);
-        const writer = output_fbs.writer();
-
-        var buffered = std.io.bufferedReader(file.reader());
-        var reader = buffered.reader();
-        var founded = false;
-        var token: FileToken = undefined;
-
-        var out_writer = buffer.writer();
-        out_writer.writeAll("[") catch return FileEngineError.WriteError;
-
-        // Write the start {
-
-        while (true) {
-            output_fbs.reset();
-            reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) {
-                error.EndOfStream => {
-                    // When end of file, check if all file was parse, if not update the reader to the next file
-                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
-                    output_fbs.reset(); // clear buffer before exit
-
-                    if (current_index == max_file_index) break;
-
-                    current_index += 1;
-
-                    self.allocator.free(path_buff);
-                    path_buff = std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/DATA/{s}/{d}.csv",
-                        .{ self.path_to_ZipponDB_dir, struct_name, current_index },
-                    ) catch @panic("Can't create sub_path for init a DataIterator");
-
-                    file.close(); // Do I need to close ? I think so
-                    file = std.fs.cwd().openFile(path_buff, .{}) catch {
-                        log.err("Error trying to open {s}\n", .{path_buff});
-                        @panic("Can't open file to update a data iterator");
-                    };
-
-                    buffered = std.io.bufferedReader(file.reader());
-                    reader = buffered.reader();
-                    continue;
-                }, // file read till the end
-                else => return FileEngineError.StreamError,
-            };
-
-            const null_terminated_string = self.allocator.dupeZ(u8, output_fbs.getWritten()[37..]) catch return FileEngineError.MemoryError;
-            defer self.allocator.free(null_terminated_string);
-
-            var data_toker = FileTokenizer.init(null_terminated_string);
-            const uuid = UUID.parse(output_fbs.getWritten()[0..36]) catch return FileEngineError.InvalidUUID;
-
-            founded = false;
-            // Optimize this
-            for (uuids) |elem| {
-                if (elem.compare(uuid)) {
-                    founded = true;
-                    break;
-                }
-            }
-
-            if (!founded) continue;
-
-            // Maybe do a JSON writer wrapper
-            out_writer.writeAll("{") catch return FileEngineError.WriteError;
-            out_writer.writeAll("id:\"") catch return FileEngineError.WriteError;
-            out_writer.print("{s}", .{output_fbs.getWritten()[0..36]}) catch return FileEngineError.WriteError;
-            out_writer.writeAll("\", ") catch return FileEngineError.WriteError;
-            for (try self.structName2structMembers(struct_name), try self.structName2DataType(struct_name)) |member_name, member_type| {
-                token = data_toker.next();
-                // FIXME: When relationship will be implemented, need to check if the len of NON link is 0
-                if (!(additional_data.member_to_find.items.len == 0 or additional_data.contains(member_name))) continue;
-
-                // write the member name and = sign
-                out_writer.print("{s}: ", .{member_name}) catch return FileEngineError.WriteError;
-
-                switch (member_type) {
-                    .str => {
-                        const str_slice = data_toker.getTokenSlice(token);
-                        out_writer.print("\"{s}\"", .{str_slice[1 .. str_slice.len - 1]}) catch return FileEngineError.WriteError;
-                    },
-                    .date, .time, .datetime => {
-                        const str_slice = data_toker.getTokenSlice(token);
-                        out_writer.print("\"{s}\"", .{str_slice}) catch return FileEngineError.WriteError;
-                    },
-                    .str_array => {
-                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                        token = data_toker.next();
-                        while (token.tag != .r_bracket) : (token = data_toker.next()) {
-                            out_writer.writeAll("\"") catch return FileEngineError.WriteError;
-                            out_writer.writeAll(data_toker.getTokenSlice(token)[1..(token.loc.end - token.loc.start)]) catch return FileEngineError.WriteError;
-                            out_writer.writeAll("\", ") catch return FileEngineError.WriteError;
-                        }
-                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                    },
-                    .date_array, .time_array, .datetime_array => {
-                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                        token = data_toker.next();
-                        while (token.tag != .r_bracket) : (token = data_toker.next()) {
-                            out_writer.writeAll("\"") catch return FileEngineError.WriteError;
-                            out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                            out_writer.writeAll("\", ") catch return FileEngineError.WriteError;
-                        }
-                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                    },
-                    .int_array, .float_array, .bool_array => {
-                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                        token = data_toker.next();
-                        while (token.tag != .r_bracket) : (token = data_toker.next()) {
-                            out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                            out_writer.writeAll(", ") catch return FileEngineError.WriteError;
-                        }
-                        out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError;
-                    },
-
-                    .link => out_writer.writeAll("false") catch return FileEngineError.WriteError, // TODO: Get and send data
-                    .link_array => out_writer.writeAll("false") catch return FileEngineError.WriteError, // TODO: Get and send data
-
-                    else => out_writer.writeAll(data_toker.getTokenSlice(token)) catch return FileEngineError.WriteError, //write the value as if
-                }
-                out_writer.writeAll(", ") catch return FileEngineError.WriteError;
-            }
-            out_writer.writeAll("}") catch return FileEngineError.WriteError;
-            out_writer.writeAll(", ") catch return FileEngineError.WriteError;
-        }
-        out_writer.writeAll("]") catch return FileEngineError.WriteError;
-    }
-
     /// Use a struct name to populate a list with all UUID of this struct
-    pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_array: *std.ArrayList(UUID)) FileEngineError!void {
+    pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_list: *std.ArrayList(UUID)) FileEngineError!void {
         var sstruct = try self.structName2SchemaStruct(struct_name);
 
         var iter = sstruct.uuid_file_index.keyIterator();
         while (iter.next()) |key| {
-            uuid_array.append(UUID{ .bytes = key.* }) catch return FileEngineError.MemoryError;
+            uuid_list.append(UUID{ .bytes = key.* }) catch return FileEngineError.MemoryError;
         }
     }
 
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
     /// TODO: Use the new filter and DataIterator
-    pub fn getUUIDListUsingCondition(_: *FileEngine, _: Condition, _: *std.ArrayList(UUID)) FileEngineError!void {
-        return;
+    pub fn getUUIDListUsingFilter(self: *FileEngine, struct_name: []const u8, filter: Filter, uuid_list: *std.ArrayList(UUID)) FileEngineError!void {
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name);
+
+        var path_buff = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/DATA/{s}",
+            .{ self.path_to_ZipponDB_dir, sstruct.name },
+        ) catch return FileEngineError.MemoryError;
+        defer self.allocator.free(path_buff);
+
+        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+
+        for (0..(max_file_index + 1)) |i| {
+            self.allocator.free(path_buff);
+            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+
+            var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+            defer iter.deinit();
+
+            while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
+                if (!filter.evaluate(row)) uuid_list.append(UUID{ .bytes = row[0] });
+            }
+        }
+    }
+
+    fn isIn(array: []usize, value: usize) bool {
+        for (array) |v| if (v == value) return true;
+        return false;
+    }
+
+    /// Take a filter, parse all file and if one struct if validate by the filter, write it in a JSON format to the writer
+    /// filter can be null. This will return all of them
+    pub fn parseToSendUsingFilter(
+        self: *FileEngine,
+        struct_name: []const u8,
+        filter: ?Filter,
+        buffer: *std.ArrayList(u8),
+        additional_data: *AdditionalData,
+    ) FileEngineError!void {
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name);
+        var total_currently_found: usize = 0;
+
+        var path_buff = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/DATA/{s}",
+            .{ self.path_to_ZipponDB_dir, sstruct.name },
+        ) catch return FileEngineError.MemoryError;
+        defer self.allocator.free(path_buff);
+        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+
+        // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
+        if (additional_data.member_to_find.items.len == 0) {
+            additional_data.populateWithEverything(self.allocator, sstruct.members) catch return FileEngineError.MemoryError;
+        }
+
+        var writer = buffer.writer();
+        writer.writeAll("[") catch return FileEngineError.WriteError;
+        for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
+            self.allocator.free(path_buff);
+            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
+
+            var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+            defer iter.deinit();
+
+            blk: while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
+                if (filter != null) if (!filter.?.evaluate(row)) continue;
+
+                writer.writeByte('{') catch return FileEngineError.WriteError;
+                for (additional_data.member_to_find.items) |member| {
+                    // write the member name and = sign
+                    writer.print("{s}: ", .{member.name}) catch return FileEngineError.WriteError;
+
+                    switch (row[member.index]) {
+                        .Int => |v| writer.print("{d}", .{v}) catch return FileEngineError.WriteError,
+                        .Float => |v| writer.print("{d}", .{v}) catch return FileEngineError.WriteError,
+                        .Str => |v| writer.print("\"{s}\"", .{v}) catch return FileEngineError.WriteError,
+                        .UUID => |v| writer.print("\"{s}\"", .{UUID.format_bytes(v)}) catch return FileEngineError.WriteError,
+                        .Bool => |v| writer.print("{any}", .{v}) catch return FileEngineError.WriteError,
+                        .Unix => |v| {
+                            const datetime = DateTime.initUnix(v);
+                            writer.writeByte('"') catch return FileEngineError.WriteError;
+                            switch (try self.memberName2DataType(struct_name, member.name)) {
+                                .date => datetime.format("YYYY/MM/DD", writer) catch return FileEngineError.WriteError,
+                                .time => datetime.format("HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
+                                .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
+                                else => unreachable,
+                            }
+                            writer.writeByte('"') catch return FileEngineError.WriteError;
+                        },
+                        .IntArray, .FloatArray, .StrArray, .UUIDArray, .BoolArray => try writeArray(&row[member.index], writer, null),
+                        .UnixArray => try writeArray(&row[member.index], writer, try self.memberName2DataType(struct_name, member.name)),
+                    }
+                    writer.writeAll(", ") catch return FileEngineError.WriteError;
+                }
+                writer.writeAll("}, ") catch return FileEngineError.WriteError;
+                total_currently_found += 1;
+                if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break :blk;
+            }
+        }
+
+        writer.writeAll("]") catch return FileEngineError.WriteError;
+    }
+
+    fn writeArray(data: *zid.Data, writer: anytype, datatype: ?DataType) FileEngineError!void {
+        writer.writeByte('[') catch return FileEngineError.WriteError;
+        var iter = zid.ArrayIterator.init(data) catch return FileEngineError.ZipponDataError;
+        switch (data.*) {
+            .IntArray => while (iter.next()) |v| writer.print("{d}, ", .{v.Int}) catch return FileEngineError.WriteError,
+            .FloatArray => while (iter.next()) |v| writer.print("{d}", .{v.Float}) catch return FileEngineError.WriteError,
+            .StrArray => while (iter.next()) |v| writer.print("\"{s}\"", .{v.Str}) catch return FileEngineError.WriteError,
+            .UUIDArray => while (iter.next()) |v| writer.print("\"{s}\"", .{UUID.format_bytes(v.UUID)}) catch return FileEngineError.WriteError,
+            .BoolArray => while (iter.next()) |v| writer.print("{any}", .{v.Bool}) catch return FileEngineError.WriteError,
+            .UnixArray => {
+                while (iter.next()) |v| {
+                    const datetime = DateTime.initUnix(v.Unix);
+                    writer.writeByte('"') catch return FileEngineError.WriteError;
+                    switch (datatype.?) {
+                        .date => datetime.format("YYYY/MM/DD", writer) catch return FileEngineError.WriteError,
+                        .time => datetime.format("HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
+                        .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
+                        else => unreachable,
+                    }
+                    writer.writeAll("\", ") catch return FileEngineError.WriteError;
+                }
+            },
+            else => unreachable,
+        }
+        writer.writeByte(']') catch return FileEngineError.WriteError;
     }
 
     // --------------------Change existing files--------------------
@@ -932,7 +916,7 @@ pub const FileEngine = struct {
     }
 
     pub fn memberName2DataIndex(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!usize {
-        var i: usize = 0;
+        var i: usize = 1; // Start at 1 because there is the id
 
         for (try self.structName2structMembers(struct_name)) |mn| {
             if (std.mem.eql(u8, mn, member_name)) return i;

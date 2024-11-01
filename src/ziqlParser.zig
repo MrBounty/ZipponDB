@@ -78,24 +78,6 @@ pub const Parser = struct {
         };
     }
 
-    // TODO: Update to use ASC and DESC
-    // Maybe create a Sender struct or something like that
-    fn sendEntity(self: Parser, uuid_list: *std.ArrayList(UUID), additional_data: AdditionalData, struct_name: []const u8) void {
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        defer buffer.deinit();
-
-        // Pop some element if the array is too long
-        if ((additional_data.entity_count_to_find != 0) and (additional_data.entity_count_to_find < uuid_list.items.len)) {
-            const to_pop = uuid_list.items.len - additional_data.entity_count_to_find;
-            for (0..to_pop) |_| _ = uuid_list.pop();
-        }
-
-        // Im gonna need a function in the file engine to parse and write in the buffer
-        self.file_engine.parseAndWriteToSend(struct_name, uuid_list.items, &buffer, additional_data) catch @panic("Error parsing data to send");
-
-        send("{s}", .{buffer.items});
-    }
-
     /// Format a list of UUID into a json and send it
     pub fn sendUUIDs(self: Parser, uuid_list: []UUID) ZiQlParserError!void {
         var buffer = std.ArrayList(u8).init(self.allocator);
@@ -226,18 +208,19 @@ pub const Parser = struct {
                     var filter = try self.parseFilter(struct_name, false);
                     defer filter.deinit();
 
-                    var uuids = std.ArrayList(UUID).init(self.allocator);
-                    defer uuids.deinit();
+                    var buff = std.ArrayList(u8).init(self.allocator);
+                    defer buff.deinit();
 
-                    // TODO: self.sendEntity(&uuids, additional_data, struct_name);
+                    try self.file_engine.parseToSendUsingFilter(struct_name, filter, &buff, &additional_data);
+                    send("{s}", .{buff.items});
                     state = .end;
                 },
                 .eof => {
-                    var uuids = std.ArrayList(UUID).init(self.allocator);
-                    defer uuids.deinit();
-                    try self.file_engine.getAllUUIDList(struct_name, &uuids);
+                    var buff = std.ArrayList(u8).init(self.allocator);
+                    defer buff.deinit();
 
-                    self.sendEntity(&uuids, additional_data, struct_name);
+                    try self.file_engine.parseToSendUsingFilter(struct_name, null, &buff, &additional_data);
+                    send("{s}", .{buff.items});
                     state = .end;
                 },
                 else => return printError(
@@ -796,6 +779,7 @@ pub const Parser = struct {
                         AdditionalDataMember.init(
                             self.allocator,
                             self.toker.getTokenSlice(token),
+                            additional_data.member_to_find.items.len,
                         ),
                     ) catch return ZipponError.MemoryError;
 
@@ -940,7 +924,10 @@ pub const Parser = struct {
                         }
                     }
 
-                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
+                    switch (data_type) {
+                        .str => member_map.put(member_name, self.toker.buffer[start_index + 1 .. token.loc.end - 1]) catch return ZipponError.MemoryError,
+                        else => member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError,
+                    }
                 } else {
                     // Handle bool and bool array
                     switch (data_type) {
@@ -1035,6 +1022,38 @@ test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+}
+
+test "GRAB filter with string" {
+    try testParsing("GRAB User {name = 'Bob'}");
+    try testParsing("GRAB User {name != 'Brittany Rogers'}");
+}
+
+test "GRAB with additional data" {
+    try testParsing("GRAB User [1] {age < 18}");
+    try testParsing("GRAB User [name] {age < 18}");
+    try testParsing("GRAB User [100; name] {age < 18}");
+}
+
+test "GRAB filter with int" {
+    try testParsing("GRAB User {age = 18}");
+    try testParsing("GRAB User {age > -18}");
+    try testParsing("GRAB User {age < 18}");
+    try testParsing("GRAB User {age <= 18}");
+    try testParsing("GRAB User {age >= 18}");
+    try testParsing("GRAB User {age != 18}");
+}
+
+test "GRAB filter with date" {
+    try testParsing("GRAB User {bday > 2000/01/01}");
+    try testParsing("GRAB User {a_time < 08:00}");
+    try testParsing("GRAB User {last_order > 2000/01/01-12:45}");
+}
+
+test "Specific query" {
+    try testParsing("GRAB User");
+    try testParsing("GRAB User {}");
+    try testParsing("GRAB User [1]");
 }
 
 test "Synthax error" {

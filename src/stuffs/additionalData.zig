@@ -19,11 +19,11 @@ pub const AdditionalData = struct {
         self.member_to_find.deinit();
     }
 
-    pub fn contains(additional_data: AdditionalData, member_name: []const u8) bool {
-        for (additional_data.member_to_find.items) |elem| {
-            if (std.mem.eql(u8, member_name, elem.name)) return true;
+    pub fn populateWithEverything(self: *AdditionalData, allocator: Allocator, members: [][]const u8) !void {
+        try self.member_to_find.append(AdditionalDataMember.init(allocator, "id", 0));
+        for (members, 1..) |member, i| {
+            try self.member_to_find.append(AdditionalDataMember.init(allocator, member, i));
         }
-        return false;
     }
 };
 
@@ -31,10 +31,11 @@ pub const AdditionalData = struct {
 // There is an additional data because it can be [friend [1; name]]
 pub const AdditionalDataMember = struct {
     name: []const u8,
+    index: usize, // Index place in the schema
     additional_data: AdditionalData,
 
-    pub fn init(allocator: Allocator, name: []const u8) AdditionalDataMember {
+    pub fn init(allocator: Allocator, name: []const u8, index: usize) AdditionalDataMember {
         const additional_data = AdditionalData.init(allocator);
-        return AdditionalDataMember{ .name = name, .additional_data = additional_data };
+        return AdditionalDataMember{ .name = name, .additional_data = additional_data, .index = index };
     }
 };

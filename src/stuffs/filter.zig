@@ -258,7 +258,7 @@ pub const Filter = struct {
                 .AND => self.evaluateNode(log.left, row) and self.evaluateNode(log.right, row),
                 .OR => self.evaluateNode(log.left, row) or self.evaluateNode(log.right, row),
             },
-            .empty => unreachable, // FIXME: I think this is reachable. At least if this is the root node, so it return always true. Like in the query GRAB User {}
+            .empty => true,
         };
     }
 

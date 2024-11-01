@@ -44,6 +44,19 @@ pub const UUID = struct {
         return buf;
     }
 
+    pub fn format_bytes(bytes: [16]u8) [36]u8 {
+        var buf: [36]u8 = undefined;
+        buf[8] = '-';
+        buf[13] = '-';
+        buf[18] = '-';
+        buf[23] = '-';
+        inline for (encoded_pos, 0..) |i, j| {
+            buf[i + 0] = hex[bytes[j] >> 4];
+            buf[i + 1] = hex[bytes[j] & 0x0f];
+        }
+        return buf;
+    }
+
     // Indices in the UUID string representation for each byte.
     const encoded_pos = [16]u8{ 0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34 };
 

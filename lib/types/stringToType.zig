@@ -39,7 +39,6 @@ pub fn parseBool(value_str: []const u8) bool {
     return (value_str[0] != '0');
 }
 
-// TODO: Optimize all date parsing
 pub fn parseDate(value_str: []const u8) DateTime {
     const year: u16 = std.fmt.parseInt(u16, value_str[0..4], 10) catch 0;
     const month: u16 = std.fmt.parseInt(u16, value_str[5..7], 10) catch 0;
@@ -178,8 +177,7 @@ pub fn parseArrayStr(allocator: std.mem.Allocator, array_str: []const u8) std.Ar
     _ = it.next(); // SSkip first token that is empty
     while (it.next()) |x| {
         if (std.mem.eql(u8, " ", x)) continue;
-        const x_copy = std.fmt.allocPrint(allocator, "'{s}'", .{x}) catch @panic("=(");
-        array.append(x_copy) catch {};
+        array.append(x) catch {};
     }
 
     if (array.items.len > 0) allocator.free(array.pop()); // Remove the last because empty like the first one
