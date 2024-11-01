@@ -35,7 +35,6 @@ pub const Parser = struct {
         };
     }
 
-    // TODO: Stop using array as members, use toOwnedSlice
     // Rename something better and move it somewhere else
     pub const SchemaStruct = struct {
         allocator: Allocator,

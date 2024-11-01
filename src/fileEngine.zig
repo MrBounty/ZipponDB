@@ -399,59 +399,12 @@ pub const FileEngine = struct {
     }
 
     /// Use a struct name to populate a list with all UUID of this struct
-    /// TODO: Optimize this, I'm sure I can do better than that
     pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_array: *std.ArrayList(UUID)) FileEngineError!void {
-        const max_file_index = try self.maxFileIndex(struct_name);
-        var current_index: usize = 0;
+        var sstruct = try self.structName2SchemaStruct(struct_name);
 
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.csv",
-            .{ self.path_to_ZipponDB_dir, struct_name, current_index },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-
-        var file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-        defer file.close();
-
-        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
-        var output_fbs = std.io.fixedBufferStream(&output);
-        const writer = output_fbs.writer();
-
-        var buffered = std.io.bufferedReader(file.reader());
-        var reader = buffered.reader();
-
-        while (true) {
-            output_fbs.reset();
-            reader.streamUntilDelimiter(writer, '\n', null) catch |err| switch (err) {
-                error.EndOfStream => {
-                    // When end of file, check if all file was parse, if not update the reader to the next file
-                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
-                    output_fbs.reset(); // clear buffer before exit
-
-                    if (current_index == max_file_index) break;
-
-                    current_index += 1;
-
-                    self.allocator.free(path_buff);
-                    path_buff = std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/DATA/{s}/{d}.csv",
-                        .{ self.path_to_ZipponDB_dir, struct_name, current_index },
-                    ) catch return FileEngineError.MemoryError;
-
-                    file.close(); // Do I need to close ? I think so
-                    file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-
-                    buffered = std.io.bufferedReader(file.reader());
-                    reader = buffered.reader();
-                    continue;
-                }, // file read till the end
-                else => return FileEngineError.StreamError,
-            };
-
-            const uuid = try UUID.parse(output_fbs.getWritten()[0..36]);
-            uuid_array.append(uuid) catch return FileEngineError.MemoryError;
+        var iter = sstruct.uuid_file_index.keyIterator();
+        while (iter.next()) |key| {
+            uuid_array.append(UUID{ .bytes = key.* }) catch return FileEngineError.MemoryError;
         }
     }
 
@@ -1000,6 +953,18 @@ pub const FileEngine = struct {
         }
 
         return self.struct_array[i].members;
+    }
+
+    pub fn structName2SchemaStruct(self: *FileEngine, struct_name: []const u8) FileEngineError!SchemaStruct {
+        var i: usize = 0;
+
+        while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
+
+        if (i == self.struct_array.len) {
+            return FileEngineError.StructNotFound;
+        }
+
+        return self.struct_array[i];
     }
 
     pub fn structName2DataType(self: *FileEngine, struct_name: []const u8) FileEngineError![]const DataType {
