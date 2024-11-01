@@ -211,7 +211,7 @@ pub const Parser = struct {
                     var buff = std.ArrayList(u8).init(self.allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.parseToSendUsingFilter(struct_name, filter, &buff, &additional_data);
+                    try self.file_engine.parseEntities(struct_name, filter, &buff, &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -219,7 +219,7 @@ pub const Parser = struct {
                     var buff = std.ArrayList(u8).init(self.allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.parseToSendUsingFilter(struct_name, null, &buff, &additional_data);
+                    try self.file_engine.parseEntities(struct_name, null, &buff, &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -303,19 +303,19 @@ pub const Parser = struct {
                     var filter = try self.parseFilter(struct_name, false);
                     defer filter.deinit();
 
-                    var uuids = std.ArrayList(UUID).init(self.allocator);
-                    defer uuids.deinit();
+                    var buff = std.ArrayList(u8).init(self.allocator);
+                    defer buff.deinit();
 
-                    _ = try self.file_engine.deleteEntities(struct_name, uuids.items);
-                    try self.sendUUIDs(uuids.items);
+                    try self.file_engine.deleteEntities(struct_name, filter, &buff, &additional_data);
+                    send("{s}", .{buff.items});
                     state = .end;
                 },
                 .eof => {
-                    var uuids = std.ArrayList(UUID).init(self.allocator);
-                    defer uuids.deinit();
-                    try self.file_engine.getAllUUIDList(struct_name, &uuids);
-                    _ = try self.file_engine.deleteEntities(struct_name, uuids.items);
-                    try self.sendUUIDs(uuids.items);
+                    var buff = std.ArrayList(u8).init(self.allocator);
+                    defer buff.deinit();
+
+                    try self.file_engine.deleteEntities(struct_name, null, &buff, &additional_data);
+                    send("{s}", .{buff.items});
                     state = .end;
                 },
                 else => return printError(
@@ -1054,6 +1054,10 @@ test "Specific query" {
     try testParsing("GRAB User");
     try testParsing("GRAB User {}");
     try testParsing("GRAB User [1]");
+}
+
+test "DELETE" {
+    try testParsing("DELETE User {name='Bob'}");
 }
 
 test "Synthax error" {
