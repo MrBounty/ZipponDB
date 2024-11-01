@@ -170,8 +170,6 @@ pub const Parser = struct {
             },
 
             .add_struct => {
-                std.debug.print("Adding new schema\n", .{});
-
                 struct_array.append(try SchemaStruct.init(
                     self.allocator,
                     name,

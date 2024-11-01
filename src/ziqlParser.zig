@@ -233,7 +233,11 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    // try self.file_engine.updateEntities(struct_name, uuids.items, data_map);
+                    var buff = std.ArrayList(u8).init(self.allocator);
+                    defer buff.deinit();
+
+                    try self.file_engine.updateEntities(struct_name, filter, data_map, &buff, &additional_data);
+                    send("{s}", .{buff.items});
                     state = .end;
                 },
                 .keyword_to => {
@@ -254,7 +258,11 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    // try self.file_engine.updateEntities(struct_name, array.items, data_map);
+                    var buff = std.ArrayList(u8).init(self.allocator);
+                    defer buff.deinit();
+
+                    try self.file_engine.updateEntities(struct_name, null, data_map, &buff, &additional_data);
+                    send("{s}", .{buff.items});
                     state = .end;
                 },
                 else => return printError(
@@ -597,7 +605,7 @@ pub const Parser = struct {
                 condition.value = switch (condition.data_type) {
                     .int => ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
                     .float => ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
-                    .str => ConditionValue.initStr(self.toker.buffer[start_index..token.loc.end]),
+                    .str => ConditionValue.initStr(self.toker.buffer[start_index + 1 .. token.loc.end - 1]),
                     .date => ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]),
                     .time => ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
                     .datetime => ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
@@ -993,6 +1001,10 @@ test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+}
+
+test "UPDATE" {
+    try testParsing("UPDATE User {name = 'Bob'} TO (email='new@gmail.com')");
 }
 
 test "GRAB filter with string" {

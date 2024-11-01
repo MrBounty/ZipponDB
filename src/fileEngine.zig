@@ -430,6 +430,7 @@ pub const FileEngine = struct {
         self: *FileEngine,
         struct_name: []const u8,
         filter: ?Filter,
+        map: std.StringHashMap([]const u8),
         buffer: *std.ArrayList(u8),
         additional_data: *AdditionalData,
     ) FileEngineError!void {
@@ -445,9 +446,21 @@ pub const FileEngine = struct {
         defer self.allocator.free(path_buff);
         const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
 
+        var new_data_buff = self.allocator.alloc(zid.Data, try self.numberOfMemberInStruct(struct_name) + 1) catch return FileEngineError.MemoryError;
+        defer self.allocator.free(new_data_buff);
+
+        for (try self.structName2structMembers(struct_name), 1..) |member, i| {
+            if (!map.contains(member)) continue;
+
+            const dt = try self.memberName2DataType(struct_name, member);
+            new_data_buff[i] = try string2Data(self.allocator, dt, map.get(member).?);
+        }
+
         var writer = buffer.writer();
         writer.writeAll("[") catch return FileEngineError.WriteError;
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
+            if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break;
+
             self.allocator.free(path_buff);
             path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
 
@@ -461,15 +474,27 @@ pub const FileEngine = struct {
             var new_writer = zid.DataWriter.init(new_path_buff, dir) catch return FileEngineError.ZipponDataError;
             defer new_writer.deinit();
 
-            blk: while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
-                if (filter != null) if (!filter.?.evaluate(row)) continue;
+            while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
+                if (filter == null or filter.?.evaluate(row)) {
+                    // Add the unchanged Data in the new_data_buff
+                    new_data_buff[0] = row[0];
+                    for (try self.structName2structMembers(struct_name), 1..) |member, i| {
+                        if (map.contains(member)) continue;
+                        new_data_buff[i] = row[i];
+                    }
 
-                new_writer.write(row) catch return FileEngineError.WriteError;
-                writer.writeByte('{') catch return FileEngineError.WriteError;
-                writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch return FileEngineError.WriteError;
-                writer.writeAll("}, ") catch return FileEngineError.WriteError;
-                total_currently_found += 1;
-                if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break :blk;
+                    std.debug.print("{any}\n\n", .{new_data_buff});
+
+                    new_writer.write(new_data_buff) catch return FileEngineError.WriteError;
+                    writer.writeByte('{') catch return FileEngineError.WriteError;
+                    writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch return FileEngineError.WriteError;
+                    writer.writeAll("}, ") catch return FileEngineError.WriteError;
+                    total_currently_found += 1;
+                } else {
+                    new_writer.write(row) catch return FileEngineError.WriteError;
+                }
+
+                if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break;
             }
 
             new_writer.flush() catch return FileEngineError.ZipponDataError;
@@ -478,6 +503,20 @@ pub const FileEngine = struct {
         }
 
         writer.writeAll("]") catch return FileEngineError.WriteError;
+
+        for (try self.structName2structMembers(struct_name), 1..) |member, i| {
+            if (!map.contains(member)) continue;
+
+            switch (new_data_buff[i]) {
+                .IntArray => self.allocator.free(new_data_buff[i].IntArray),
+                .FloatArray => self.allocator.free(new_data_buff[i].FloatArray),
+                .UnixArray => self.allocator.free(new_data_buff[i].UnixArray),
+                .BoolArray => self.allocator.free(new_data_buff[i].BoolArray),
+                .StrArray => self.allocator.free(new_data_buff[i].StrArray),
+                .UUIDArray => self.allocator.free(new_data_buff[i].UUIDArray),
+                else => continue,
+            }
+        }
     }
 
     /// Will delete all entity based on the filter. Will also write a JSON format list of all UUID deleted into the buffer
@@ -538,8 +577,72 @@ pub const FileEngine = struct {
 
     // --------------------ZipponData utils--------------------
 
-    // Function that take a map from the parseNewData and return an ordered array of Data
-    pub fn orderedNewData(self: *FileEngine, allocator: Allocator, struct_name: []const u8, map: std.StringHashMap([]const u8)) FileEngineError![]const zid.Data {
+    fn string2Data(allocator: Allocator, dt: DataType, value: []const u8) FileEngineError!zid.Data {
+        switch (dt) {
+            .int => return zid.Data.initInt(s2t.parseInt(value)),
+            .float => return zid.Data.initFloat(s2t.parseFloat(value)),
+            .bool => return zid.Data.initBool(s2t.parseBool(value)),
+            .date => return zid.Data.initUnix(s2t.parseDate(value).toUnix()),
+            .time => return zid.Data.initUnix(s2t.parseTime(value).toUnix()),
+            .datetime => return zid.Data.initUnix(s2t.parseDatetime(value).toUnix()),
+            .str => return zid.Data.initStr(value),
+            .link => {
+                const uuid = UUID.parse(value) catch return FileEngineError.InvalidUUID;
+                return zid.Data{ .UUID = uuid.bytes };
+            },
+            .int_array => {
+                const array = s2t.parseArrayInt(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .float_array => {
+                const array = s2t.parseArrayFloat(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .str_array => {
+                const array = s2t.parseArrayStr(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .bool_array => {
+                const array = s2t.parseArrayBool(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initFloatArray(zid.allocEncodArray.Bool(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .link_array => {
+                const array = s2t.parseArrayUUIDBytes(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .date_array => {
+                const array = s2t.parseArrayDateUnix(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .time_array => {
+                const array = s2t.parseArrayTimeUnix(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .datetime_array => {
+                const array = s2t.parseArrayDatetimeUnix(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+        }
+    }
+
+    /// Take a map from the parseNewData and return an ordered array of Data to be use in a DataWriter
+    fn orderedNewData(self: *FileEngine, allocator: Allocator, struct_name: []const u8, map: std.StringHashMap([]const u8)) FileEngineError![]const zid.Data {
         const members = try self.structName2structMembers(struct_name);
         const types = try self.structName2DataType(struct_name);
 
@@ -548,69 +651,8 @@ pub const FileEngine = struct {
         const new_uuid = UUID.init();
         datas[0] = zid.Data.initUUID(new_uuid.bytes);
 
-        for (members, types, 1..) |member, dt, i| {
-            switch (dt) {
-                .int => datas[i] = zid.Data.initInt(s2t.parseInt(map.get(member).?)),
-                .float => datas[i] = zid.Data.initFloat(s2t.parseFloat(map.get(member).?)),
-                .bool => datas[i] = zid.Data.initBool(s2t.parseBool(map.get(member).?)),
-                .date => datas[i] = zid.Data.initUnix(s2t.parseDate(map.get(member).?).toUnix()),
-                .time => datas[i] = zid.Data.initUnix(s2t.parseTime(map.get(member).?).toUnix()),
-                .datetime => datas[i] = zid.Data.initUnix(s2t.parseDatetime(map.get(member).?).toUnix()),
-                .str => datas[i] = zid.Data.initStr(map.get(member).?),
-                .link => {
-                    const uuid = UUID.parse(map.get(member).?) catch return FileEngineError.InvalidUUID;
-                    datas[i] = zid.Data{ .UUID = uuid.bytes };
-                },
-                .int_array => {
-                    const array = s2t.parseArrayInt(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-                .float_array => {
-                    const array = s2t.parseArrayFloat(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-                .str_array => {
-                    const array = s2t.parseArrayStr(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-                .bool_array => {
-                    const array = s2t.parseArrayBool(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Bool(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-                .link_array => {
-                    const array = s2t.parseArrayUUIDBytes(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-                .date_array => {
-                    const array = s2t.parseArrayDateUnix(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-                .time_array => {
-                    const array = s2t.parseArrayTimeUnix(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-                .datetime_array => {
-                    const array = s2t.parseArrayDatetimeUnix(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer allocator.free(array);
-
-                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
-                },
-            }
-        }
+        for (members, types, 1..) |member, dt, i|
+            datas[i] = try string2Data(allocator, dt, map.get(member).?);
 
         return datas;
     }
@@ -619,8 +661,6 @@ pub const FileEngine = struct {
 
     /// Get the index of the first file that is bellow the size limit. If not found, create a new file
     fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) FileEngineError!usize {
-        log.debug("Getting first usable index file for {s} at {s}", .{ struct_name, self.path_to_ZipponDB_dir });
-
         var path = std.fmt.allocPrint(
             self.allocator,
             "{s}/DATA/{s}",
