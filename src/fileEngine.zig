@@ -395,7 +395,12 @@ pub const FileEngine = struct {
     // --------------------Change existing files--------------------
 
     // TODO: Make it in batch too
-    pub fn writeEntity(self: *FileEngine, struct_name: []const u8, map: std.StringHashMap([]const u8)) FileEngineError!UUID {
+    pub fn writeEntity(
+        self: *FileEngine,
+        struct_name: []const u8,
+        map: std.StringHashMap([]const u8),
+        buffer: *std.ArrayList(u8),
+    ) FileEngineError!void {
         const uuid = UUID.init();
 
         const file_index = try self.getFirstUsableIndexFile(struct_name);
@@ -411,196 +416,17 @@ pub const FileEngine = struct {
         defer arena.deinit();
         const data = try self.orderedNewData(arena.allocator(), struct_name, map);
 
-        var writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
-        writer.write(data) catch return FileEngineError.ZipponDataError;
-        writer.flush() catch return FileEngineError.ZipponDataError;
+        var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
+        data_writer.write(data) catch return FileEngineError.ZipponDataError;
+        data_writer.flush() catch return FileEngineError.ZipponDataError;
 
-        return uuid;
+        var writer = buffer.writer();
+        writer.writeByte('{') catch return FileEngineError.WriteError;
+        writer.print("\"{s}\"", .{uuid.format_uuid()}) catch return FileEngineError.WriteError;
+        writer.writeAll("}, ") catch return FileEngineError.WriteError;
     }
 
-    /// Function to update the file with updated data. Take a list of uuid and a list of string map. The map is in the format key: member; value: new value.
-    /// It create a new index.zippondata.new file in the same folder, stream the output of the old file to it until a uuid is found, then write the new row and continue until the end
-    /// TODO: Optmize a lot, I did that quickly to work but it is far from optimized. Idea:
-    ///     - Once all uuid found, stream until the end of the file without delimiter or uuid compare
-    ///     - Change map to array
-    pub fn updateEntities(self: *FileEngine, struct_name: []const u8, uuids: []UUID, new_data_map: std.StringHashMap([]const u8)) FileEngineError!void {
-        const max_file_index = try self.maxFileIndex(struct_name);
-        var current_file_index: usize = 0;
-
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.csv",
-            .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-
-        var path_buff2 = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.csv",
-            .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff2);
-
-        var old_file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-
-        self.allocator.free(path_buff);
-        path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.csv.new",
-            .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
-        ) catch return FileEngineError.MemoryError;
-
-        var new_file = std.fs.cwd().createFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-        defer new_file.close();
-
-        var output: [BUFFER_SIZE]u8 = undefined; // Maybe need to increase that as it limit the size of a line in a file
-        var output_fbs = std.io.fixedBufferStream(&output);
-        const writer = output_fbs.writer();
-
-        var buffered = std.io.bufferedReader(old_file.reader());
-        var reader = buffered.reader();
-        var founded = false;
-        const number_of_member_in_struct = try self.numberOfMemberInStruct(struct_name);
-
-        while (true) {
-            output_fbs.reset();
-            reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch |err| switch (err) {
-                error.EndOfStream => {
-                    // When end of file, check if all file was parse, if not update the reader to the next file
-                    // TODO: Be able to give an array of file index from the B+Tree to only parse them
-                    output_fbs.reset(); // clear buffer before exit
-
-                    // Start by deleting and renaming the new file
-                    self.allocator.free(path_buff);
-                    path_buff = std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/DATA/{s}/{d}.csv",
-                        .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
-                    ) catch return FileEngineError.MemoryError;
-
-                    self.allocator.free(path_buff2);
-                    path_buff2 = std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/DATA/{s}/{d}.csv.new",
-                        .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
-                    ) catch return FileEngineError.MemoryError;
-
-                    old_file.close();
-                    std.fs.cwd().deleteFile(path_buff) catch return FileEngineError.DeleteFileError;
-                    std.fs.cwd().rename(path_buff2, path_buff) catch return FileEngineError.RenameFileError;
-
-                    if (current_file_index == max_file_index) break;
-
-                    current_file_index += 1;
-
-                    self.allocator.free(path_buff);
-                    path_buff = std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/DATA/{s}/{d}.csv",
-                        .{ self.path_to_ZipponDB_dir, struct_name, current_file_index },
-                    ) catch return FileEngineError.MemoryError;
-
-                    self.allocator.free(path_buff2);
-                    path_buff2 = std.fmt.allocPrint(self.allocator, "{s}/DATA/{s}/{d}.csv.new", .{
-                        self.path_to_ZipponDB_dir,
-                        struct_name,
-                        current_file_index,
-                    }) catch return FileEngineError.MemoryError;
-
-                    old_file = std.fs.cwd().openFile(path_buff, .{}) catch return FileEngineError.CantOpenFile;
-
-                    new_file = std.fs.cwd().createFile(path_buff2, .{}) catch return FileEngineError.CantMakeFile;
-
-                    buffered = std.io.bufferedReader(old_file.reader());
-                    reader = buffered.reader();
-                    continue;
-                }, // file read till the end
-                else => return FileEngineError.StreamError,
-            };
-
-            const new_writer = new_file.writer();
-
-            new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
-
-            // THis is the uuid of the current row
-            const uuid = UUID.parse(output_fbs.getWritten()[0..36]) catch return FileEngineError.InvalidUUID;
-            founded = false;
-
-            // Optimize this
-            for (uuids) |elem| {
-                if (elem.compare(uuid)) {
-                    founded = true;
-                    break;
-                }
-            }
-
-            if (!founded) {
-                // stream until the delimiter
-                output_fbs.reset();
-                new_writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
-                reader.streamUntilDelimiter(writer, '\n', null) catch return FileEngineError.WriteError;
-                new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
-                new_writer.writeAll("\n") catch return FileEngineError.WriteError;
-            } else {
-                for (try self.structName2structMembers(struct_name), try self.structName2DataType(struct_name), 0..) |member_name, member_type, i| {
-                    // For all collum in the right order, check if the key is in the map, if so use it to write the new value, otherwise use the old file
-                    output_fbs.reset();
-                    switch (member_type) {
-                        .str => {
-                            reader.streamUntilDelimiter(writer, '\'', null) catch return FileEngineError.StreamError;
-                            reader.streamUntilDelimiter(writer, '\'', null) catch return FileEngineError.StreamError;
-                        },
-                        .int_array, .float_array, .bool_array, .link_array, .date_array, .time_array, .datetime_array => {
-                            reader.streamUntilDelimiter(writer, ']', null) catch return FileEngineError.StreamError;
-                        },
-                        .str_array => {
-                            reader.streamUntilDelimiter(writer, ']', null) catch return FileEngineError.StreamError;
-                        }, // FIXME: If the string itself contain ], this will be a problem
-                        else => {
-                            reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch return FileEngineError.StreamError;
-                        },
-                    }
-
-                    new_writer.writeByte(CSV_DELIMITER) catch return FileEngineError.WriteError;
-
-                    if (new_data_map.contains(member_name)) {
-                        // Write the new data
-                        new_writer.print("{s}", .{new_data_map.get(member_name).?}) catch return FileEngineError.WriteError;
-                    } else {
-                        // Write the old data
-                        switch (member_type) {
-                            .str => new_writer.writeByte('\'') catch return FileEngineError.WriteError,
-                            else => {},
-                        }
-                        new_writer.writeAll(output_fbs.getWritten()) catch return FileEngineError.WriteError;
-                        switch (member_type) {
-                            .str => {
-                                new_writer.writeByte('\'') catch return FileEngineError.WriteError;
-                            },
-                            .int_array, .float_array, .bool_array, .link_array, .date_array, .str_array, .time_array, .datetime_array => {
-                                new_writer.writeByte(']') catch return FileEngineError.WriteError;
-                            },
-                            else => {},
-                        }
-                    }
-
-                    if (i == number_of_member_in_struct - 1) continue;
-                    switch (member_type) {
-                        .str, .int_array, .float_array, .bool_array, .link_array, .date_array, .str_array, .time_array, .datetime_array => {
-                            reader.streamUntilDelimiter(writer, CSV_DELIMITER, null) catch return FileEngineError.StreamError;
-                        },
-                        else => {},
-                    }
-                }
-
-                reader.streamUntilDelimiter(writer, '\n', null) catch return FileEngineError.StreamError;
-                new_writer.writeAll("\n") catch return FileEngineError.WriteError;
-            }
-        }
-    }
-
-    /// Will delete all entity based on the filter. Will also write a JSON format list of all UUID deleted into the buffer
-    pub fn deleteEntities(
+    pub fn updateEntities(
         self: *FileEngine,
         struct_name: []const u8,
         filter: ?Filter,
@@ -653,6 +479,63 @@ pub const FileEngine = struct {
 
         writer.writeAll("]") catch return FileEngineError.WriteError;
     }
+
+    /// Will delete all entity based on the filter. Will also write a JSON format list of all UUID deleted into the buffer
+    pub fn deleteEntities(
+        self: *FileEngine,
+        struct_name: []const u8,
+        filter: ?Filter,
+        buffer: *std.ArrayList(u8),
+        additional_data: *AdditionalData,
+    ) FileEngineError!void {
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name);
+        var total_currently_found: usize = 0;
+
+        var path_buff = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/DATA/{s}",
+            .{ self.path_to_ZipponDB_dir, sstruct.name },
+        ) catch return FileEngineError.MemoryError;
+        defer self.allocator.free(path_buff);
+        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+
+        var writer = buffer.writer();
+        writer.writeAll("[") catch return FileEngineError.WriteError;
+        for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
+            self.allocator.free(path_buff);
+            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
+
+            var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+            defer iter.deinit();
+
+            const new_path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid.new", .{file_index}) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(new_path_buff);
+
+            zid.createFile(new_path_buff, dir) catch return FileEngineError.ZipponDataError;
+            var new_writer = zid.DataWriter.init(new_path_buff, dir) catch return FileEngineError.ZipponDataError;
+            defer new_writer.deinit();
+
+            blk: while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
+                if (filter != null) if (!filter.?.evaluate(row)) {
+                    writer.writeByte('{') catch return FileEngineError.WriteError;
+                    writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch return FileEngineError.WriteError;
+                    writer.writeAll("}, ") catch return FileEngineError.WriteError;
+                    total_currently_found += 1;
+                    if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break :blk;
+                } else {
+                    new_writer.write(row) catch return FileEngineError.WriteError;
+                };
+            }
+
+            new_writer.flush() catch return FileEngineError.ZipponDataError;
+            dir.deleteFile(path_buff) catch return FileEngineError.DeleteFileError;
+            dir.rename(new_path_buff, path_buff) catch return FileEngineError.RenameFileError;
+        }
+
+        writer.writeAll("]") catch return FileEngineError.WriteError;
+    }
+
     // --------------------ZipponData utils--------------------
 
     // Function that take a map from the parseNewData and return an ordered array of Data

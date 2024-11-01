@@ -78,37 +78,6 @@ pub const Parser = struct {
         };
     }
 
-    /// Format a list of UUID into a json and send it
-    pub fn sendUUIDs(self: Parser, uuid_list: []UUID) ZiQlParserError!void {
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        defer buffer.deinit();
-
-        const writer = buffer.writer();
-        writer.writeByte('[') catch return ZiQlParserError.WriteError;
-        for (uuid_list) |uuid| {
-            writer.writeByte('"') catch return ZiQlParserError.WriteError;
-            writer.writeAll(&uuid.format_uuid()) catch return ZiQlParserError.WriteError;
-            writer.writeAll("\", ") catch return ZiQlParserError.WriteError;
-        }
-        writer.writeByte(']') catch return ZiQlParserError.WriteError;
-
-        send("{s}", .{buffer.items});
-    }
-
-    pub fn sendUUID(self: Parser, uuid: UUID) ZiQlParserError!void {
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        defer buffer.deinit();
-
-        const writer = buffer.writer();
-        writer.writeByte('[') catch return ZiQlParserError.WriteError;
-        writer.writeByte('"') catch return ZiQlParserError.WriteError;
-        writer.writeAll(&uuid.format_uuid()) catch return ZiQlParserError.WriteError;
-        writer.writeAll("\", ") catch return ZiQlParserError.WriteError;
-        writer.writeByte(']') catch return ZiQlParserError.WriteError;
-
-        send("{s}", .{buffer.items});
-    }
-
     pub fn parse(self: Parser) ZipponError!void {
         var state: State = .start;
         var additional_data = AdditionalData.init(self.allocator);
@@ -264,8 +233,7 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    try self.file_engine.updateEntities(struct_name, uuids.items, data_map);
-                    try self.sendUUIDs(uuids.items);
+                    // try self.file_engine.updateEntities(struct_name, uuids.items, data_map);
                     state = .end;
                 },
                 .keyword_to => {
@@ -286,7 +254,7 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    try self.file_engine.updateEntities(struct_name, array.items, data_map);
+                    // try self.file_engine.updateEntities(struct_name, array.items, data_map);
                     state = .end;
                 },
                 else => return printError(
@@ -365,8 +333,11 @@ pub const Parser = struct {
                         token.loc.end,
                     );
                 }
-                const uuid = self.file_engine.writeEntity(struct_name, data_map) catch return ZipponError.CantWriteEntity;
-                try self.sendUUID(uuid);
+                var buff = std.ArrayList(u8).init(self.allocator);
+                defer buff.deinit();
+
+                self.file_engine.writeEntity(struct_name, data_map, &buff) catch return ZipponError.CantWriteEntity;
+                send("{s}", .{buff.items});
                 state = .end;
             },
 
