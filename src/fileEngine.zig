@@ -763,52 +763,52 @@ pub const FileEngine = struct {
                     datas[i] = zid.Data{ .UUID = uuid.bytes };
                 },
                 .int_array => {
-                    var array = s2t.parseArrayInt(allocator, map.get(member).?);
-                    defer array.deinit();
+                    const array = s2t.parseArrayInt(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer allocator.free(array);
 
-                    datas[i] = zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                    datas[i] = zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
                 .float_array => {
-                    var array = s2t.parseArrayFloat(allocator, map.get(member).?);
-                    defer array.deinit();
+                    const array = s2t.parseArrayFloat(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer allocator.free(array);
 
-                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
                 .str_array => {
-                    var array = s2t.parseArrayStr(allocator, map.get(member).?);
-                    defer array.deinit();
+                    const array = s2t.parseArrayStr(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer allocator.free(array);
 
-                    datas[i] = zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                    datas[i] = zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
                 .bool_array => {
-                    var array = s2t.parseArrayBool(allocator, map.get(member).?);
-                    defer array.deinit();
+                    const array = s2t.parseArrayBool(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer allocator.free(array);
 
-                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Bool(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                    datas[i] = zid.Data.initFloatArray(zid.allocEncodArray.Bool(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
                 .link_array => {
                     const array = s2t.parseArrayUUIDBytes(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
-                    defer self.allocator.free(array);
+                    defer allocator.free(array);
 
                     datas[i] = zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
                 .date_array => {
-                    var array = s2t.parseArrayDateUnix(allocator, map.get(member).?);
-                    defer array.deinit();
+                    const array = s2t.parseArrayDateUnix(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer allocator.free(array);
 
-                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
                 .time_array => {
-                    var array = s2t.parseArrayTimeUnix(allocator, map.get(member).?);
-                    defer array.deinit();
+                    const array = s2t.parseArrayTimeUnix(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer allocator.free(array);
 
-                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
                 .datetime_array => {
-                    var array = s2t.parseArrayDatetimeUnix(allocator, map.get(member).?);
-                    defer array.deinit();
+                    const array = s2t.parseArrayDatetimeUnix(allocator, map.get(member).?) catch return FileEngineError.MemoryError;
+                    defer allocator.free(array);
 
-                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array.items) catch return FileEngineError.AllocEncodError);
+                    datas[i] = zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
                 },
             }
         }
