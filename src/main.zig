@@ -174,7 +174,7 @@ pub fn main() !void {
                 .expect_path_to_new_db => switch (token.tag) {
                     .identifier => {
                         file_engine.deinit();
-                        file_engine = FileEngine.init(allocator, try allocator.dupe(u8, toker.getTokenSlice(token)));
+                        file_engine = try FileEngine.init(allocator, try allocator.dupe(u8, toker.getTokenSlice(token)));
                         file_engine.checkAndCreateDirectories() catch |err| {
                             send("Error: Coulnt create database directories: {any}", .{err});
                             state = .end;

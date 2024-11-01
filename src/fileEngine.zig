@@ -200,11 +200,11 @@ pub const FileEngine = struct {
 
         // Deinit the struct array before creating a new one
         for (self.struct_array) |*elem| elem.deinit();
-        self.allocator(self.struct_array);
+        self.allocator.free(self.struct_array);
 
         var struct_array = std.ArrayList(SchemaStruct).init(self.allocator);
         parser.parse(&struct_array) catch return error.SchemaNotConform;
-        self.struct_array = struct_array.toOwnedSlice();
+        self.struct_array = struct_array.toOwnedSlice() catch return FileEngineError.MemoryError;
 
         const path = std.fmt.allocPrint(self.allocator, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path);
