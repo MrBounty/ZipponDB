@@ -1052,7 +1052,7 @@ fn testParsing(source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
 
     const path = try allocator.dupe(u8, TEST_DATA_DIR);
-    var file_engine = FileEngine.init(allocator, path);
+    var file_engine = try FileEngine.init(allocator, path);
     defer file_engine.deinit();
 
     var tokenizer = Tokenizer.init(source);
@@ -1066,7 +1066,7 @@ fn expectParsingError(source: [:0]const u8, err: ZiQlParserError) !void {
     const allocator = std.testing.allocator;
 
     const path = try allocator.dupe(u8, TEST_DATA_DIR);
-    var file_engine = FileEngine.init(allocator, path);
+    var file_engine = try FileEngine.init(allocator, path);
     defer file_engine.deinit();
 
     var tokenizer = Tokenizer.init(source);
@@ -1089,7 +1089,7 @@ fn testParseFilter(source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
 
     const path = try allocator.dupe(u8, TEST_DATA_DIR);
-    var file_engine = FileEngine.init(allocator, path);
+    var file_engine = try FileEngine.init(allocator, path);
     defer file_engine.deinit();
 
     var tokenizer = Tokenizer.init(source);

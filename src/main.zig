@@ -295,13 +295,13 @@ const initFileEngine = struct {
             return try initWithPath(allocator, p);
         } else {
             log.info("No environment variable ZIPPONDB_PATH found.", .{});
-            return FileEngine.init(allocator, "");
+            return try FileEngine.init(allocator, "");
         }
     }
 
     fn initWithPath(allocator: std.mem.Allocator, path: []const u8) !FileEngine {
         try ensureDirectoryExists(path);
-        var file_engine = FileEngine.init(allocator, path);
+        var file_engine = try FileEngine.init(allocator, path);
         try file_engine.checkAndCreateDirectories();
 
         if (!file_engine.isSchemaFileInDir()) {

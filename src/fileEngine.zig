@@ -38,16 +38,16 @@ pub const FileEngine = struct {
     allocator: Allocator,
     path_to_ZipponDB_dir: []const u8,
     null_terminated_schema_buff: [:0]u8,
-    struct_array: std.ArrayList(SchemaStruct),
+    struct_array: []SchemaStruct,
 
-    pub fn init(allocator: Allocator, path: []const u8) FileEngine {
+    pub fn init(allocator: Allocator, path: []const u8) FileEngineError!FileEngine {
         const path_to_ZipponDB_dir = path;
 
-        var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch @panic("Cant allocate the schema buffer");
+        var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return FileEngineError.MemoryError;
         defer allocator.free(schema_buf);
 
         const len: usize = FileEngine.readSchemaFile(allocator, path_to_ZipponDB_dir, schema_buf) catch 0;
-        const null_terminated_schema_buff = allocator.dupeZ(u8, schema_buf[0..len]) catch @panic("Cant allocate null term buffer for the schema");
+        const null_terminated_schema_buff = allocator.dupeZ(u8, schema_buf[0..len]) catch return FileEngineError.MemoryError;
 
         var toker = SchemaTokenizer.init(null_terminated_schema_buff);
         var parser = SchemaParser.init(&toker, allocator);
@@ -59,15 +59,13 @@ pub const FileEngine = struct {
             .allocator = allocator,
             .path_to_ZipponDB_dir = path_to_ZipponDB_dir,
             .null_terminated_schema_buff = null_terminated_schema_buff,
-            .struct_array = struct_array,
+            .struct_array = struct_array.toOwnedSlice() catch return FileEngineError.MemoryError,
         };
     }
 
     pub fn deinit(self: *FileEngine) void {
-        if (self.struct_array.items.len > 0) {
-            for (self.struct_array.items) |*elem| elem.deinit();
-        }
-        self.struct_array.deinit();
+        for (self.struct_array) |*elem| elem.deinit();
+        self.allocator.free(self.struct_array);
         self.allocator.free(self.null_terminated_schema_buff);
         self.allocator.free(self.path_to_ZipponDB_dir);
     }
@@ -195,10 +193,12 @@ pub const FileEngine = struct {
         var parser = SchemaParser.init(&toker, self.allocator);
 
         // Deinit the struct array before creating a new one
-        for (self.struct_array.items) |*elem| elem.deinit();
-        for (0..self.struct_array.items.len) |_| _ = self.struct_array.pop();
+        for (self.struct_array) |*elem| elem.deinit();
+        self.allocator(self.struct_array);
 
-        parser.parse(&self.struct_array) catch return error.SchemaNotConform;
+        var struct_array = std.ArrayList(SchemaStruct).init(self.allocator);
+        parser.parse(&struct_array) catch return error.SchemaNotConform;
+        self.struct_array = struct_array.toOwnedSlice();
 
         const path = std.fmt.allocPrint(self.allocator, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path);
@@ -206,7 +206,7 @@ pub const FileEngine = struct {
         var data_dir = std.fs.cwd().openDir(path, .{}) catch return FileEngineError.CantOpenDir;
         defer data_dir.close();
 
-        for (self.struct_array.items) |schema_struct| {
+        for (self.struct_array) |schema_struct| {
             data_dir.makeDir(schema_struct.name) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
                 else => return FileEngineError.CantMakeDir,
@@ -958,27 +958,27 @@ pub const FileEngine = struct {
     pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) FileEngineError![][]const u8 {
         var i: usize = 0;
 
-        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) break;
+        while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
 
-        if (i == self.struct_array.items.len) {
+        if (i == self.struct_array.len) {
             return FileEngineError.StructNotFound;
         }
 
-        return self.struct_array.items[i].members.items;
+        return self.struct_array[i].members.items;
     }
 
     pub fn structName2DataType(self: *FileEngine, struct_name: []const u8) FileEngineError![]const DataType {
         var i: u16 = 0;
 
-        while (i < self.struct_array.items.len) : (i += 1) {
-            if (std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) break;
+        while (i < self.struct_array.len) : (i += 1) {
+            if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
         }
 
-        if (i == self.struct_array.items.len and !std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) {
+        if (i == self.struct_array.len and !std.mem.eql(u8, self.struct_array[i].name, struct_name)) {
             return FileEngineError.StructNotFound;
         }
 
-        return self.struct_array.items[i].types.items;
+        return self.struct_array[i].types.items;
     }
 
     /// Return the number of member of a struct
@@ -995,7 +995,7 @@ pub const FileEngine = struct {
     /// Chech if the name of a struct is in the current schema
     pub fn isStructNameExists(self: *FileEngine, struct_name: []const u8) bool {
         var i: u16 = 0;
-        while (i < self.struct_array.items.len) : (i += 1) if (std.mem.eql(u8, self.struct_array.items[i].name, struct_name)) return true;
+        while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) return true;
         return false;
     }
 
