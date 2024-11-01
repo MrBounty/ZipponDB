@@ -779,7 +779,7 @@ pub const Parser = struct {
                         AdditionalDataMember.init(
                             self.allocator,
                             self.toker.getTokenSlice(token),
-                            additional_data.member_to_find.items.len,
+                            try self.file_engine.memberName2DataIndex(struct_name, self.toker.getTokenSlice(token)),
                         ),
                     ) catch return ZipponError.MemoryError;
 
