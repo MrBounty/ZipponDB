@@ -44,6 +44,7 @@ pub const FileEngineError = error{
     MemberNotFound,
     ZipponDataError,
     AllocEncodError,
+    ThreadError,
 };
 
 pub const ZipponError = ZiQlParserError || FileEngineError || SchemaParserError;
