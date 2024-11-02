@@ -23,6 +23,10 @@ const printError = @import("stuffs/utils.zig").printError;
 const ZiQlParserError = @import("stuffs/errors.zig").ZiQlParserError;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
+const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
+
+const log = std.log.scoped(.ziqlParser);
+
 const State = enum {
     start,
     invalid,
@@ -84,6 +88,11 @@ pub const Parser = struct {
         defer additional_data.deinit();
         var struct_name: []const u8 = undefined;
         var action: enum { GRAB, ADD, UPDATE, DELETE } = undefined;
+
+        var out_buff: [BUFFER_SIZE]u8 = undefined;
+        var fa = std.heap.FixedBufferAllocator.init(&out_buff);
+        defer fa.reset();
+        const out_allocator = self.allocator;
 
         var token = self.toker.next();
         var keep_next = false; // Use in the loop to prevent to get the next token when continue. Just need to make it true and it is reset at every loop
@@ -177,18 +186,18 @@ pub const Parser = struct {
                     var filter = try self.parseFilter(struct_name, false);
                     defer filter.deinit();
 
-                    var buff = std.ArrayList(u8).init(self.allocator);
+                    var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.parseEntities(struct_name, filter, &buff, &additional_data);
+                    try self.file_engine.parseEntities(struct_name, filter, &buff.writer(), &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
                 .eof => {
-                    var buff = std.ArrayList(u8).init(self.allocator);
+                    var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.parseEntities(struct_name, null, &buff, &additional_data);
+                    try self.file_engine.parseEntities(struct_name, null, &buff.writer(), &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -206,9 +215,6 @@ pub const Parser = struct {
                 .l_brace => {
                     var filter = try self.parseFilter(struct_name, false);
                     defer filter.deinit();
-
-                    var uuids = std.ArrayList(UUID).init(self.allocator);
-                    defer uuids.deinit();
 
                     token = self.toker.last();
 
@@ -233,10 +239,10 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    var buff = std.ArrayList(u8).init(self.allocator);
+                    var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.updateEntities(struct_name, filter, data_map, &buff, &additional_data);
+                    try self.file_engine.updateEntities(struct_name, filter, data_map, &buff.writer(), &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -258,10 +264,10 @@ pub const Parser = struct {
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    var buff = std.ArrayList(u8).init(self.allocator);
+                    var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.updateEntities(struct_name, null, data_map, &buff, &additional_data);
+                    try self.file_engine.updateEntities(struct_name, null, data_map, &buff.writer(), &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -279,18 +285,18 @@ pub const Parser = struct {
                     var filter = try self.parseFilter(struct_name, false);
                     defer filter.deinit();
 
-                    var buff = std.ArrayList(u8).init(self.allocator);
+                    var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.deleteEntities(struct_name, filter, &buff, &additional_data);
+                    try self.file_engine.deleteEntities(struct_name, filter, &buff.writer(), &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
                 .eof => {
-                    var buff = std.ArrayList(u8).init(self.allocator);
+                    var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.deleteEntities(struct_name, null, &buff, &additional_data);
+                    try self.file_engine.deleteEntities(struct_name, null, &buff.writer(), &additional_data);
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -341,10 +347,16 @@ pub const Parser = struct {
                         token.loc.end,
                     );
                 }
-                var buff = std.ArrayList(u8).init(self.allocator);
+                var buff = std.ArrayList(u8).init(out_allocator);
                 defer buff.deinit();
 
-                self.file_engine.writeEntity(struct_name, data_map, &buff) catch return ZipponError.CantWriteEntity;
+                token = self.toker.last_token;
+                log.info("Token end of add: {s} {any}\n", .{ self.toker.getTokenSlice(token), token.tag });
+                if (token.tag == .identifier and std.mem.eql(u8, self.toker.getTokenSlice(token), "MULTIPLE")) {
+                    for (0..1_000_000) |_| self.file_engine.writeEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                } else {
+                    self.file_engine.writeEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                }
                 send("{s}", .{buff.items});
                 state = .end;
             },
@@ -1105,5 +1117,4 @@ fn testParseFilter(source: [:0]const u8) !void {
     defer filter.deinit();
     std.debug.print("{s}\n", .{source});
     filter.debugPrint();
-    std.debug.print("\n", .{});
 }

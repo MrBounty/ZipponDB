@@ -3,6 +3,7 @@ const utils = @import("stuffs/utils.zig");
 const dtype = @import("dtype");
 const s2t = dtype.s2t;
 const zid = @import("ZipponData");
+const time = std.time;
 const Allocator = std.mem.Allocator;
 
 const UUID = dtype.UUID;
@@ -297,7 +298,7 @@ pub const FileEngine = struct {
         self: *FileEngine,
         struct_name: []const u8,
         filter: ?Filter,
-        buffer: *std.ArrayList(u8),
+        writer: anytype,
         additional_data: *AdditionalData,
     ) FileEngineError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
@@ -317,13 +318,18 @@ pub const FileEngine = struct {
             additional_data.populateWithEverything(self.allocator, sstruct.members) catch return FileEngineError.MemoryError;
         }
 
-        var writer = buffer.writer();
+        var data_buffer: [BUFFER_SIZE]u8 = undefined;
+        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
+        defer fa.reset();
+        const data_allocator = fa.allocator();
+
         writer.writeAll("[") catch return FileEngineError.WriteError;
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
             self.allocator.free(path_buff);
             path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
 
-            var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+            fa.reset();
+            var iter = zid.DataIterator.init(data_allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
             defer iter.deinit();
 
             blk: while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
@@ -361,7 +367,6 @@ pub const FileEngine = struct {
                 if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break :blk;
             }
         }
-
         writer.writeAll("]") catch return FileEngineError.WriteError;
     }
 
@@ -399,7 +404,7 @@ pub const FileEngine = struct {
         self: *FileEngine,
         struct_name: []const u8,
         map: std.StringHashMap([]const u8),
-        buffer: *std.ArrayList(u8),
+        writer: anytype,
     ) FileEngineError!void {
         const uuid = UUID.init();
 
@@ -412,18 +417,20 @@ pub const FileEngine = struct {
         ) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path);
 
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
-        const data = try self.orderedNewData(arena.allocator(), struct_name, map);
+        var data_buffer: [BUFFER_SIZE]u8 = undefined;
+        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
+        defer fa.reset();
+        const data_allocator = fa.allocator();
+
+        const data = try self.orderedNewData(data_allocator, struct_name, map);
 
         var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
         data_writer.write(data) catch return FileEngineError.ZipponDataError;
         data_writer.flush() catch return FileEngineError.ZipponDataError;
 
-        var writer = buffer.writer();
-        writer.writeByte('{') catch return FileEngineError.WriteError;
+        writer.writeByte('[') catch return FileEngineError.WriteError;
         writer.print("\"{s}\"", .{uuid.format_uuid()}) catch return FileEngineError.WriteError;
-        writer.writeAll("}, ") catch return FileEngineError.WriteError;
+        writer.writeAll("], ") catch return FileEngineError.WriteError;
     }
 
     pub fn updateEntities(
@@ -431,7 +438,7 @@ pub const FileEngine = struct {
         struct_name: []const u8,
         filter: ?Filter,
         map: std.StringHashMap([]const u8),
-        buffer: *std.ArrayList(u8),
+        writer: anytype,
         additional_data: *AdditionalData,
     ) FileEngineError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
@@ -456,7 +463,6 @@ pub const FileEngine = struct {
             new_data_buff[i] = try string2Data(self.allocator, dt, map.get(member).?);
         }
 
-        var writer = buffer.writer();
         writer.writeAll("[") catch return FileEngineError.WriteError;
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
             if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break;
@@ -483,8 +489,6 @@ pub const FileEngine = struct {
                         new_data_buff[i] = row[i];
                     }
 
-                    std.debug.print("{any}\n\n", .{new_data_buff});
-
                     new_writer.write(new_data_buff) catch return FileEngineError.WriteError;
                     writer.writeByte('{') catch return FileEngineError.WriteError;
                     writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch return FileEngineError.WriteError;
@@ -501,8 +505,6 @@ pub const FileEngine = struct {
             dir.deleteFile(path_buff) catch return FileEngineError.DeleteFileError;
             dir.rename(new_path_buff, path_buff) catch return FileEngineError.RenameFileError;
         }
-
-        writer.writeAll("]") catch return FileEngineError.WriteError;
 
         for (try self.structName2structMembers(struct_name), 1..) |member, i| {
             if (!map.contains(member)) continue;
@@ -524,7 +526,7 @@ pub const FileEngine = struct {
         self: *FileEngine,
         struct_name: []const u8,
         filter: ?Filter,
-        buffer: *std.ArrayList(u8),
+        writer: anytype,
         additional_data: *AdditionalData,
     ) FileEngineError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
@@ -539,7 +541,6 @@ pub const FileEngine = struct {
         defer self.allocator.free(path_buff);
         const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
 
-        var writer = buffer.writer();
         writer.writeAll("[") catch return FileEngineError.WriteError;
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
             self.allocator.free(path_buff);
@@ -642,7 +643,13 @@ pub const FileEngine = struct {
     }
 
     /// Take a map from the parseNewData and return an ordered array of Data to be use in a DataWriter
-    fn orderedNewData(self: *FileEngine, allocator: Allocator, struct_name: []const u8, map: std.StringHashMap([]const u8)) FileEngineError![]const zid.Data {
+    /// TODO: Optimize
+    fn orderedNewData(
+        self: *FileEngine,
+        allocator: Allocator,
+        struct_name: []const u8,
+        map: std.StringHashMap([]const u8),
+    ) FileEngineError![]zid.Data {
         const members = try self.structName2structMembers(struct_name);
         const types = try self.structName2DataType(struct_name);
 
@@ -660,6 +667,7 @@ pub const FileEngine = struct {
     // --------------------Schema utils--------------------
 
     /// Get the index of the first file that is bellow the size limit. If not found, create a new file
+    /// TODO: Need some serious speed up. I should keep in memory a file->size as a hashmap and use that instead
     fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) FileEngineError!usize {
         var path = std.fmt.allocPrint(
             self.allocator,
@@ -682,7 +690,7 @@ pub const FileEngine = struct {
             }
         }
 
-        i += 1;
+        self.allocator.free(path);
         path = std.fmt.allocPrint(
             self.allocator,
             "{s}/DATA/{s}/{d}.zid",

@@ -37,6 +37,8 @@ const stdout = std.io.getStdOut().writer();
 
 // Maybe create a struct for that
 pub fn send(comptime format: []const u8, args: anytype) void {
+    if (false) return;
+
     stdout.print(format, args) catch |err| {
         log.err("Can't send: {any}", .{err});
         stdout.print("\x03\n", .{}) catch {};
