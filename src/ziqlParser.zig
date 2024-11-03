@@ -353,9 +353,9 @@ pub const Parser = struct {
                 token = self.toker.last_token;
                 log.info("Token end of add: {s} {any}\n", .{ self.toker.getTokenSlice(token), token.tag });
                 if (token.tag == .identifier and std.mem.eql(u8, self.toker.getTokenSlice(token), "MULTIPLE")) {
-                    for (0..1_000_000) |_| self.file_engine.writeEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                    for (0..1_000_000) |_| self.file_engine.addEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
                 } else {
-                    self.file_engine.writeEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                    self.file_engine.addEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
                 }
                 send("{s}", .{buff.items});
                 state = .end;
@@ -559,6 +559,7 @@ pub const Parser = struct {
                     .float => .float_literal,
                     .str => .string_literal,
                     .link => .uuid_literal,
+                    .self => .uuid_literal,
                     .date => .date_literal,
                     .time => .time_literal,
                     .datetime => .datetime_literal,
@@ -622,7 +623,7 @@ pub const Parser = struct {
                     .time => ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
                     .datetime => ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
                     .bool => ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
-                    else => unreachable, // TODO: Make for link and array =|
+                    else => unreachable, // TODO: Make for link and array =/
                 };
                 state = .end;
             },
@@ -876,7 +877,7 @@ pub const Parser = struct {
                     .int => .int_literal,
                     .float => .float_literal,
                     .str => .string_literal,
-                    .link => .uuid_literal,
+                    .link, .self => .uuid_literal,
                     .date => .date_literal,
                     .time => .time_literal,
                     .datetime => .datetime_literal,

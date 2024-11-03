@@ -26,6 +26,7 @@ const Condition = @import("stuffs/filter.zig").Condition;
 const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
 const SchemaParser = @import("schemaParser.zig").Parser;
 
+const ZipponError = @import("stuffs/errors.zig").ZipponError;
 const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
 const config = @import("config.zig");
@@ -39,6 +40,7 @@ const log = std.log.scoped(.fileEngine);
 
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
+/// TODO: Keep all struct dir in a haspmap so I dont need to use an allocPrint everytime
 pub const FileEngine = struct {
     allocator: Allocator,
     path_to_ZipponDB_dir: []const u8,
@@ -82,6 +84,33 @@ pub const FileEngine = struct {
 
     pub fn usable(self: FileEngine) bool {
         return !std.mem.eql(u8, "", self.path_to_ZipponDB_dir);
+    }
+
+    // For all struct in shema, add the UUID/index_file into the map
+    pub fn populateAllUUIDToFileIndexMap(self: *FileEngine) FileEngineError!void {
+        for (self.struct_array) |*sstruct| { // Stand for schema struct
+            const max_file_index = try self.maxFileIndex(sstruct.name);
+
+            var path_buff = std.fmt.allocPrint(
+                self.allocator,
+                "{s}/DATA/{s}",
+                .{ self.path_to_ZipponDB_dir, sstruct.name },
+            ) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(path_buff);
+
+            const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+
+            for (0..(max_file_index + 1)) |i| {
+                self.allocator.free(path_buff);
+                path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+
+                var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+                defer iter.deinit();
+                while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
+                    sstruct.uuid_file_index.put(row[0].UUID, i) catch return FileEngineError.MemoryError;
+                }
+            }
+        }
     }
 
     // --------------------Other--------------------
@@ -231,33 +260,6 @@ pub const FileEngine = struct {
 
     // --------------------Read and parse files--------------------
 
-    // For all struct in shema, add the UUID/index_file into the map
-    pub fn populateAllUUIDToFileIndexMap(self: *FileEngine) FileEngineError!void {
-        for (self.struct_array) |*sstruct| { // Stand for schema struct
-            const max_file_index = try self.maxFileIndex(sstruct.name);
-
-            var path_buff = std.fmt.allocPrint(
-                self.allocator,
-                "{s}/DATA/{s}",
-                .{ self.path_to_ZipponDB_dir, sstruct.name },
-            ) catch return FileEngineError.MemoryError;
-            defer self.allocator.free(path_buff);
-
-            const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
-
-            for (0..(max_file_index + 1)) |i| {
-                self.allocator.free(path_buff);
-                path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
-
-                var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
-                defer iter.deinit();
-                while (iter.next() catch return FileEngineError.ZipponDataError) |row| {
-                    sstruct.uuid_file_index.put(row[0].UUID, i) catch return FileEngineError.MemoryError;
-                }
-            }
-        }
-    }
-
     /// Use a struct name to populate a list with all UUID of this struct
     pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_list: *std.ArrayList(UUID)) FileEngineError!void {
         var sstruct = try self.structName2SchemaStruct(struct_name);
@@ -303,35 +305,30 @@ pub const FileEngine = struct {
         filter: ?Filter,
         writer: anytype,
         additional_data: *AdditionalData,
-    ) FileEngineError!void {
+    ) ZipponError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
-
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, sstruct.name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
         if (additional_data.member_to_find.items.len == 0) {
             additional_data.populateWithEverything(self.allocator, sstruct.members) catch return FileEngineError.MemoryError;
         }
 
+        // Open the dir that contain all files
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
+
         // Multi thread stuffs
         var total_entity_found: U64 = U64.init(0);
-        var finished_count: U64 = U64.init(0);
-        var single_threaded_arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer single_threaded_arena.deinit();
+        var ended_count: U64 = U64.init(0);
+        var error_count: U64 = U64.init(0);
 
         var thread_safe_arena: std.heap.ThreadSafeAllocator = .{
-            .child_allocator = single_threaded_arena.allocator(),
+            .child_allocator = self.allocator,
         };
         const arena = thread_safe_arena.allocator();
 
         // INFO: Pool cant return error so far :/ That is annoying. Maybe I can do something similar myself that hundle error
+        // TODO: Put that in the file engine itself, so I dont need to init the Pool every time
         var thread_pool: Pool = undefined;
         thread_pool.init(Pool.Options{
             .allocator = arena, // this is an arena allocator from `std.heap.ArenaAllocator`
@@ -339,92 +336,128 @@ pub const FileEngine = struct {
         }) catch return FileEngineError.ThreadError;
         defer thread_pool.deinit();
 
-        writer.writeAll("[") catch return FileEngineError.WriteError;
-        for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
-            self.allocator.free(path_buff);
-            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
+        // Do one array and writer for each thread otherwise then create error by writing at the same time
+        // Maybe use fixed lenght buffer for speed here
+        var thread_writer_list = self.allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+        defer {
+            for (thread_writer_list) |list| list.deinit();
+            self.allocator.free(thread_writer_list);
+        }
+
+        // Start parsing all file in multiple thread
+        for (0..(max_file_index + 1)) |file_index| {
+            thread_writer_list[file_index] = std.ArrayList(u8).init(self.allocator);
 
             thread_pool.spawn(parseEntitiesOneFile, .{
-                writer,
-                path_buff,
+                thread_writer_list[file_index].writer(),
+                file_index,
                 dir,
                 sstruct.zid_schema,
                 filter,
                 additional_data,
                 try self.structName2DataType(struct_name),
                 &total_entity_found,
-                &finished_count,
+                &ended_count,
+                &error_count,
             }) catch return FileEngineError.ThreadError;
         }
 
-        while (finished_count.load(.acquire) < max_file_index) {
+        // Wait for all thread to either finish or return an error
+        while ((ended_count.load(.acquire) + error_count.load(.acquire)) < max_file_index + 1) {
             std.time.sleep(10_000_000); // Check every 10ms
         }
 
-        writer.writeAll("]") catch return FileEngineError.WriteError;
+        // Append all writer to each other
+        writer.writeByte('[') catch return FileEngineError.WriteError;
+        for (thread_writer_list) |list| writer.writeAll(list.items) catch return FileEngineError.WriteError;
+        writer.writeByte(']') catch return FileEngineError.WriteError;
     }
 
-    // TODO: Add a bufferedWriter for performance and to prevent writting to the real writer if an error happend
     fn parseEntitiesOneFile(
         writer: anytype,
-        path: []const u8,
+        file_index: u64,
         dir: std.fs.Dir,
         zid_schema: []zid.DType,
         filter: ?Filter,
         additional_data: *AdditionalData,
         data_types: []const DataType,
         total_entity_found: *U64,
-        finished_count: *U64,
+        ended_count: *U64,
+        error_count: *U64,
     ) void {
         var data_buffer: [BUFFER_SIZE]u8 = undefined;
         var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
         defer fa.reset();
         const allocator = fa.allocator();
 
-        var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch return;
-        defer iter.deinit();
+        var path_buffer: [128]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
+            logErrorAndIncrementCount("Error creating file path", err, error_count);
+            return;
+        };
 
-        blk: while (iter.next() catch return) |row| {
-            if (filter != null) if (!filter.?.evaluate(row)) continue;
+        var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch |err| {
+            logErrorAndIncrementCount("Error initializing DataIterator", err, error_count);
+            return;
+        };
 
-            writer.writeByte('{') catch return;
-            for (additional_data.member_to_find.items) |member| {
-                // write the member name and = sign
-                writer.print("{s}: ", .{member.name}) catch return;
+        while (iter.next() catch return) |row| {
+            if (filter) |f| if (!f.evaluate(row)) continue;
 
-                switch (row[member.index]) {
-                    .Int => |v| writer.print("{d}", .{v}) catch return,
-                    .Float => |v| writer.print("{d}", .{v}) catch return,
-                    .Str => |v| writer.print("\"{s}\"", .{v}) catch return,
-                    .UUID => |v| writer.print("\"{s}\"", .{UUID.format_bytes(v)}) catch return,
-                    .Bool => |v| writer.print("{any}", .{v}) catch return,
-                    .Unix => |v| {
-                        const datetime = DateTime.initUnix(v);
-                        writer.writeByte('"') catch return;
-                        switch (data_types[member.index - 1]) {
-                            .date => datetime.format("YYYY/MM/DD", writer) catch return,
-                            .time => datetime.format("HH:mm:ss.SSSS", writer) catch return,
-                            .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return,
-                            else => unreachable,
-                        }
-                        writer.writeByte('"') catch return;
-                    },
-                    .IntArray, .FloatArray, .StrArray, .UUIDArray, .BoolArray => writeArray(&row[member.index], writer, null) catch return,
-                    .UnixArray => writeArray(&row[member.index], writer, data_types[member.index]) catch return,
-                }
-                writer.writeAll(", ") catch return;
+            if (writeEntity(writer, row, additional_data, data_types)) |_| {
+                if (incrementAndCheckLimit(total_entity_found, additional_data.entity_count_to_find)) break;
+            } else |err| {
+                logErrorAndIncrementCount("Error writing entity", err, error_count);
+                return;
             }
-            writer.writeAll("}, ") catch return;
-            _ = total_entity_found.fetchAdd(1, .monotonic);
-            if (additional_data.entity_count_to_find != 0 and total_entity_found.load(.monotonic) >= additional_data.entity_count_to_find) break :blk;
         }
-        _ = finished_count.fetchAdd(1, .acquire);
+
+        _ = ended_count.fetchAdd(1, .acquire);
     }
 
-    fn writeArray(data: *zid.Data, writer: anytype, datatype: ?DataType) FileEngineError!void {
+    fn writeEntity(
+        writer: anytype,
+        row: []zid.Data,
+        additional_data: *AdditionalData,
+        data_types: []const DataType,
+    ) !void {
+        try writer.writeByte('{');
+        for (additional_data.member_to_find.items) |member| {
+            try writer.print("{s}: ", .{member.name});
+            try writeValue(writer, row[member.index], data_types[member.index]);
+            try writer.writeAll(", ");
+        }
+        try writer.writeAll("}, ");
+    }
+
+    fn writeValue(writer: anytype, value: zid.Data, data_type: DataType) !void {
+        switch (value) {
+            .Float => |v| try writer.print("{d}", .{v}),
+            .Int => |v| try writer.print("{d}", .{v}),
+            .Str => |v| try writer.print("\"{s}\"", .{v}),
+            .UUID => |v| try writer.print("\"{s}\"", .{UUID.format_bytes(v)}),
+            .Bool => |v| try writer.print("{any}", .{v}),
+            .Unix => |v| try writeDateTime(writer, v, data_type),
+            .IntArray, .FloatArray, .StrArray, .UUIDArray, .BoolArray, .UnixArray => try writeArray(writer, value, data_type),
+        }
+    }
+
+    fn writeDateTime(writer: anytype, unix_time: u64, data_type: DataType) !void {
+        const datetime = DateTime.initUnix(unix_time);
+        try writer.writeByte('"');
+        switch (data_type) {
+            .date => try datetime.format("YYYY/MM/DD", writer),
+            .time => try datetime.format("HH:mm:ss.SSSS", writer),
+            .datetime => try datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer),
+            else => unreachable,
+        }
+        try writer.writeByte('"');
+    }
+
+    fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) FileEngineError!void {
         writer.writeByte('[') catch return FileEngineError.WriteError;
         var iter = zid.ArrayIterator.init(data) catch return FileEngineError.ZipponDataError;
-        switch (data.*) {
+        switch (data) {
             .IntArray => while (iter.next()) |v| writer.print("{d}, ", .{v.Int}) catch return FileEngineError.WriteError,
             .FloatArray => while (iter.next()) |v| writer.print("{d}", .{v.Float}) catch return FileEngineError.WriteError,
             .StrArray => while (iter.next()) |v| writer.print("\"{s}\"", .{v.Str}) catch return FileEngineError.WriteError,
@@ -434,7 +467,7 @@ pub const FileEngine = struct {
                 while (iter.next()) |v| {
                     const datetime = DateTime.initUnix(v.Unix);
                     writer.writeByte('"') catch return FileEngineError.WriteError;
-                    switch (datatype.?) {
+                    switch (data_type) {
                         .date => datetime.format("YYYY/MM/DD", writer) catch return FileEngineError.WriteError,
                         .time => datetime.format("HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
                         .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
@@ -448,10 +481,20 @@ pub const FileEngine = struct {
         writer.writeByte(']') catch return FileEngineError.WriteError;
     }
 
+    fn incrementAndCheckLimit(counter: *U64, limit: u64) bool {
+        const new_count = counter.fetchAdd(1, .monotonic) + 1;
+        return limit != 0 and new_count >= limit;
+    }
+
+    fn logErrorAndIncrementCount(message: []const u8, err: anyerror, error_count: *U64) void {
+        log.err("{s}: {any}", .{ message, err });
+        _ = error_count.fetchAdd(1, .acquire);
+    }
+
     // --------------------Change existing files--------------------
 
     // TODO: Make it in batch too
-    pub fn writeEntity(
+    pub fn addEntity(
         self: *FileEngine,
         struct_name: []const u8,
         map: std.StringHashMap([]const u8),
@@ -504,10 +547,11 @@ pub const FileEngine = struct {
         defer self.allocator.free(path_buff);
         const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
 
-        var new_data_buff = self.allocator.alloc(zid.Data, try self.numberOfMemberInStruct(struct_name) + 1) catch return FileEngineError.MemoryError;
+        var new_data_buff = self.allocator.alloc(zid.Data, try self.numberOfMemberInStruct(struct_name)) catch return FileEngineError.MemoryError;
         defer self.allocator.free(new_data_buff);
 
-        for (try self.structName2structMembers(struct_name), 1..) |member, i| {
+        // Add the new data
+        for (try self.structName2structMembers(struct_name), 0..) |member, i| {
             if (!map.contains(member)) continue;
 
             const dt = try self.memberName2DataType(struct_name, member);
@@ -535,7 +579,7 @@ pub const FileEngine = struct {
                 if (filter == null or filter.?.evaluate(row)) {
                     // Add the unchanged Data in the new_data_buff
                     new_data_buff[0] = row[0];
-                    for (try self.structName2structMembers(struct_name), 1..) |member, i| {
+                    for (try self.structName2structMembers(struct_name), 0..) |member, i| {
                         if (map.contains(member)) continue;
                         new_data_buff[i] = row[i];
                     }
@@ -638,7 +682,7 @@ pub const FileEngine = struct {
             .time => return zid.Data.initUnix(s2t.parseTime(value).toUnix()),
             .datetime => return zid.Data.initUnix(s2t.parseDatetime(value).toUnix()),
             .str => return zid.Data.initStr(value),
-            .link => {
+            .link, .self => {
                 const uuid = UUID.parse(value) catch return FileEngineError.InvalidUUID;
                 return zid.Data{ .UUID = uuid.bytes };
             },
@@ -704,13 +748,15 @@ pub const FileEngine = struct {
         const members = try self.structName2structMembers(struct_name);
         const types = try self.structName2DataType(struct_name);
 
-        var datas = allocator.alloc(zid.Data, (members.len + 1)) catch return FileEngineError.MemoryError;
+        var datas = allocator.alloc(zid.Data, (members.len)) catch return FileEngineError.MemoryError;
 
         const new_uuid = UUID.init();
         datas[0] = zid.Data.initUUID(new_uuid.bytes);
 
-        for (members, types, 1..) |member, dt, i|
+        for (members, types, 0..) |member, dt, i| {
+            if (i == 0) continue;
             datas[i] = try string2Data(allocator, dt, map.get(member).?);
+        }
 
         return datas;
     }
@@ -814,7 +860,7 @@ pub const FileEngine = struct {
     }
 
     pub fn memberName2DataIndex(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!usize {
-        var i: usize = 1; // Start at 1 because there is the id
+        var i: usize = 0;
 
         for (try self.structName2structMembers(struct_name)) |mn| {
             if (std.mem.eql(u8, mn, member_name)) return i;
@@ -897,9 +943,10 @@ pub const FileEngine = struct {
         const writer = error_message_buffer.writer();
 
         for (all_struct_member) |mn| {
+            if (std.mem.eql(u8, mn, "id")) continue;
             if (map.contains(mn)) count += 1 else writer.print(" {s},", .{mn}) catch return FileEngineError.WriteError; // TODO: Handle missing print better
         }
 
-        return ((count == all_struct_member.len) and (count == map.count()));
+        return ((count == all_struct_member.len - 1) and (count == map.count()));
     }
 };

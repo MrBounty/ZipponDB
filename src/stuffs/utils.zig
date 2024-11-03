@@ -84,3 +84,17 @@ pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, sta
     send("{s}", .{buffer.items});
     return err;
 }
+
+pub fn printOpenDir(comptime format: []const u8, args: anytype, options: std.fs.Dir.OpenDirOptions) ZipponError!std.fs.Dir {
+    var buff: [1024 * 16]u8 = undefined; // INFO: Hard coded buffer size
+
+    const path = std.fmt.bufPrint(&buff, format, args) catch return ZipponError.CantOpenDir;
+    return std.fs.cwd().openDir(path, options) catch ZipponError.CantOpenDir;
+}
+
+pub fn printOpenFile(comptime format: []const u8, args: anytype, options: std.fs.File.OpenFlags) ZipponError!std.fs.File {
+    var buff: [1024 * 16]u8 = undefined; // INFO: Hard coded buffer size
+
+    const path = std.fmt.bufPrint(&buff, format, args) catch return ZipponError.CantOpenDir;
+    return std.fs.cwd().openFile(path, options) catch ZipponError.CantOpenFile;
+}

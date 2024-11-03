@@ -14,6 +14,7 @@ pub const DataType = enum {
     str,
     bool,
     link,
+    self, // self represent itself, it is the id
     date,
     time,
     datetime,

@@ -20,8 +20,7 @@ pub const AdditionalData = struct {
     }
 
     pub fn populateWithEverything(self: *AdditionalData, allocator: Allocator, members: [][]const u8) !void {
-        try self.member_to_find.append(AdditionalDataMember.init(allocator, "id", 0));
-        for (members, 1..) |member, i| {
+        for (members, 0..) |member, i| {
             try self.member_to_find.append(AdditionalDataMember.init(allocator, member, i));
         }
     }

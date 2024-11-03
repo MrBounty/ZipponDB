@@ -73,26 +73,25 @@ pub const Parser = struct {
 
         fn fileDataSchema(allocator: Allocator, dtypes: []DataType) SchemaParserError![]zid.DType {
             var schema = std.ArrayList(zid.DType).init(allocator);
-            schema.append(zid.DType.UUID) catch return SchemaParserError.MemoryError;
 
             for (dtypes) |dt| {
                 schema.append(switch (dt) {
-                    DataType.int => zid.DType.Int,
-                    DataType.float => zid.DType.Float,
-                    DataType.str => zid.DType.Str,
-                    DataType.bool => zid.DType.Bool,
-                    DataType.link => zid.DType.UUID,
-                    DataType.date => zid.DType.Unix,
-                    DataType.time => zid.DType.Unix,
-                    DataType.datetime => zid.DType.Unix,
-                    DataType.int_array => zid.DType.IntArray,
-                    DataType.float_array => zid.DType.FloatArray,
-                    DataType.str_array => zid.DType.StrArray,
-                    DataType.bool_array => zid.DType.BoolArray,
-                    DataType.link_array => zid.DType.UUIDArray,
-                    DataType.date_array => zid.DType.UnixArray,
-                    DataType.time_array => zid.DType.UnixArray,
-                    DataType.datetime_array => zid.DType.UnixArray,
+                    .int => .Int,
+                    .float => .Float,
+                    .str => .Str,
+                    .bool => .Bool,
+                    .link, .self => .UUID,
+                    .date => .Unix,
+                    .time => .Unix,
+                    .datetime => .Unix,
+                    .int_array => .IntArray,
+                    .float_array => .FloatArray,
+                    .str_array => .StrArray,
+                    .bool_array => .BoolArray,
+                    .link_array => .UUIDArray,
+                    .date_array => .UnixArray,
+                    .time_array => .UnixArray,
+                    .datetime_array => .UnixArray,
                 }) catch return SchemaParserError.MemoryError;
             }
             return schema.toOwnedSlice() catch return SchemaParserError.MemoryError;
@@ -132,6 +131,8 @@ pub const Parser = struct {
                 .identifier => {
                     state = .expect_l_paren;
                     name = self.toker.getTokenSlice(token);
+                    member_list.append("id") catch return SchemaParserError.MemoryError;
+                    type_list.append(.self) catch return SchemaParserError.MemoryError;
                 },
                 .eof => state = .end,
                 else => return printError(
@@ -251,35 +252,35 @@ pub const Parser = struct {
             .expext_array_type => switch (token.tag) {
                 .type_int => {
                     state = .expect_comma;
-                    type_list.append(DataType.int_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(.int_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_str => {
                     state = .expect_comma;
-                    type_list.append(DataType.str_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(.str_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_float => {
                     state = .expect_comma;
-                    type_list.append(DataType.float_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(.float_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_bool => {
                     state = .expect_comma;
-                    type_list.append(DataType.bool_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(.bool_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_date => {
                     state = .expect_comma;
-                    type_list.append(DataType.date_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(.date_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_time => {
                     state = .expect_comma;
-                    type_list.append(DataType.time_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(.time_array) catch return SchemaParserError.MemoryError;
                 },
                 .type_datetime => {
                     state = .expect_comma;
-                    type_list.append(DataType.datetime_array) catch return SchemaParserError.MemoryError;
+                    type_list.append(.datetime_array) catch return SchemaParserError.MemoryError;
                 },
                 .identifier => {
                     state = .expect_comma;
-                    type_list.append(.link) catch return SchemaParserError.MemoryError;
+                    type_list.append(.link_array) catch return SchemaParserError.MemoryError;
                     links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
                 },
                 else => return printError(
