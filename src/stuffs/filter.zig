@@ -284,30 +284,30 @@ pub const Filter = struct {
             },
 
             .superior_or_equal => switch (condition.data_type) {
-                .int => row_value.Int <= condition.value.int,
-                .float => row_value.Float <= condition.value.float,
-                .date, .time, .datetime => row_value.Unix <= condition.value.unix,
-                else => unreachable,
-            },
-
-            .superior => switch (condition.data_type) {
-                .int => row_value.Int < condition.value.int,
-                .float => row_value.Float < condition.value.float,
-                .date, .time, .datetime => row_value.Unix < condition.value.unix,
-                else => unreachable,
-            },
-
-            .inferior_or_equal => switch (condition.data_type) {
                 .int => row_value.Int >= condition.value.int,
                 .float => row_value.Float >= condition.value.float,
                 .date, .time, .datetime => row_value.Unix >= condition.value.unix,
                 else => unreachable,
             },
 
-            .inferior => switch (condition.data_type) {
+            .superior => switch (condition.data_type) {
                 .int => row_value.Int > condition.value.int,
                 .float => row_value.Float > condition.value.float,
                 .date, .time, .datetime => row_value.Unix > condition.value.unix,
+                else => unreachable,
+            },
+
+            .inferior_or_equal => switch (condition.data_type) {
+                .int => row_value.Int <= condition.value.int,
+                .float => row_value.Float <= condition.value.float,
+                .date, .time, .datetime => row_value.Unix <= condition.value.unix,
+                else => unreachable,
+            },
+
+            .inferior => switch (condition.data_type) {
+                .int => row_value.Int < condition.value.int,
+                .float => row_value.Float < condition.value.float,
+                .date, .time, .datetime => row_value.Unix < condition.value.unix,
                 else => unreachable,
             },
 
