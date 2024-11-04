@@ -38,5 +38,5 @@ run "GRAB User {name = 'asdfqwer'}
 | 12 | 5.1 | 85 |
 | 16 | 4.3 | 100 |
 
-![alt text](https://github.com/MrBounty/ZipponDB/blob/main/charts/time_usage_per_thread.png)
+![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/charts/time_usage_per_thread.png)
 
