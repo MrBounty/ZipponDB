@@ -1,6 +1,7 @@
 // TODO: Only use a single and big ZipponError
 
 pub const ZiQlParserError = error{
+    MemoryError,
     SynthaxError,
     MemberNotFound,
     MemberMissing,

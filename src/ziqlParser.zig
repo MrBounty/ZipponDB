@@ -904,7 +904,7 @@ pub const Parser = struct {
                         }
                         token = try self.checkTokensInArray(tag);
                     } else {
-                        if (token.tag != tag and token.tag != .keyword_null) {
+                        if (token.tag != tag) {
                             return printError(
                                 "Error: Expected {s}",
                                 ZiQlParserError.SynthaxError,
@@ -925,13 +925,10 @@ pub const Parser = struct {
                         .bool => {
                             switch (token.tag) {
                                 .bool_literal_true => {
-                                    member_map.put(member_name, "1") catch @panic("Could not add member name and value to map in getMapOfMember");
+                                    member_map.put(member_name, "1") catch return ZiQlParserError.MemoryError;
                                 },
                                 .bool_literal_false => {
-                                    member_map.put(member_name, "0") catch @panic("Could not add member name and value to map in getMapOfMember");
-                                },
-                                .keyword_null => {
-                                    member_map.put(member_name, self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
+                                    member_map.put(member_name, "0") catch return ZiQlParserError.MemoryError;
                                 },
                                 else => return printError(
                                     "Error: Expected bool: true, false, or null",
