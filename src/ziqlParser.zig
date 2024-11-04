@@ -351,11 +351,10 @@ pub const Parser = struct {
                 defer buff.deinit();
 
                 token = self.toker.last_token;
-                log.info("Token end of add: {s} {any}\n", .{ self.toker.getTokenSlice(token), token.tag });
-                if (token.tag == .identifier and std.mem.eql(u8, self.toker.getTokenSlice(token), "MULTIPLE")) {
-                    for (0..1_000_000) |_| self.file_engine.addEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                if (token.tag == .identifier and std.mem.eql(u8, self.toker.getTokenSlice(token), "TESTDATASET")) {
+                    for (0..100) |_| self.file_engine.addEntity(struct_name, data_map, &buff.writer(), 10_000) catch return ZipponError.CantWriteEntity;
                 } else {
-                    self.file_engine.addEntity(struct_name, data_map, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                    self.file_engine.addEntity(struct_name, data_map, &buff.writer(), 1) catch return ZipponError.CantWriteEntity;
                 }
                 send("{s}", .{buff.items});
                 state = .end;

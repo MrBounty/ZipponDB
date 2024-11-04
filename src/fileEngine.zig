@@ -63,16 +63,15 @@ pub const FileEngine = struct {
         var struct_array = std.ArrayList(SchemaStruct).init(allocator);
         parser.parse(&struct_array) catch return FileEngineError.SchemaNotConform;
 
-        var file_engine = FileEngine{
+        return FileEngine{
             .allocator = allocator,
             .path_to_ZipponDB_dir = path_to_ZipponDB_dir,
             .null_terminated_schema_buff = null_terminated_schema_buff,
             .struct_array = struct_array.toOwnedSlice() catch return FileEngineError.MemoryError,
         };
 
-        try file_engine.populateAllUUIDToFileIndexMap();
+        // try file_engine.populateAllUUIDToFileIndexMap();
 
-        return file_engine;
     }
 
     pub fn deinit(self: *FileEngine) void {
@@ -126,7 +125,6 @@ pub const FileEngine = struct {
         return len;
     }
 
-    // FIXME: This got an error, idk why
     pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) FileEngineError!void {
         const path = std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path);
@@ -155,7 +153,12 @@ pub const FileEngine = struct {
             if (entry.kind != .directory) continue;
             const sub_dir = data_dir.openDir(entry.name, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
             const size = utils.getDirTotalSize(sub_dir) catch 0;
-            writer.print("  {s}: {d:.}Mb\n", .{ entry.name, @as(f64, @floatFromInt(size)) / 1e6 }) catch return FileEngineError.WriteError;
+            // FIXME: This is not really MB
+            writer.print("  {s}: {d:.}Mb {d} entities\n", .{
+                entry.name,
+                @as(f64, @floatFromInt(size)) / 1e6,
+                try self.getNumberOfEntity(entry.name),
+            }) catch return FileEngineError.WriteError;
         }
     }
 
@@ -261,12 +264,55 @@ pub const FileEngine = struct {
     // --------------------Read and parse files--------------------
 
     /// Use a struct name to populate a list with all UUID of this struct
-    pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_list: *std.ArrayList(UUID)) FileEngineError!void {
-        var sstruct = try self.structName2SchemaStruct(struct_name);
+    pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) FileEngineError!usize {
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name);
+        var count: usize = 0;
 
-        var iter = sstruct.uuid_file_index.keyIterator();
-        while (iter.next()) |key| {
-            uuid_list.append(UUID{ .bytes = key.* }) catch return FileEngineError.MemoryError;
+        var path_buff = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/DATA/{s}",
+            .{ self.path_to_ZipponDB_dir, sstruct.name },
+        ) catch return FileEngineError.MemoryError;
+        defer self.allocator.free(path_buff);
+
+        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+
+        for (0..(max_file_index + 1)) |i| {
+            self.allocator.free(path_buff);
+            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+
+            var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+            defer iter.deinit();
+
+            while (iter.next() catch return FileEngineError.ZipponDataError) |_| count += 1;
+        }
+
+        return count;
+    }
+
+    /// Use a struct name to populate a list with all UUID of this struct
+    pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_list: *std.ArrayList(UUID)) FileEngineError!void {
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name);
+
+        var path_buff = std.fmt.allocPrint(
+            self.allocator,
+            "{s}/DATA/{s}",
+            .{ self.path_to_ZipponDB_dir, sstruct.name },
+        ) catch return FileEngineError.MemoryError;
+        defer self.allocator.free(path_buff);
+
+        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+
+        for (0..(max_file_index + 1)) |i| {
+            self.allocator.free(path_buff);
+            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+
+            var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+            defer iter.deinit();
+
+            while (iter.next() catch return FileEngineError.ZipponDataError) |row| uuid_list.append(UUID{ .bytes = row[0].UUID }) catch return FileEngineError.MemoryError;
         }
     }
 
@@ -327,8 +373,7 @@ pub const FileEngine = struct {
         };
         const arena = thread_safe_arena.allocator();
 
-        // INFO: Pool cant return error so far :/ That is annoying. Maybe I can do something similar myself that hundle error
-        // TODO: Put that in the file engine itself, so I dont need to init the Pool every time
+        // TODO: Put that in the file engine members, so I dont need to init the Pool every time
         var thread_pool: Pool = undefined;
         thread_pool.init(Pool.Options{
             .allocator = arena, // this is an arena allocator from `std.heap.ArenaAllocator`
@@ -344,9 +389,15 @@ pub const FileEngine = struct {
             self.allocator.free(thread_writer_list);
         }
 
+        // Maybe do one buffer per files ?
+        var data_buffer: [BUFFER_SIZE]u8 = undefined;
+        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         // Start parsing all file in multiple thread
         for (0..(max_file_index + 1)) |file_index| {
-            thread_writer_list[file_index] = std.ArrayList(u8).init(self.allocator);
+            thread_writer_list[file_index] = std.ArrayList(u8).init(allocator);
 
             thread_pool.spawn(parseEntitiesOneFile, .{
                 thread_writer_list[file_index].writer(),
@@ -499,9 +550,8 @@ pub const FileEngine = struct {
         struct_name: []const u8,
         map: std.StringHashMap([]const u8),
         writer: anytype,
+        n: usize,
     ) FileEngineError!void {
-        const uuid = UUID.init();
-
         const file_index = try self.getFirstUsableIndexFile(struct_name);
 
         const path = std.fmt.allocPrint(
@@ -519,12 +569,12 @@ pub const FileEngine = struct {
         const data = try self.orderedNewData(data_allocator, struct_name, map);
 
         var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
-        data_writer.write(data) catch return FileEngineError.ZipponDataError;
+        defer data_writer.deinit();
+
+        for (0..n) |_| data_writer.write(data) catch return FileEngineError.ZipponDataError;
         data_writer.flush() catch return FileEngineError.ZipponDataError;
 
-        writer.writeByte('[') catch return FileEngineError.WriteError;
-        writer.print("\"{s}\"", .{uuid.format_uuid()}) catch return FileEngineError.WriteError;
-        writer.writeAll("], ") catch return FileEngineError.WriteError;
+        writer.print("[\"{s}\"]", .{UUID.format_bytes(data[0].UUID)}) catch return FileEngineError.WriteError;
     }
 
     pub fn updateEntities(
@@ -558,7 +608,7 @@ pub const FileEngine = struct {
             new_data_buff[i] = try string2Data(self.allocator, dt, map.get(member).?);
         }
 
-        writer.writeAll("[") catch return FileEngineError.WriteError;
+        writer.writeByte('[') catch return FileEngineError.WriteError;
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
             if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break;
 
@@ -587,7 +637,7 @@ pub const FileEngine = struct {
                     new_writer.write(new_data_buff) catch return FileEngineError.WriteError;
                     writer.writeByte('{') catch return FileEngineError.WriteError;
                     writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch return FileEngineError.WriteError;
-                    writer.writeAll("}, ") catch return FileEngineError.WriteError;
+                    writer.writeAll("},") catch return FileEngineError.WriteError;
                     total_currently_found += 1;
                 } else {
                     new_writer.write(row) catch return FileEngineError.WriteError;
@@ -596,6 +646,7 @@ pub const FileEngine = struct {
                 if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break;
             }
 
+            writer.writeByte(']') catch return FileEngineError.WriteError;
             new_writer.flush() catch return FileEngineError.ZipponDataError;
             dir.deleteFile(path_buff) catch return FileEngineError.DeleteFileError;
             dir.rename(new_path_buff, path_buff) catch return FileEngineError.RenameFileError;
@@ -636,7 +687,7 @@ pub const FileEngine = struct {
         defer self.allocator.free(path_buff);
         const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
 
-        writer.writeAll("[") catch return FileEngineError.WriteError;
+        writer.writeByte('[') catch return FileEngineError.WriteError;
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
             self.allocator.free(path_buff);
             path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
@@ -655,7 +706,7 @@ pub const FileEngine = struct {
                 if (filter != null) if (!filter.?.evaluate(row)) {
                     writer.writeByte('{') catch return FileEngineError.WriteError;
                     writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch return FileEngineError.WriteError;
-                    writer.writeAll("}, ") catch return FileEngineError.WriteError;
+                    writer.writeAll("},") catch return FileEngineError.WriteError;
                     total_currently_found += 1;
                     if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break :blk;
                 } else {
@@ -668,7 +719,7 @@ pub const FileEngine = struct {
             dir.rename(new_path_buff, path_buff) catch return FileEngineError.RenameFileError;
         }
 
-        writer.writeAll("]") catch return FileEngineError.WriteError;
+        writer.writeByte(']') catch return FileEngineError.WriteError;
     }
 
     // --------------------ZipponData utils--------------------
@@ -754,7 +805,7 @@ pub const FileEngine = struct {
         datas[0] = zid.Data.initUUID(new_uuid.bytes);
 
         for (members, types, 0..) |member, dt, i| {
-            if (i == 0) continue;
+            if (i == 0) continue; // Skip the id
             datas[i] = try string2Data(allocator, dt, map.get(member).?);
         }
 

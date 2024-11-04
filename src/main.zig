@@ -91,6 +91,7 @@ pub fn main() !void {
         const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(line_buf, '\n');
 
         if (line) |line_str| {
+            const start_time = std.time.milliTimestamp();
             log.debug("Query received: {s}", .{line_str});
 
             const null_term_line_str = try allocator.dupeZ(u8, line_str[0..line_str.len]);
@@ -256,6 +257,8 @@ pub fn main() !void {
                 log.info("Bye bye\n", .{});
                 break;
             }
+            const end_time = std.time.milliTimestamp();
+            std.debug.print("Finished in: {d}ms\n", .{end_time - start_time});
         }
     }
 }

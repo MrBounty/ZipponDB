@@ -43,7 +43,7 @@ pub const Parser = struct {
         types: []DataType,
         zid_schema: []zid.DType,
         links: std.StringHashMap([]const u8), // Map key as member_name and value as struct_name, like a dtype
-        uuid_file_index: std.AutoHashMap([16]u8, u64), // Map UUID to the index of the file they are store in
+        // uuid_file_index: std.AutoHashMap([16]u8, u64), // Map UUID to the index of the file they are store in
 
         pub fn init(
             allocator: Allocator,
@@ -59,7 +59,7 @@ pub const Parser = struct {
                 .types = types,
                 .zid_schema = SchemaStruct.fileDataSchema(allocator, types) catch return SchemaParserError.MemoryError,
                 .links = links,
-                .uuid_file_index = std.AutoHashMap([16]u8, u64).init(allocator),
+                //.uuid_file_index = std.AutoHashMap([16]u8, u64).init(allocator),
             };
         }
 
@@ -68,7 +68,7 @@ pub const Parser = struct {
             self.allocator.free(self.types);
             self.allocator.free(self.zid_schema);
             self.links.deinit();
-            self.uuid_file_index.deinit();
+            //self.uuid_file_index.deinit();
         }
 
         fn fileDataSchema(allocator: Allocator, dtypes: []DataType) SchemaParserError![]zid.DType {
