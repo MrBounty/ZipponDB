@@ -1,10 +1,19 @@
 ***Benchmark are set to quicly evolve. I have currently multiple ideas to improve perf***
 
-# 50 000 000 users
+# Intro
 
 In this example I create a random dataset of 50 000 000 Users using this shema:
-```
-TODO
+```lua
+User (
+  name: str,
+  age: int,
+  email: str,
+  bday: date,
+  last_order: datetime,
+  a_time: time,
+  scores: []int,
+  friends: []str,
+)
 ```
 
 Here a user example:
@@ -14,10 +23,10 @@ run "ADD User (name = 'Diana Lopez',age = 2,email = 'allisonwilliams@example.org
 
 First let's do a query that parse all file but dont return anything, so we have the time to read and evaluate file but not writting and sending output.
 ```
-run "GRAB User {name = 'asdfqwer'}
+run "GRAB User {name = 'asdfqwer'}"
 ```
 
-### 50 000 000 Users
+## 50 000 000 Users
 This take 6.24GB space on disk, seperated into xx files of xx MB
 
 | Thread | Time (s) | Usage (%) |
@@ -33,7 +42,7 @@ This take 6.24GB space on disk, seperated into xx files of xx MB
 
 ![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/charts/time_usage_per_thread_50_000_000.png)
 
-### 1 000 000
+## 1 000 000
 This take 127MB space on disk, sperated into 24 files of 5.2MB
 
 | Thread | Time (ms) | 
