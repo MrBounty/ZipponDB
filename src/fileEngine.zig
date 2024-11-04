@@ -47,13 +47,13 @@ pub const FileEngine = struct {
     null_terminated_schema_buff: [:0]u8,
     struct_array: []SchemaStruct,
 
-    pub fn init(allocator: Allocator, path: []const u8) FileEngineError!FileEngine {
+    pub fn init(allocator: Allocator, path: []const u8) ZipponError!FileEngine {
         const path_to_ZipponDB_dir = path;
 
         var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return FileEngineError.MemoryError; // TODO: Use a list
         defer allocator.free(schema_buf);
 
-        const len: usize = FileEngine.readSchemaFile(allocator, path_to_ZipponDB_dir, schema_buf) catch 0;
+        const len: usize = FileEngine.readSchemaFile(path_to_ZipponDB_dir, schema_buf) catch 0;
         const null_terminated_schema_buff = allocator.dupeZ(u8, schema_buf[0..len]) catch return FileEngineError.MemoryError;
         errdefer allocator.free(null_terminated_schema_buff);
 
@@ -86,7 +86,7 @@ pub const FileEngine = struct {
     }
 
     // For all struct in shema, add the UUID/index_file into the map
-    pub fn populateAllUUIDToFileIndexMap(self: *FileEngine) FileEngineError!void {
+    pub fn populateAllUUIDToFileIndexMap(self: *FileEngine) ZipponError!void {
         for (self.struct_array) |*sstruct| { // Stand for schema struct
             const max_file_index = try self.maxFileIndex(sstruct.name);
 
@@ -114,25 +114,19 @@ pub const FileEngine = struct {
 
     // --------------------Other--------------------
 
-    pub fn readSchemaFile(allocator: Allocator, sub_path: []const u8, buffer: []u8) FileEngineError!usize {
-        const path = std.fmt.allocPrint(allocator, "{s}/schema", .{sub_path}) catch return FileEngineError.MemoryError;
-        defer allocator.free(path);
-
-        const file = std.fs.cwd().openFile(path, .{}) catch return FileEngineError.CantOpenFile;
+    pub fn readSchemaFile(sub_path: []const u8, buffer: []u8) ZipponError!usize {
+        const file = try utils.printOpenFile("{s}/schema", .{sub_path}, .{});
         defer file.close();
 
         const len = file.readAll(buffer) catch return FileEngineError.ReadError;
         return len;
     }
 
-    pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) FileEngineError!void {
-        const path = std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path);
-
-        const main_dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+    pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) ZipponError!void {
+        const main_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
 
         const writer = buffer.writer();
-        writer.print("Database path: {s}\n", .{path}) catch return FileEngineError.WriteError;
+        writer.print("Database path: {s}\n", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.WriteError;
         const main_size = utils.getDirTotalSize(main_dir) catch 0;
         writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1e6}) catch return FileEngineError.WriteError;
 
@@ -165,7 +159,7 @@ pub const FileEngine = struct {
     // --------------------Init folder and files--------------------
 
     /// Create the main folder. Including DATA, LOG and BACKUP
-    pub fn checkAndCreateDirectories(self: *FileEngine) FileEngineError!void {
+    pub fn checkAndCreateDirectories(self: *FileEngine) ZipponError!void {
         var path_buff = std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
         defer self.allocator.free(path_buff);
 
@@ -219,7 +213,7 @@ pub const FileEngine = struct {
 
     /// Request a path to a schema file and then create the struct folder
     /// TODO: Check if some data already exist and if so ask if the user want to delete it and make a backup
-    pub fn initDataFolder(self: *FileEngine, path_to_schema_file: []const u8) FileEngineError!void {
+    pub fn initDataFolder(self: *FileEngine, path_to_schema_file: []const u8) ZipponError!void {
         var schema_buf = self.allocator.alloc(u8, BUFFER_SIZE) catch return FileEngineError.MemoryError;
         defer self.allocator.free(schema_buf);
 
@@ -264,23 +258,16 @@ pub const FileEngine = struct {
     // --------------------Read and parse files--------------------
 
     /// Use a struct name to populate a list with all UUID of this struct
-    pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) FileEngineError!usize {
+    pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) ZipponError!usize {
         const sstruct = try self.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
         var count: usize = 0;
 
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, sstruct.name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-
-        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         for (0..(max_file_index + 1)) |i| {
-            self.allocator.free(path_buff);
-            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+            const path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(path_buff);
 
             var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
             defer iter.deinit();
@@ -292,22 +279,15 @@ pub const FileEngine = struct {
     }
 
     /// Use a struct name to populate a list with all UUID of this struct
-    pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_list: *std.ArrayList(UUID)) FileEngineError!void {
+    pub fn getAllUUIDList(self: *FileEngine, struct_name: []const u8, uuid_list: *std.ArrayList(UUID)) ZipponError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, sstruct.name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-
-        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         for (0..(max_file_index + 1)) |i| {
-            self.allocator.free(path_buff);
-            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+            const path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(path_buff);
 
             var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
             defer iter.deinit();
@@ -317,22 +297,15 @@ pub const FileEngine = struct {
     }
 
     /// Take a condition and an array of UUID and fill the array with all UUID that match the condition
-    pub fn getUUIDListUsingFilter(self: *FileEngine, struct_name: []const u8, filter: Filter, uuid_list: *std.ArrayList(UUID)) FileEngineError!void {
+    pub fn getUUIDListUsingFilter(self: *FileEngine, struct_name: []const u8, filter: Filter, uuid_list: *std.ArrayList(UUID)) ZipponError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, sstruct.name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-
-        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         for (0..(max_file_index + 1)) |i| {
-            self.allocator.free(path_buff);
-            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+            const path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(path_buff);
 
             var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
             defer iter.deinit();
@@ -505,7 +478,7 @@ pub const FileEngine = struct {
         try writer.writeByte('"');
     }
 
-    fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) FileEngineError!void {
+    fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) ZipponError!void {
         writer.writeByte('[') catch return FileEngineError.WriteError;
         var iter = zid.ArrayIterator.init(data) catch return FileEngineError.ZipponDataError;
         switch (data) {
@@ -551,7 +524,7 @@ pub const FileEngine = struct {
         map: std.StringHashMap([]const u8),
         writer: anytype,
         n: usize,
-    ) FileEngineError!void {
+    ) ZipponError!void {
         const file_index = try self.getFirstUsableIndexFile(struct_name);
 
         const path = std.fmt.allocPrint(
@@ -584,18 +557,12 @@ pub const FileEngine = struct {
         map: std.StringHashMap([]const u8),
         writer: anytype,
         additional_data: *AdditionalData,
-    ) FileEngineError!void {
+    ) ZipponError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
         var total_currently_found: usize = 0;
 
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, sstruct.name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         var new_data_buff = self.allocator.alloc(zid.Data, try self.numberOfMemberInStruct(struct_name)) catch return FileEngineError.MemoryError;
         defer self.allocator.free(new_data_buff);
@@ -612,8 +579,8 @@ pub const FileEngine = struct {
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
             if (additional_data.entity_count_to_find != 0 and total_currently_found >= additional_data.entity_count_to_find) break;
 
-            self.allocator.free(path_buff);
-            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
+            const path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(path_buff);
 
             var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
             defer iter.deinit();
@@ -674,23 +641,17 @@ pub const FileEngine = struct {
         filter: ?Filter,
         writer: anytype,
         additional_data: *AdditionalData,
-    ) FileEngineError!void {
+    ) ZipponError!void {
         const sstruct = try self.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
         var total_currently_found: usize = 0;
 
-        var path_buff = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, sstruct.name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
-        const dir = std.fs.cwd().openDir(path_buff, .{}) catch return FileEngineError.CantOpenDir;
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         writer.writeByte('[') catch return FileEngineError.WriteError;
         for (0..(max_file_index + 1)) |file_index| { // TODO: Multi thread that
-            self.allocator.free(path_buff);
-            path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
+            const path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{file_index}) catch return FileEngineError.MemoryError;
+            defer self.allocator.free(path_buff);
 
             var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
             defer iter.deinit();
@@ -724,7 +685,7 @@ pub const FileEngine = struct {
 
     // --------------------ZipponData utils--------------------
 
-    fn string2Data(allocator: Allocator, dt: DataType, value: []const u8) FileEngineError!zid.Data {
+    fn string2Data(allocator: Allocator, dt: DataType, value: []const u8) ZipponError!zid.Data {
         switch (dt) {
             .int => return zid.Data.initInt(s2t.parseInt(value)),
             .float => return zid.Data.initFloat(s2t.parseFloat(value)),
@@ -795,7 +756,7 @@ pub const FileEngine = struct {
         allocator: Allocator,
         struct_name: []const u8,
         map: std.StringHashMap([]const u8),
-    ) FileEngineError![]zid.Data {
+    ) ZipponError![]zid.Data {
         const members = try self.structName2structMembers(struct_name);
         const types = try self.structName2DataType(struct_name);
 
@@ -816,15 +777,8 @@ pub const FileEngine = struct {
 
     /// Get the index of the first file that is bellow the size limit. If not found, create a new file
     /// TODO: Need some serious speed up. I should keep in memory a file->size as a hashmap and use that instead
-    fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) FileEngineError!usize {
-        var path = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, struct_name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path);
-
-        var member_dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+    fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) ZipponError!usize {
+        var member_dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
         defer member_dir.close();
 
         var i: usize = 0;
@@ -838,12 +792,12 @@ pub const FileEngine = struct {
             }
         }
 
-        self.allocator.free(path);
-        path = std.fmt.allocPrint(
+        const path = std.fmt.allocPrint(
             self.allocator,
             "{s}/DATA/{s}/{d}.zid",
             .{ self.path_to_ZipponDB_dir, struct_name, i },
         ) catch return FileEngineError.MemoryError;
+        defer self.allocator.free(path);
 
         zid.createFile(path, null) catch return FileEngineError.ZipponDataError;
 
@@ -852,15 +806,10 @@ pub const FileEngine = struct {
 
     /// Iterate over all file of a struct and return the index of the last file.
     /// E.g. a struct with 0.csv and 1.csv it return 1.
-    fn maxFileIndex(self: FileEngine, struct_name: []const u8) FileEngineError!usize {
-        const path = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}",
-            .{ self.path_to_ZipponDB_dir, struct_name },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path);
+    fn maxFileIndex(self: FileEngine, struct_name: []const u8) ZipponError!usize {
+        var member_dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
+        defer member_dir.close();
 
-        const member_dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
         var count: usize = 0;
 
         var iter = member_dir.iterate();
@@ -898,7 +847,7 @@ pub const FileEngine = struct {
     }
 
     /// Get the type of the member
-    pub fn memberName2DataType(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!DataType {
+    pub fn memberName2DataType(self: *FileEngine, struct_name: []const u8, member_name: []const u8) ZipponError!DataType {
         var i: usize = 0;
 
         for (try self.structName2structMembers(struct_name)) |mn| {
@@ -910,7 +859,7 @@ pub const FileEngine = struct {
         return FileEngineError.MemberNotFound;
     }
 
-    pub fn memberName2DataIndex(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!usize {
+    pub fn memberName2DataIndex(self: *FileEngine, struct_name: []const u8, member_name: []const u8) ZipponError!usize {
         var i: usize = 0;
 
         for (try self.structName2structMembers(struct_name)) |mn| {
@@ -922,7 +871,7 @@ pub const FileEngine = struct {
     }
 
     /// Get the list of all member name for a struct name
-    pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) FileEngineError![][]const u8 {
+    pub fn structName2structMembers(self: *FileEngine, struct_name: []const u8) ZipponError![][]const u8 {
         var i: usize = 0;
 
         while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
@@ -934,7 +883,7 @@ pub const FileEngine = struct {
         return self.struct_array[i].members;
     }
 
-    pub fn structName2SchemaStruct(self: *FileEngine, struct_name: []const u8) FileEngineError!SchemaStruct {
+    pub fn structName2SchemaStruct(self: *FileEngine, struct_name: []const u8) ZipponError!SchemaStruct {
         var i: usize = 0;
 
         while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
@@ -946,7 +895,7 @@ pub const FileEngine = struct {
         return self.struct_array[i];
     }
 
-    pub fn structName2DataType(self: *FileEngine, struct_name: []const u8) FileEngineError![]const DataType {
+    pub fn structName2DataType(self: *FileEngine, struct_name: []const u8) ZipponError![]const DataType {
         var i: u16 = 0;
 
         while (i < self.struct_array.len) : (i += 1) {
@@ -961,7 +910,7 @@ pub const FileEngine = struct {
     }
 
     /// Return the number of member of a struct
-    fn numberOfMemberInStruct(self: *FileEngine, struct_name: []const u8) FileEngineError!usize {
+    fn numberOfMemberInStruct(self: *FileEngine, struct_name: []const u8) ZipponError!usize {
         var i: usize = 0;
 
         for (try self.structName2structMembers(struct_name)) |_| {
@@ -979,7 +928,7 @@ pub const FileEngine = struct {
     }
 
     /// Check if a struct have the member name
-    pub fn isMemberNameInStruct(self: *FileEngine, struct_name: []const u8, member_name: []const u8) FileEngineError!bool {
+    pub fn isMemberNameInStruct(self: *FileEngine, struct_name: []const u8, member_name: []const u8) ZipponError!bool {
         for (try self.structName2structMembers(struct_name)) |mn| { // I do not return an error here because I should already check before is the struct exist
             if (std.mem.eql(u8, mn, member_name)) return true;
         }
@@ -987,7 +936,12 @@ pub const FileEngine = struct {
     }
 
     // Return true if the map have all the member name as key and not more
-    pub fn checkIfAllMemberInMap(self: *FileEngine, struct_name: []const u8, map: *std.StringHashMap([]const u8), error_message_buffer: *std.ArrayList(u8)) FileEngineError!bool {
+    pub fn checkIfAllMemberInMap(
+        self: *FileEngine,
+        struct_name: []const u8,
+        map: *std.StringHashMap([]const u8),
+        error_message_buffer: *std.ArrayList(u8),
+    ) ZipponError!bool {
         const all_struct_member = try self.structName2structMembers(struct_name);
         var count: u16 = 0;
 
