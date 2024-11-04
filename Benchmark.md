@@ -1,4 +1,4 @@
-***Benchmark a set to quicly evolve***
+***Benchmark a set to quicly evolve. I have currently multiple ideas to improve perf***
 
 # Config
 
@@ -14,18 +14,13 @@ Here a user example:
 run "ADD User (name = 'Diana Lopez',age = 2,email = 'allisonwilliams@example.org',scores=[37 85 90 71 88 85 68],friends = [],bday=1973/11/13,last_order=1979/07/18-15:05:26.590261,a_time=03:04:06.862213)
 ```
 
-### Space on disk
-
-This take 6.24GB
-
-### Parse all data
-
 First let's do a query that parse all file but dont return anything, so we have the time to read and evaluate file but not writting and sending output.
 ```
 run "GRAB User {name = 'asdfqwer'}
 ```
 
-#### Time per jobs
+### 50 000 000 Users
+This take 6.24GB space on disk, seperated into xx files of xx MB
 
 | Thread | Time (s) | Usage (%) |
 | --- | --- | --- |
@@ -38,5 +33,27 @@ run "GRAB User {name = 'asdfqwer'}
 | 12 | 5.1 | 85 |
 | 16 | 4.3 | 100 |
 
-![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/charts/time_usage_per_thread.png)
+![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/charts/time_usage_per_thread_50_000_000.png)
 
+### 1 000 000
+This take 127MB space on disk, sperated into 24 files of 5.2MB
+
+| Thread | Time (ms) | 
+| --- | --- | 
+| 1 | 790 | 
+| 2 | 446 | 
+| 3 | 326 | 
+| 4 | 255 | 
+| 6 | 195 | 
+| 8 | 155 | 
+| 12 | 136 | 
+| 16 | 116 | 
+
+![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/charts/time_usage_per_thread_1_000_000.png)
+
+## TODO
+
+- [ ] Create a build command to benchmark. For 1_000, 1_000_000, 50_000_000 users
+    - [ ] Create a random dataset
+    - [ ] Do simple query, get average and +- time by set of 25 query
+    - [ ] Return the data to do a chart
