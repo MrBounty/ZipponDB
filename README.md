@@ -71,6 +71,8 @@ Comment (
 
 ***Note: `[]` before the type means a list/array of this type.***
 
+***Note: Members order matter for now!***
+
 ### Migration to a new schema - Not yet implemented
 
 In the future, you will be able to update the schema, such as adding a new member to a struct, and update the database. For the moment, you can't change the schema once it's initialized.
@@ -144,11 +146,24 @@ Here an example where I create a new `Comment` that I then append to the list of
 ADD Comment (content='Hello world', at=NOW, like_by=[]) => added_comment => UPDATE User {id = '000'} TO (comments APPEND added_comment)
 ```
 
-The name between `=>` is the variable name of the list of UUID used for the next queries, you can have multiple one if the link has more than 2 queries. You can also just use one `=>` but the list of UUID is discarded in that case.
+The name between `=>` is the variable name of the list of UUID used for the next queries, you can have multiple one if the link has more than 2 queries.
+You can also just use one `=>` but the list of UUID is discarded in that case.
+
+This can be use with GRAB too. So you can create variable before making the query. Here an example:
+```js
+GRAB User {name = 'Bob'} => bobs =>
+GRAB User {age > 18} => adults =>
+GRAB User {IN adults AND !IN bobs}
+```
+
+Which is the same as:
+```js
+GRAB User {name != 'Bob' AND age > 18}
+```
 
 # Data types
 
-There is 5 data types for the moment:
+There is 8 data types:
 - `int`: 64 bit integer
 - `float`: 64 bit float. Need to have a dot, `1.` is a float `1` is an integer.
 - `bool`: Boolean, can be `true` or `false`
@@ -159,8 +174,6 @@ There is 5 data types for the moment:
 - `datetime`: A date time in yyyy/mm/dd-hh:mm:ss:mmmm
 
 All data types can be an array of those types using `[]` in front of it. So `[]int` is an array of integer.
-
-All data types can also be `null`. Except arrays that can only be empty.
 
 # Why I created it ?
 
@@ -189,10 +202,10 @@ TODO: Create a tech doc of what is happening inside.
 
 #### v0.2 - Usable  
 - [ ] Relationships  
-- [ ] Optimized data file
+- [X] Custom data file
 - [X] Date
 - [ ] Linked query
-- [ ] Optimization  
+- [ ] Query optimization  
 - [X] Logs
 
 #### v0.3 - QoL  
@@ -239,4 +252,4 @@ TODO: Create a tech doc of what is happening inside.
 - [ ] Schema visualization  
 - [ ] Dashboard metrics  
 
-Let's see where it (or my brain) start explode ;)
+Let's see where it (or my brain) start to explode ;)

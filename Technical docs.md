@@ -93,9 +93,9 @@ And that's basicly it, the entire `Parser` work like that. It is fairly easy to 
 
 Note that the `ZiQLParser` use different methods for parsing:
 - **parse:** The main one that will then use the other.
-- **parseFilter:** This will populate an array of `UUID` based on what is between `{}`.
-- **parseCondition:** Create a `Condition` struct based on a part of what is between `{}`. E.g. `name = 'Bob'`.
-- **parseAdditionalData:** Populate the `AdditionalData` struct that represent what is between `[]`.
+- **parseFilter:** This will create a `Filter`, this is a tree that contain all condition in the query, what is between `{}`.
+- **parseCondition:** Create a `Condition` based on a part of what is between `{}`. E.g. `name = 'Bob'`.
+- **parseAdditionalData:** Populate the `AdditionalData` that represent what is between `[]`.
 - **parseNewData:** Return a string map with key as member name and value as value of what is between `()`. E.g. `(name = 'Bob')` will return a map with one key `name` with the value `Bob`.
 - **parseOption:** Not done yet. Parse what is between `||`
 
@@ -103,4 +103,19 @@ Note that the `ZiQLParser` use different methods for parsing:
 
 The `FileEngine` is that is managing files, everything that need to read or write into files is here.
 
-I am not goind into too much detail here as I think this will change in the futur.
+I am not goind into too much detail here as I think this will change in the future.
+
+# Multi-threading
+
+How do I do multi-threading ? Basically all struct are saved in multiples `.zid` files. Each files have
+a size limit defined in the config and a new one is created when no previous one is found with space left.
+
+When I run a GRAB query and parse all files and evaluate each struct, I use a thread pool and give a file
+to each thread. Each thread have it's own buffered writer and once all finished, I concatenate all writer
+and send it.
+
+The only atomic value share by all threads are the number of founded struct (to stop thread if enough are found when
+[10] is use). And the number of finished thread, so I know when I can concatenate and send stuffs.
+
+Like that this keep things simple and easy to implement. I dont have parallel thread that run different 
+that need to access the same file.

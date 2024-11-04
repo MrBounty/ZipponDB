@@ -53,6 +53,7 @@ This take 127MB space on disk, sperated into 24 files of 5.2MB
 
 ## TODO
 
+- [ ] Benchmark per files size, to find the optimal one. For 10kB, 5MB, 100MB, 1GB
 - [ ] Create a build command to benchmark. For 1_000, 1_000_000, 50_000_000 users
     - [ ] Create a random dataset
     - [ ] Do simple query, get average and +- time by set of 25 query
