@@ -1,6 +1,4 @@
-***Benchmark a set to quicly evolve. I have currently multiple ideas to improve perf***
-
-# Config
+***Benchmark are set to quicly evolve. I have currently multiple ideas to improve perf***
 
 # 50 000 000 users
 
