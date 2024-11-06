@@ -1012,10 +1012,6 @@ test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
 }
 
-test "UPDATE" {
-    try testParsing("UPDATE User {name = 'Bob'} TO (email='new@gmail.com')");
-}
-
 test "GRAB filter with string" {
     try testParsing("GRAB User {name = 'Bob'}");
     try testParsing("GRAB User {name != 'Brittany Rogers'}");
@@ -1025,6 +1021,10 @@ test "GRAB with additional data" {
     try testParsing("GRAB User [1] {age < 18}");
     try testParsing("GRAB User [name] {age < 18}");
     try testParsing("GRAB User [100; name] {age < 18}");
+}
+
+test "UPDATE" {
+    try testParsing("UPDATE User {name = 'Bob'} TO (email='new@gmail.com')");
 }
 
 test "GRAB filter with int" {
