@@ -32,7 +32,6 @@ const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 const config = @import("config.zig");
 const BUFFER_SIZE = config.BUFFER_SIZE;
 const MAX_FILE_SIZE = config.MAX_FILE_SIZE;
-const CSV_DELIMITER = config.CSV_DELIMITER;
 const RESET_LOG_AT_RESTART = config.RESET_LOG_AT_RESTART;
 const CPU_CORE = config.CPU_CORE;
 
@@ -42,7 +41,6 @@ const FileEngineState = enum { MissingPath, MissingSchema, Ok };
 
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
-/// TODO: Keep all struct dir in a haspmap so I dont need to use an allocPrint everytime
 pub const FileEngine = struct {
     allocator: Allocator,
     path_to_ZipponDB_dir: []const u8,
@@ -51,7 +49,7 @@ pub const FileEngine = struct {
     state: FileEngineState,
 
     pub fn init(allocator: Allocator, path: []const u8) ZipponError!FileEngine {
-        var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return FileEngineError.MemoryError; // TODO: Use a list
+        var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return FileEngineError.MemoryError;
         defer allocator.free(schema_buf);
 
         const len: usize = FileEngine.readSchemaFile(path, schema_buf) catch 0;
@@ -1127,7 +1125,7 @@ pub const FileEngine = struct {
 
         for (all_struct_member) |mn| {
             if (std.mem.eql(u8, mn, "id")) continue;
-            if (map.contains(mn)) count += 1 else writer.print(" {s},", .{mn}) catch return FileEngineError.WriteError; // TODO: Handle missing print better
+            if (map.contains(mn)) count += 1 else writer.print(" {s},", .{mn}) catch return FileEngineError.WriteError;
         }
 
         return ((count == all_struct_member.len - 1) and (count == map.count()));

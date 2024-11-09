@@ -1,6 +1,5 @@
 pub const BUFFER_SIZE = 1024 * 64 * 64; // Line limit when parsing file and other buffers
-pub const MAX_FILE_SIZE = 5e+6; // 5Mb
-pub const CSV_DELIMITER = ';'; // TODO: Delete
+pub const MAX_FILE_SIZE = 5e+8; // 500Mb
 pub const CPU_CORE = 16;
 
 // Testing
