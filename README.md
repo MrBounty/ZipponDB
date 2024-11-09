@@ -205,8 +205,8 @@ TODO: Create a tech doc of what is happening inside.
 - [X] Custom data file
 - [X] Date
 - [ ] Linked query
-- [ ] Query optimization  
 - [X] Logs
+- [X] Query multi threading
 
 #### v0.3 - QoL  
 - [ ] Schema migration   
@@ -228,8 +228,9 @@ TODO: Create a tech doc of what is happening inside.
 
 #### v0.6 - Performance  
 - [ ] Transaction  
-- [ ] Multi threading
-- [ ] Lock manager 
+- [ ] Other multi threading
+- [ ] Query optimization  
+- [ ] Index
 
 #### v0.7 - Safety  
 - [ ] Auth  
