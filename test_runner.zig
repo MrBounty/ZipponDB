@@ -5,6 +5,27 @@ const Allocator = std.mem.Allocator;
 
 const BORDER = "=" ** 80;
 
+const log_allocator = std.heap.page_allocator;
+var log_buff: [1024]u8 = undefined;
+var log_path: []const u8 = undefined;
+
+const log = std.log.scoped(.cli);
+pub const std_options = .{
+    .logFn = myLog,
+};
+
+pub fn myLog(
+    comptime message_level: std.log.Level,
+    comptime scope: @Type(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    _ = message_level;
+    _ = scope;
+    _ = format;
+    _ = args;
+}
+
 // use in custom panic handler
 var current_test: ?[]const u8 = null;
 
