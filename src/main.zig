@@ -40,13 +40,13 @@ pub const std_options = .{
 
 const DBEngineState = enum { MissingFileEngine, MissingSchemaEngine, Ok, Init };
 
-const DBEngine = struct {
+pub const DBEngine = struct {
     allocator: Allocator,
     state: DBEngineState = .Init,
     file_engine: FileEngine = undefined,
     schema_engine: SchemaEngine = undefined,
 
-    fn init(allocator: std.mem.Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
+    pub fn init(allocator: std.mem.Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
         var self = DBEngine{ .allocator = allocator };
         const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_PATH");
 
@@ -79,19 +79,21 @@ const DBEngine = struct {
             defer allocator.free(schema_path);
 
             log.info("Schema founded in the database directory.", .{});
-            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch {
-                log.err("Error when init SchemaEngine", .{});
+            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch |err| {
+                log.err("Error when init SchemaEngine: {any}", .{err});
                 self.state = .MissingSchemaEngine;
                 return self;
             };
-            self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch {
-                log.err("Error when creating struct directories", .{});
+            self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch |err| {
+                log.err("Error when creating struct directories: {any}", .{err});
                 self.schema_engine.deinit();
                 self.state = .MissingSchemaEngine;
                 return self;
             };
 
-            self.file_engine.schema_engine = &self.schema_engine;
+            log.debug("SchemaEngine created in DBEngine with {d} struct", .{self.schema_engine.struct_array.len});
+
+            self.file_engine.schema_engine = self.schema_engine;
             self.state = .Ok;
             return self;
         }
@@ -100,18 +102,18 @@ const DBEngine = struct {
         const potential_schema_path_or_environment_variable = potential_schema_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_SCHEMA");
         if (potential_schema_path_or_environment_variable) |schema_path| {
             log.info("Found schema path {s}.", .{schema_path});
-            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch {
-                log.err("Error when init SchemaEngine", .{});
+            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch |err| {
+                log.err("Error when init SchemaEngine: {any}", .{err});
                 self.state = .MissingSchemaEngine;
                 return self;
             };
-            self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch {
-                log.err("Error when creating struct directories", .{});
+            self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch |err| {
+                log.err("Error when creating struct directories: {any}", .{err});
                 self.schema_engine.deinit();
                 self.state = .MissingSchemaEngine;
                 return self;
             };
-            self.file_engine.schema_engine = &self.schema_engine;
+            self.file_engine.schema_engine = self.schema_engine;
             self.state = .Ok;
         } else {
             log.info(HELP_MESSAGE.no_schema, .{self.file_engine.path_to_ZipponDB_dir});
@@ -119,7 +121,7 @@ const DBEngine = struct {
         return self;
     }
 
-    fn deinit(self: *DBEngine) void {
+    pub fn deinit(self: *DBEngine) void {
         if (self.state == .Ok or self.state == .MissingSchemaEngine) self.file_engine.deinit(); // Pretty sure I can use like state > 2 because enum of just number
         if (self.state == .Ok) self.schema_engine.deinit();
     }
@@ -222,7 +224,7 @@ pub fn main() !void {
                             continue;
                         }
                         if (db_engine.state == .MissingSchemaEngine) {
-                            send("{s}", .{HELP_MESSAGE.no_schema});
+                            send(HELP_MESSAGE.no_schema, .{db_engine.file_engine.path_to_ZipponDB_dir});
                             state = .end;
                             continue;
                         }
@@ -258,7 +260,7 @@ pub fn main() !void {
                             continue;
                         }
                         if (db_engine.state == .MissingSchemaEngine) {
-                            send("{s}", .{HELP_MESSAGE.no_schema});
+                            send(HELP_MESSAGE.no_schema, .{db_engine.file_engine.path_to_ZipponDB_dir});
                             state = .end;
                             continue;
                         }

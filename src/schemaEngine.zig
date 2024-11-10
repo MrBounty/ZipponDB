@@ -11,10 +11,11 @@ const FileEngine = @import("fileEngine.zig").FileEngine;
 const config = @import("config.zig");
 const BUFFER_SIZE = config.BUFFER_SIZE;
 
-const log = std.log.scoped(.fileEngine);
+const log = std.log.scoped(.schemaEngine);
 
 /// Manage everything that is relate to the schema
 /// This include keeping in memory the schema and schema file, and some functions to get like all members of a specific struct.
+/// For now it is a bit empty. But this is where I will manage migration
 pub const SchemaEngine = struct {
     allocator: Allocator,
     null_terminated_schema_buff: [:0]u8,
@@ -22,6 +23,7 @@ pub const SchemaEngine = struct {
 
     // The path is the path to the schema file
     pub fn init(allocator: Allocator, path: []const u8) ZipponError!SchemaEngine {
+        log.debug("Trying to init a SchemaEngine with path {s}", .{path});
         var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return ZipponError.MemoryError;
         defer allocator.free(schema_buf);
 
@@ -35,6 +37,8 @@ pub const SchemaEngine = struct {
         var struct_array = std.ArrayList(SchemaStruct).init(allocator);
         errdefer struct_array.deinit();
         parser.parse(&struct_array) catch return ZipponError.SchemaNotConform;
+
+        log.debug("SchemaEngine init with {d} SchemaStruct.", .{struct_array.items.len});
 
         return SchemaEngine{
             .allocator = allocator,

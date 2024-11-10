@@ -36,12 +36,12 @@ pub const FileEngine = struct {
     allocator: Allocator,
     state: FileEngineState,
     path_to_ZipponDB_dir: []const u8,
-    schema_engine: *SchemaEngine = undefined, // I dont really like that, what if I never define it before using it ? Should I use ?*SchemaEngine instead ?
+    schema_engine: SchemaEngine = undefined, // I dont really like that here
 
     pub fn init(allocator: Allocator, path: []const u8) ZipponError!FileEngine {
         return FileEngine{
             .allocator = allocator,
-            .path_to_ZipponDB_dir = path,
+            .path_to_ZipponDB_dir = allocator.dupe(u8, path) catch return ZipponError.MemoryError,
             .state = .Waiting,
         };
     }
@@ -57,7 +57,7 @@ pub const FileEngine = struct {
     // --------------------Other--------------------
 
     pub fn readSchemaFile(sub_path: []const u8, buffer: []u8) ZipponError!usize {
-        const file = try utils.printOpenFile("{s}/schema", .{sub_path}, .{});
+        const file = std.fs.cwd().openFile(sub_path, .{}) catch return ZipponError.CantOpenFile;
         defer file.close();
 
         const len = file.readAll(buffer) catch return FileEngineError.ReadError;
@@ -157,7 +157,7 @@ pub const FileEngine = struct {
 
         for (struct_array) |schema_struct| {
             data_dir.makeDir(schema_struct.name) catch |err| switch (err) {
-                error.PathAlreadyExists => {},
+                error.PathAlreadyExists => continue,
                 else => return FileEngineError.CantMakeDir,
             };
             const struct_dir = data_dir.openDir(schema_struct.name, .{}) catch return FileEngineError.CantOpenDir;
@@ -222,6 +222,8 @@ pub const FileEngine = struct {
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
+        log.debug("Max file index {d}", .{max_file_index});
+
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
         if (additional_data.member_to_find.items.len == 0) {
             additional_data.populateWithEverything(self.allocator, sstruct.members) catch return FileEngineError.MemoryError;
@@ -285,6 +287,8 @@ pub const FileEngine = struct {
             std.time.sleep(10_000_000); // Check every 10ms
         }
 
+        if (error_count.load(.acquire) > 0) log.warn("Thread ended with an error {d}", .{error_count.load(.acquire)});
+
         // Append all writer to each other
         writer.writeByte('[') catch return FileEngineError.WriteError;
         for (thread_writer_list) |list| writer.writeAll(list.items) catch return FileEngineError.WriteError;
@@ -308,7 +312,7 @@ pub const FileEngine = struct {
         defer fa.reset();
         const allocator = fa.allocator();
 
-        var path_buffer: [128]u8 = undefined;
+        var path_buffer: [16]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
             logErrorAndIncrementCount("Error creating file path", err, error_count);
             return;
@@ -319,7 +323,10 @@ pub const FileEngine = struct {
             return;
         };
 
-        while (iter.next() catch return) |row| {
+        while (iter.next() catch |err| {
+            logErrorAndIncrementCount("Error in iter next", err, error_count);
+            return;
+        }) |row| {
             if (filter) |f| if (!f.evaluate(row)) continue;
 
             if (writeEntity(writer, row, additional_data, data_types)) |_| {

@@ -1058,16 +1058,22 @@ test "Synthax error" {
     try expectParsingError("GRAB User {name < 'Hello'}", ZiQlParserError.ConditionError);
 }
 
+const DBEngine = @import("main.zig").DBEngine;
+
 fn testParsing(source: [:0]const u8) !void {
     const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
     const allocator = std.testing.allocator;
 
-    const path = try allocator.dupe(u8, TEST_DATA_DIR);
-    var file_engine = try FileEngine.init(allocator, path);
-    defer file_engine.deinit();
+    var db_engine = DBEngine.init(allocator, TEST_DATA_DIR, null);
+    defer db_engine.deinit();
 
-    var tokenizer = Tokenizer.init(source);
-    var parser = Parser.init(allocator, &tokenizer, &file_engine);
+    var toker = Tokenizer.init(source);
+    var parser = Parser.init(
+        allocator,
+        &toker,
+        &db_engine.file_engine,
+        &db_engine.schema_engine,
+    );
 
     try parser.parse();
 }
@@ -1076,12 +1082,16 @@ fn expectParsingError(source: [:0]const u8, err: ZiQlParserError) !void {
     const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
     const allocator = std.testing.allocator;
 
-    const path = try allocator.dupe(u8, TEST_DATA_DIR);
-    var file_engine = try FileEngine.init(allocator, path);
-    defer file_engine.deinit();
+    var db_engine = DBEngine.init(allocator, TEST_DATA_DIR, null);
+    defer db_engine.deinit();
 
-    var tokenizer = Tokenizer.init(source);
-    var parser = Parser.init(allocator, &tokenizer, &file_engine);
+    var toker = Tokenizer.init(source);
+    var parser = Parser.init(
+        allocator,
+        &toker,
+        &db_engine.file_engine,
+        &db_engine.schema_engine,
+    );
 
     try std.testing.expectError(err, parser.parse());
 }
@@ -1099,12 +1109,16 @@ fn testParseFilter(source: [:0]const u8) !void {
     const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
     const allocator = std.testing.allocator;
 
-    const path = try allocator.dupe(u8, TEST_DATA_DIR);
-    var file_engine = try FileEngine.init(allocator, path);
-    defer file_engine.deinit();
+    var db_engine = DBEngine.init(allocator, TEST_DATA_DIR, null);
+    defer db_engine.deinit();
 
-    var tokenizer = Tokenizer.init(source);
-    var parser = Parser.init(allocator, &tokenizer, &file_engine);
+    var toker = Tokenizer.init(source);
+    var parser = Parser.init(
+        allocator,
+        &toker,
+        &db_engine.file_engine,
+        &db_engine.schema_engine,
+    );
 
     var filter = try parser.parseFilter("User", false);
     defer filter.deinit();
