@@ -1,15 +1,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const FileEngine = @import("fileEngine.zig").FileEngine;
+const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
 const Tokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const Token = @import("tokenizers/ziql.zig").Token;
 
 const dtype = @import("dtype");
-const s2t = dtype.s2t;
 const UUID = dtype.UUID;
-const AND = dtype.AND;
-const OR = dtype.OR;
-const DataType = dtype.DataType;
 
 const Filter = @import("stuffs/filter.zig").Filter;
 const Condition = @import("stuffs/filter.zig").Condition;
@@ -72,13 +69,15 @@ pub const Parser = struct {
     allocator: Allocator,
     toker: *Tokenizer,
     file_engine: *FileEngine,
+    schema_engine: *SchemaEngine,
 
-    pub fn init(allocator: Allocator, toker: *Tokenizer, file_engine: *FileEngine) Parser {
+    pub fn init(allocator: Allocator, toker: *Tokenizer, file_engine: *FileEngine, schema_engine: *SchemaEngine) Parser {
         // Do I need to init a FileEngine at each Parser, can't I put it in the CLI parser instead ?
         return Parser{
             .allocator = allocator,
             .toker = toker,
             .file_engine = file_engine,
+            .schema_engine = schema_engine,
         };
     }
 
@@ -89,9 +88,6 @@ pub const Parser = struct {
         var struct_name: []const u8 = undefined;
         var action: enum { GRAB, ADD, UPDATE, DELETE } = undefined;
 
-        var out_buff: [BUFFER_SIZE]u8 = undefined;
-        var fa = std.heap.FixedBufferAllocator.init(&out_buff);
-        defer fa.reset();
         const out_allocator = self.allocator;
 
         var token = self.toker.next();
@@ -137,7 +133,7 @@ pub const Parser = struct {
                     token.loc.start,
                     token.loc.end,
                 );
-                if (!self.file_engine.isStructNameExists(struct_name)) return printError(
+                if (!self.schema_engine.isStructNameExists(struct_name)) return printError(
                     "Error: struct name not found in schema.",
                     ZiQlParserError.StructNotFound,
                     self.toker.buffer,
@@ -189,7 +185,7 @@ pub const Parser = struct {
                     var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.parseEntities(struct_name, filter, &buff.writer(), &additional_data);
+                    try self.file_engine.parseEntities(struct_name, filter, &additional_data, &buff.writer());
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -197,7 +193,7 @@ pub const Parser = struct {
                     var buff = std.ArrayList(u8).init(out_allocator);
                     defer buff.deinit();
 
-                    try self.file_engine.parseEntities(struct_name, null, &buff.writer(), &additional_data);
+                    try self.file_engine.parseEntities(struct_name, null, &additional_data, &buff.writer());
                     send("{s}", .{buff.items});
                     state = .end;
                 },
@@ -334,7 +330,7 @@ pub const Parser = struct {
                 const error_message_buffer_writer = error_message_buffer.writer();
                 error_message_buffer_writer.writeAll("Error missing: ") catch return ZipponError.WriteError;
 
-                if (!(self.file_engine.checkIfAllMemberInMap(struct_name, &data_map, &error_message_buffer) catch {
+                if (!(self.schema_engine.checkIfAllMemberInMap(struct_name, &data_map, &error_message_buffer) catch {
                     return ZiQlParserError.StructNotFound;
                 })) {
                     _ = error_message_buffer.pop();
@@ -496,7 +492,7 @@ pub const Parser = struct {
         }) switch (state) {
             .expect_member => switch (token.tag) {
                 .identifier => {
-                    if (!(self.file_engine.isMemberNameInStruct(struct_name, self.toker.getTokenSlice(token)) catch {
+                    if (!(self.schema_engine.isMemberNameInStruct(struct_name, self.toker.getTokenSlice(token)) catch {
                         return printError(
                             "Error: Struct not found.",
                             ZiQlParserError.StructNotFound,
@@ -513,11 +509,11 @@ pub const Parser = struct {
                             token.loc.end,
                         );
                     }
-                    condition.data_type = self.file_engine.memberName2DataType(
+                    condition.data_type = self.schema_engine.memberName2DataType(
                         struct_name,
                         self.toker.getTokenSlice(token),
                     ) catch return ZiQlParserError.MemberNotFound;
-                    condition.data_index = self.file_engine.memberName2DataIndex(
+                    condition.data_index = self.schema_engine.memberName2DataIndex(
                         struct_name,
                         self.toker.getTokenSlice(token),
                     ) catch return ZiQlParserError.MemberNotFound;
@@ -749,7 +745,7 @@ pub const Parser = struct {
 
             .expect_member => switch (token.tag) {
                 .identifier => {
-                    if (!(self.file_engine.isMemberNameInStruct(struct_name, self.toker.getTokenSlice(token)) catch {
+                    if (!(self.schema_engine.isMemberNameInStruct(struct_name, self.toker.getTokenSlice(token)) catch {
                         return printError(
                             "Struct not found.",
                             ZiQlParserError.StructNotFound,
@@ -770,7 +766,7 @@ pub const Parser = struct {
                         AdditionalDataMember.init(
                             self.allocator,
                             self.toker.getTokenSlice(token),
-                            try self.file_engine.memberName2DataIndex(struct_name, self.toker.getTokenSlice(token)),
+                            try self.schema_engine.memberName2DataIndex(struct_name, self.toker.getTokenSlice(token)),
                         ),
                     ) catch return ZipponError.MemoryError;
 
@@ -836,7 +832,7 @@ pub const Parser = struct {
             .expect_member => switch (token.tag) {
                 .identifier => {
                     member_name = self.toker.getTokenSlice(token);
-                    if (!(self.file_engine.isMemberNameInStruct(struct_name, member_name) catch {
+                    if (!(self.schema_engine.isMemberNameInStruct(struct_name, member_name) catch {
                         return ZiQlParserError.StructNotFound;
                     })) return printError(
                         "Member not found in struct.",
@@ -869,7 +865,7 @@ pub const Parser = struct {
             },
 
             .expect_new_value => {
-                const data_type = self.file_engine.memberName2DataType(struct_name, member_name) catch return ZiQlParserError.StructNotFound;
+                const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZiQlParserError.StructNotFound;
                 const start_index = token.loc.start;
 
                 const expected_tag: ?Token.Tag = switch (data_type) {

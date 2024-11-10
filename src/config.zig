@@ -40,4 +40,25 @@ pub const HELP_MESSAGE = struct {
         \\For more informations: https://github.com/MrBounty/ZipponDB
         \\
     ;
+    pub const no_engine: []const u8 =
+        \\To start using ZipponDB you need to create a new database.
+        \\This is a directory/folder that will be use to store data, logs, backup, ect.
+        \\To create one use 'db new path/to/directory'. E.g. 'db new data'.
+        \\Or use an existing one with 'db use'.
+        \\
+        \\You can also set the environment variable ZIPPONDB_PATH to the desire path.
+        \\
+        \\For more informations: https://github.com/MrBounty/ZipponDB
+        \\
+    ;
+    pub const no_schema: []const u8 =
+        \\A database was found here {s} but no schema find inside. 
+        \\To start yousing the database, you need to attach it a schema using a schema file.
+        \\By using 'schema init path/to/schema'. For more informations on how to create a schema: TODO add link
+        \\
+        \\You can also set the environment variable ZIPPONDB_SCHEMA to the path to a schema file.
+        \\
+        \\For more informations: https://github.com/MrBounty/ZipponDB
+        \\
+    ;
 };

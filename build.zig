@@ -26,14 +26,6 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // All tests
-    const tests1 = b.addTest(.{
-        .root_source_file = b.path("src/tokenizers/file.zig"),
-        .target = target,
-        .optimize = optimize,
-        .name = "File tokenizer",
-        .test_runner = b.path("test_runner.zig"),
-    });
-    const run_tests1 = b.addRunArtifact(tests1);
 
     const tests2 = b.addTest(.{
         .root_source_file = b.path("src/tokenizers/cli.zig"),
@@ -86,7 +78,6 @@ pub fn build(b: *std.Build) void {
     const run_tests6 = b.addRunArtifact(tests6);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_tests1.step);
     test_step.dependOn(&run_tests2.step);
     test_step.dependOn(&run_tests3.step);
     test_step.dependOn(&run_tests4.step);

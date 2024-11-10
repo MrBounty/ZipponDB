@@ -55,6 +55,7 @@ pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, sta
 
     var writer = buffer.writer();
 
+    writer.print("{{\"error\": \"", .{}) catch {};
     writer.print("\n", .{}) catch {}; // Maybe use write all, not sure if it affect performance in any considerable way
     writer.print("{s}\n", .{message}) catch {};
 
@@ -78,6 +79,7 @@ pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, sta
         }
         writer.print("    \n", .{}) catch {}; // Align with the message
     }
+    writer.print("\"}}", .{}) catch {};
 
     // log.debug("Parsing error: {s}", .{buffer.items});
 

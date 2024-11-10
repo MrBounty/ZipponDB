@@ -4,6 +4,7 @@ const send = utils.send;
 const Allocator = std.mem.Allocator;
 
 const FileEngine = @import("fileEngine.zig").FileEngine;
+const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
 
 const cliTokenizer = @import("tokenizers/cli.zig").Tokenizer;
 const cliToken = @import("tokenizers/cli.zig").Token;
@@ -11,6 +12,8 @@ const cliToken = @import("tokenizers/cli.zig").Token;
 const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("tokenizers/ziql.zig").Token;
 const ziqlParser = @import("ziqlParser.zig").Parser;
+
+const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
 const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
 const HELP_MESSAGE = @import("config.zig").HELP_MESSAGE;
@@ -21,7 +24,6 @@ const State = enum {
     expect_schema_command,
     expect_path_to_schema,
     expect_db_command,
-    expect_path_to_new_db,
     expect_path_to_db,
     quit,
     end,
@@ -34,6 +36,116 @@ var log_path: []const u8 = undefined;
 const log = std.log.scoped(.cli);
 pub const std_options = .{
     .logFn = myLog,
+};
+
+const DBEngineState = enum { MissingFileEngine, MissingSchemaEngine, Ok, Init };
+
+const DBEngine = struct {
+    allocator: Allocator,
+    state: DBEngineState = .Init,
+    file_engine: FileEngine = undefined,
+    schema_engine: SchemaEngine = undefined,
+
+    fn init(allocator: std.mem.Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
+        var self = DBEngine{ .allocator = allocator };
+        const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_PATH");
+
+        if (potential_main_path_or_environment_variable) |main_path| {
+            log_path = std.fmt.bufPrint(&log_buff, "{s}/LOG/log", .{main_path}) catch "";
+            log.info("Found ZIPPONDB_PATH: {s}.", .{main_path});
+            self.file_engine = FileEngine.init(self.allocator, main_path) catch {
+                log.err("Error when init FileEngine", .{});
+                self.state = .MissingFileEngine;
+                return self;
+            };
+            self.file_engine.createMainDirectories() catch {
+                log.err("Error when creating main directories", .{});
+                self.state = .MissingFileEngine;
+                return self;
+            };
+
+            self.state = .MissingSchemaEngine;
+        } else {
+            log.info("No ZIPPONDB_PATH found.", .{});
+            self.state = .MissingFileEngine;
+            return self;
+        }
+
+        if (self.file_engine.isSchemaFileInDir() and potential_schema_path == null) {
+            const schema_path = std.fmt.allocPrint(allocator, "{s}/schema", .{self.file_engine.path_to_ZipponDB_dir}) catch {
+                self.state = .MissingSchemaEngine;
+                return self;
+            };
+            defer allocator.free(schema_path);
+
+            log.info("Schema founded in the database directory.", .{});
+            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch {
+                log.err("Error when init SchemaEngine", .{});
+                self.state = .MissingSchemaEngine;
+                return self;
+            };
+            self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch {
+                log.err("Error when creating struct directories", .{});
+                self.schema_engine.deinit();
+                self.state = .MissingSchemaEngine;
+                return self;
+            };
+
+            self.file_engine.schema_engine = &self.schema_engine;
+            self.state = .Ok;
+            return self;
+        }
+
+        log.info("Database don't have any schema yet, trying to add one.", .{});
+        const potential_schema_path_or_environment_variable = potential_schema_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_SCHEMA");
+        if (potential_schema_path_or_environment_variable) |schema_path| {
+            log.info("Found schema path {s}.", .{schema_path});
+            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch {
+                log.err("Error when init SchemaEngine", .{});
+                self.state = .MissingSchemaEngine;
+                return self;
+            };
+            self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch {
+                log.err("Error when creating struct directories", .{});
+                self.schema_engine.deinit();
+                self.state = .MissingSchemaEngine;
+                return self;
+            };
+            self.file_engine.schema_engine = &self.schema_engine;
+            self.state = .Ok;
+        } else {
+            log.info(HELP_MESSAGE.no_schema, .{self.file_engine.path_to_ZipponDB_dir});
+        }
+        return self;
+    }
+
+    fn deinit(self: *DBEngine) void {
+        if (self.state == .Ok or self.state == .MissingSchemaEngine) self.file_engine.deinit(); // Pretty sure I can use like state > 2 because enum of just number
+        if (self.state == .Ok) self.schema_engine.deinit();
+    }
+
+    pub fn runQuery(self: *DBEngine, null_term_query_str: [:0]const u8) void {
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){}; // Maybe use an arena here
+        const allocator = gpa.allocator();
+
+        var toker = ziqlTokenizer.init(null_term_query_str);
+
+        var parser = ziqlParser.init(
+            allocator,
+            &toker,
+            &self.file_engine,
+            &self.schema_engine,
+        );
+
+        parser.parse() catch |err| {
+            log.err("Error parsing: {any}", .{err});
+        };
+
+        switch (gpa.deinit()) {
+            .ok => {},
+            .leak => std.log.debug("We fucked it up bro...\n", .{}),
+        }
+    }
 };
 
 pub fn myLog(
@@ -80,8 +192,8 @@ pub fn main() !void {
         .leak => log.debug("We fucked it up bro...\n", .{}),
     };
 
-    var file_engine = try initFileEngine.init(allocator, null);
-    defer file_engine.deinit();
+    var db_engine = DBEngine.init(allocator, null, null);
+    defer db_engine.deinit();
 
     const line_buf = try allocator.alloc(u8, BUFFER_SIZE);
     defer allocator.free(line_buf);
@@ -104,8 +216,13 @@ pub fn main() !void {
             while ((state != .end) and (state != .quit)) : (token = toker.next()) switch (state) {
                 .expect_main_command => switch (token.tag) {
                     .keyword_run => {
-                        if (!file_engine.usable()) {
-                            send("Error: No database selected. Please use db new or db use.", .{});
+                        if (db_engine.state == .MissingFileEngine) {
+                            send("{s}", .{HELP_MESSAGE.no_engine});
+                            state = .end;
+                            continue;
+                        }
+                        if (db_engine.state == .MissingSchemaEngine) {
+                            send("{s}", .{HELP_MESSAGE.no_schema});
                             state = .end;
                             continue;
                         }
@@ -113,8 +230,8 @@ pub fn main() !void {
                     },
                     .keyword_db => state = .expect_db_command,
                     .keyword_schema => {
-                        if (!file_engine.usable()) {
-                            send("Error: No database selected. Please use db new or db use.", .{});
+                        if (db_engine.state == .MissingFileEngine) {
+                            send("{s}", .{HELP_MESSAGE.no_engine});
                             state = .end;
                             continue;
                         }
@@ -133,11 +250,15 @@ pub fn main() !void {
                 },
 
                 .expect_db_command => switch (token.tag) {
-                    .keyword_new => state = .expect_path_to_new_db,
-                    .keyword_use => state = .expect_path_to_db,
+                    .keyword_new, .keyword_use => state = .expect_path_to_db, //TODO: When new, create the dir. If use, dont create the dir
                     .keyword_metrics => {
-                        if (!file_engine.usable()) {
-                            send("Error: No database selected. Please use db new or db use.", .{});
+                        if (db_engine.state == .MissingFileEngine) {
+                            send("{s}", .{HELP_MESSAGE.no_engine});
+                            state = .end;
+                            continue;
+                        }
+                        if (db_engine.state == .MissingSchemaEngine) {
+                            send("{s}", .{HELP_MESSAGE.no_schema});
                             state = .end;
                             continue;
                         }
@@ -145,7 +266,7 @@ pub fn main() !void {
                         var buffer = std.ArrayList(u8).init(allocator);
                         defer buffer.deinit();
 
-                        try file_engine.writeDbMetrics(&buffer);
+                        try db_engine.file_engine.writeDbMetrics(&buffer);
                         send("{s}", .{buffer.items});
                         state = .end;
                     },
@@ -161,9 +282,8 @@ pub fn main() !void {
 
                 .expect_path_to_db => switch (token.tag) {
                     .identifier => {
-                        file_engine.deinit();
-                        file_engine = try initFileEngine.init(allocator, try allocator.dupe(u8, toker.getTokenSlice(token)));
-                        send("Successfully started using the database!", .{});
+                        db_engine.deinit();
+                        db_engine = DBEngine.init(allocator, try allocator.dupe(u8, toker.getTokenSlice(token)), null);
                         state = .end;
                     },
                     else => {
@@ -172,29 +292,11 @@ pub fn main() !void {
                     },
                 },
 
-                .expect_path_to_new_db => switch (token.tag) {
-                    .identifier => {
-                        file_engine.deinit();
-                        file_engine = try FileEngine.init(allocator, try allocator.dupe(u8, toker.getTokenSlice(token)));
-                        file_engine.checkAndCreateDirectories() catch |err| {
-                            send("Error: Coulnt create database directories: {any}", .{err});
-                            state = .end;
-                            continue;
-                        };
-                        send("Successfully initialized the database!", .{});
-                        state = .end;
-                    },
-                    else => {
-                        send("Error Expect a path to a folder.", .{});
-                        state = .end;
-                    },
-                },
-
                 .expect_query => switch (token.tag) {
                     .string_literal => {
                         const null_term_query_str = try allocator.dupeZ(u8, toker.buffer[token.loc.start + 1 .. token.loc.end - 1]);
                         defer allocator.free(null_term_query_str);
-                        runQuery(null_term_query_str, &file_engine);
+                        db_engine.runQuery(null_term_query_str);
                         state = .end;
                     },
                     .keyword_help => {
@@ -209,39 +311,30 @@ pub fn main() !void {
 
                 .expect_schema_command => switch (token.tag) {
                     .keyword_describe => {
-                        if (std.mem.eql(u8, file_engine.path_to_ZipponDB_dir, "")) send("Error: No database selected. Please use db bew or db use.", .{});
-
-                        if (file_engine.null_terminated_schema_buff.len == 0) {
-                            send("Need to init the schema first. Please use the schema init path/to/schema command to start.", .{});
-                        } else {
-                            send("Schema:\n {s}", .{file_engine.null_terminated_schema_buff});
-                        }
+                        if (db_engine.state == .MissingFileEngine) send("Error: No database selected. Please use 'db new' or 'db use'.", .{});
+                        if (db_engine.state == .MissingSchemaEngine) send("Error: No schema in database. Please use 'schema init'.", .{});
+                        send("Schema:\n {s}", .{db_engine.schema_engine.null_terminated_schema_buff});
                         state = .end;
                     },
-                    .keyword_init => state = .expect_path_to_schema,
+                    .keyword_init => {
+                        if (db_engine.state == .MissingFileEngine) send("Error: No database selected. Please use 'db new' or 'db use'.", .{});
+                        state = .expect_path_to_schema;
+                    },
                     .keyword_help => {
                         send("{s}", .{HELP_MESSAGE.schema});
                         state = .end;
                     },
                     else => {
-                        send("Error: schema commands available: describe, init & help", .{});
+                        send("{s}", .{HELP_MESSAGE.schema});
                         state = .end;
                     },
                 },
 
                 .expect_path_to_schema => switch (token.tag) {
                     .identifier => {
-                        file_engine.initDataFolder(toker.getTokenSlice(token)) catch |err| switch (err) {
-                            error.SchemaFileNotFound => {
-                                send("Coulnt find the schema file at {s}", .{toker.getTokenSlice(token)});
-                                state = .end;
-                            },
-                            else => {
-                                send("Error initializing the schema", .{});
-                                state = .end;
-                            },
-                        };
-                        send("Successfully initialized the database schema!", .{});
+                        const main_path = try allocator.dupe(u8, db_engine.file_engine.path_to_ZipponDB_dir);
+                        db_engine.deinit();
+                        db_engine = DBEngine.init(allocator, main_path, toker.getTokenSlice(token));
                         state = .end;
                     },
                     else => {
@@ -262,84 +355,3 @@ pub fn main() !void {
         }
     }
 }
-
-pub fn runQuery(null_term_query_str: [:0]const u8, file_engine: *FileEngine) void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-
-    var toker = ziqlTokenizer.init(null_term_query_str);
-
-    var parser = ziqlParser.init(allocator, &toker, file_engine);
-
-    parser.parse() catch |err| {
-        log.err("Error parsing: {any}", .{err});
-    };
-
-    switch (gpa.deinit()) {
-        .ok => {},
-        .leak => std.log.debug("We fucked it up bro...\n", .{}),
-    }
-}
-
-/// Simple struct to manage the init of the FileEngine, mostly managing if env path is here and init the directories, ect
-const initFileEngine = struct {
-    fn init(allocator: std.mem.Allocator, potential_path: ?[]const u8) !FileEngine {
-        if (potential_path) |p| {
-            log_path = try std.fmt.bufPrint(&log_buff, "{s}/LOG/log", .{p});
-            log.info("Start using database path: {s}.", .{p});
-            return try initWithPath(allocator, p);
-        }
-
-        const path = utils.getEnvVariable(allocator, "ZIPPONDB_PATH");
-
-        if (path) |p| {
-            log_path = try std.fmt.bufPrint(&log_buff, "{s}/LOG/log", .{p});
-            log.info("Found environment variable ZIPPONDB_PATH: {s}.", .{p});
-            return try initWithPath(allocator, p);
-        } else {
-            log.info("No environment variable ZIPPONDB_PATH found.", .{});
-            return try FileEngine.init(allocator, "");
-        }
-    }
-
-    fn initWithPath(allocator: std.mem.Allocator, path: []const u8) !FileEngine {
-        try ensureDirectoryExists(path);
-        var file_engine = try FileEngine.init(allocator, path);
-        try file_engine.checkAndCreateDirectories();
-
-        if (!file_engine.isSchemaFileInDir()) {
-            try initSchema(allocator, &file_engine);
-        } else {
-            log.info("Database has a schema.", .{});
-        }
-
-        return file_engine;
-    }
-
-    fn ensureDirectoryExists(path: []const u8) !void {
-        _ = std.fs.cwd().openDir(path, .{}) catch |err| {
-            if (err == error.FileNotFound) {
-                log.info("{s} directory not found, creating it", .{path});
-                try std.fs.cwd().makeDir(path);
-                return;
-            } else {
-                return err;
-            }
-        };
-    }
-
-    fn initSchema(allocator: std.mem.Allocator, file_engine: *FileEngine) !void {
-        log.debug("Database doesn't have any schema. Checking if ZIPPONDB_SCHEMA env variable exists.", .{});
-        const schema = utils.getEnvVariable(allocator, "ZIPPONDB_SCHEMA");
-        defer if (schema) |s| allocator.free(s);
-
-        if (schema) |s| {
-            log.debug("Found environment variable ZIPPONDB_SCHEMA: {s}.", .{s});
-            file_engine.initDataFolder(s) catch {
-                log.warn("Couldn't use {s} as schema.\n", .{s});
-            };
-        } else {
-            log.debug("No environment variable ZIPPONDB_SCHEMA found.", .{});
-        }
-    }
-};
