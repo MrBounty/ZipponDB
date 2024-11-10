@@ -10,13 +10,13 @@ All `Tokenizer` work similary and are based on the [zig tokenizer.](https://gith
 
 The `Tokenizer` role is to take a buffer string and convert it into a list of `Token`. A token have an enum `Tag` that represent what the token is, for example `=` is the tag `equal`, and a `Loc` with a `start` and `end` usize that represent the emplacement in the buffer.
 
-The `Tokenizer` itself have 2 methods: `next` that return the next `Token`. And `TODO` that return the slice of the buffer that represent the `Token`, using it's `Loc`.
+The `Tokenizer` itself have 2 methods: `next` that return the next `Token`. And `getTokenSlice` that return the slice of the buffer that represent the `Token`, using it's `Loc`.
 
 This is how to use it:
 ```zig
 const toker = Tokenizer.init(buff);
 const token = toker.next();
-std.debug.print("{s}", .{toker.xxxx(token)});
+std.debug.print("{s}", .{toker.getTokenSlice(token)});
 ```
 
 I usually use a `Tokenizer` in a loop until the `Tag` is `end`. And in each loop I take the next token and will use a switch on the `Tag` to do stuffs.
@@ -26,7 +26,7 @@ Here a simple example:
 const toker = Tokenizer.init(buff);
 var token = toker.next();
 while (token.tag != .end) : (token = toker.next()) switch (token.tag) {
-  .equal => std.debug.print("{s}", .{toker.xxxx(token)}),
+  .equal => std.debug.print("{s}", .{toker.getTokenSlice(token)}),
   else => {},
 }
 ```

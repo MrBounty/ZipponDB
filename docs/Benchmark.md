@@ -2,7 +2,7 @@
 
 # Intro
 
-In this example I create a random dataset of 50 000 000 Users using this shema:
+In this example I create a random dataset of Users using this schema:
 ```lua
 User (
   name: str,
@@ -40,7 +40,7 @@ This take 6.24GB space on disk, seperated into xx files of xx MB
 | 12 | 5.1 | 85 |
 | 16 | 4.3 | 100 |
 
-![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/charts/time_usage_per_thread_50_000_000.png)
+![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/python/charts/time_usage_per_thread_50_000_000.png)
 
 ## 1 000 000
 This take 127MB space on disk, sperated into 24 files of 5.2MB
@@ -56,7 +56,7 @@ This take 127MB space on disk, sperated into 24 files of 5.2MB
 | 12 | 136 | 
 | 16 | 116 | 
 
-![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/charts/time_usage_per_thread_1_000_000.png)
+![alt text](https://github.com/MrBounty/ZipponDB/blob/v0.1.4/python/charts/time_usage_per_thread_1_000_000.png)
 
 ## TODO
 
