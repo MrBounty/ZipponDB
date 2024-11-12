@@ -622,7 +622,7 @@ pub const FileEngine = struct {
         }
 
         // Wait for all threads to complete
-        while (sync_context.isComplete()) {
+        while (!sync_context.isComplete()) {
             std.time.sleep(10_000_000); // Check every 10ms
         }
 
@@ -701,22 +701,21 @@ pub const FileEngine = struct {
                     return;
                 };
 
-                // FIXME: This get an error and I have no idea why
-                //writer.writeByte('{') catch |err| {
-                //    sync_context.logError("Error initializing DataWriter", err);
-                //    zid.deleteFile(new_path, dir) catch {};
-                //    return;
-                //};
-                //writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
-                //    sync_context.logError("Error initializing DataWriter", err);
-                //    zid.deleteFile(new_path, dir) catch {};
-                //    return;
-                //};
-                //writer.writeAll("},") catch |err| {
-                //    sync_context.logError("Error initializing DataWriter", err);
-                //    zid.deleteFile(new_path, dir) catch {};
-                //    return;
-                //};
+                writer.writeByte('{') catch |err| {
+                    sync_context.logError("Error initializing DataWriter", err);
+                    zid.deleteFile(new_path, dir) catch {};
+                    return;
+                };
+                writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
+                    sync_context.logError("Error initializing DataWriter", err);
+                    zid.deleteFile(new_path, dir) catch {};
+                    return;
+                };
+                writer.writeAll("},") catch |err| {
+                    sync_context.logError("Error initializing DataWriter", err);
+                    zid.deleteFile(new_path, dir) catch {};
+                    return;
+                };
                 if (sync_context.incrementAndCheckStructLimit()) break;
             } else {
                 new_writer.write(row) catch |err| {
