@@ -32,6 +32,7 @@ pub const Token = struct {
         keyword_delete,
         keyword_add,
         keyword_in,
+        keyword_not_in,
         keyword_and,
         keyword_or,
         keyword_to,
@@ -272,7 +273,16 @@ pub const Tokenizer = struct {
                         self.index += 1;
                         break;
                     },
-                    //TODO Add the !IN
+                    'I' => {
+                        if (self.buffer.len > self.index + 1 and self.buffer[self.index + 1] == 'N') {
+                            result.tag = .keyword_not_in;
+                            self.index += 2; // Skip 'I' and 'N'
+                            break;
+                        } else {
+                            result.tag = .bang;
+                            break;
+                        }
+                    },
                     else => {
                         result.tag = .bang;
                         break;
@@ -391,6 +401,12 @@ test "basic date" {
     try testTokenize("1998/01/21", &.{.date_literal});
     try testTokenize("17:55:31.0000", &.{.time_literal});
     try testTokenize("1998/01/21-17:55:31.0000", &.{.datetime_literal});
+}
+
+test "not in keyword" {
+    try testTokenize("!IN", &.{.keyword_not_in});
+    try testTokenize("!IN(", &.{ .keyword_not_in, .l_paren });
+    try testTokenize("!Ind", &.{ .bang, .identifier });
 }
 
 fn testTokenize(source: [:0]const u8, expected_token_tags: []const Token.Tag) !void {
