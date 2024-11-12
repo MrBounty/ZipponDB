@@ -243,10 +243,6 @@ pub const Parser = struct {
                     state = .end;
                 },
                 .keyword_to => {
-                    var array = std.ArrayList(UUID).init(self.allocator);
-                    defer array.deinit();
-                    try self.file_engine.getAllUUIDList(struct_name, &array);
-
                     token = self.toker.next();
                     if (token.tag != .l_paren) return printError(
                         "Error: Expected (",
@@ -362,7 +358,6 @@ pub const Parser = struct {
 
     /// Take an array of UUID and populate it with what match what is between {}
     /// Main is to know if between {} or (), main is true if between {}, otherwise between () inside {}
-    /// TODO: Optimize this so it can use multiple condition at the same time instead of parsing the all file for each condition
     fn parseFilter(self: Parser, struct_name: []const u8, is_sub: bool) ZipponError!Filter {
         var filter = try Filter.init(self.allocator);
         errdefer filter.deinit();
@@ -536,6 +531,8 @@ pub const Parser = struct {
                     .angle_bracket_left_equal => condition.operation = .inferior_or_equal, // <=
                     .angle_bracket_right_equal => condition.operation = .superior_or_equal, // >=
                     .bang_equal => condition.operation = .different, // !=
+                    .keyword_in => condition.operation = .in,
+                    .keyword_not_in => condition.operation = .not_in,
                     else => return printError(
                         "Error: Expected condition. Including < > <= >= = !=",
                         ZiQlParserError.SynthaxError,
@@ -553,19 +550,17 @@ pub const Parser = struct {
                     .int => .int_literal,
                     .float => .float_literal,
                     .str => .string_literal,
-                    .link => .uuid_literal,
                     .self => .uuid_literal,
                     .date => .date_literal,
                     .time => .time_literal,
                     .datetime => .datetime_literal,
                     .int_array => .int_literal,
                     .float_array => .float_literal,
-                    .link_array => .uuid_literal,
                     .str_array => .string_literal,
                     .date_array => .date_literal,
                     .time_array => .time_literal,
                     .datetime_array => .datetime_literal,
-                    .bool, .bool_array => null, // handle bool separately
+                    .bool, .bool_array, .link, .link_array => null, // handle separately
                 };
 
                 if (expected_tag) |tag| {
@@ -607,6 +602,9 @@ pub const Parser = struct {
                                 );
                             }
                         }
+                    } else if (condition.data_type == .link) {
+                        // If token is ", this mean a single UUID
+                        // If token is { or [, this mean a new filter
                     }
                 }
 
@@ -1015,7 +1013,7 @@ test "GRAB filter with string" {
 
 test "GRAB with additional data" {
     try testParsing("GRAB User [1] {age < 18}");
-    try testParsing("GRAB User [name] {age < 18}");
+    try testParsing("GRAB User [id, name] {age < 18}");
     try testParsing("GRAB User [100; name] {age < 18}");
 }
 
