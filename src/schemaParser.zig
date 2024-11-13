@@ -80,7 +80,8 @@ pub const Parser = struct {
                     .float => .Float,
                     .str => .Str,
                     .bool => .Bool,
-                    .link, .self => .UUID,
+                    .link => .UUID,
+                    .self => .UUID,
                     .date => .Unix,
                     .time => .Unix,
                     .datetime => .Unix,
@@ -88,10 +89,10 @@ pub const Parser = struct {
                     .float_array => .FloatArray,
                     .str_array => .StrArray,
                     .bool_array => .BoolArray,
-                    .link_array => .UUIDArray,
                     .date_array => .UnixArray,
                     .time_array => .UnixArray,
                     .datetime_array => .UnixArray,
+                    .link_array => .UUIDArray,
                 }) catch return SchemaParserError.MemoryError;
             }
             return schema.toOwnedSlice() catch return SchemaParserError.MemoryError;

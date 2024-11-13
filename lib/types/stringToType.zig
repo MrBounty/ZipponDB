@@ -197,7 +197,7 @@ test "Value parsing: Int" {
 
     // Int array
     const array_str = "[1 14 44 42 hello]";
-    const array = parseArrayInt(allocator, array_str);
+    const array = try parseArrayInt(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [5]i32 = .{ 1, 14, 44, 42, 0 };
     try std.testing.expect(std.mem.eql(i32, array, &expected_array));
@@ -214,7 +214,7 @@ test "Value parsing: Float" {
 
     // Float array
     const array_str = "[1.5 14.3 44.9999 42 hello]";
-    const array = parseArrayFloat(allocator, array_str);
+    const array = try parseArrayFloat(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [5]f64 = .{ 1.5, 14.3, 44.9999, 42, 0 };
     try std.testing.expect(std.mem.eql(f64, array, &expected_array));
@@ -227,10 +227,11 @@ test "Value parsing: String" {
 
     // string array
     const array_str = "['Hello' 'How are you doing ?' '']";
-    const array = parseArrayStr(allocator, array_str);
+    const array = try parseArrayStr(allocator, array_str);
     defer allocator.free(array);
-    const expected_array: [3][]const u8 = .{ "'Hello'", "'How are you doing ?'", "''" };
+    const expected_array: [3][]const u8 = .{ "Hello", "How are you doing ?", "" };
     for (array, expected_array) |parsed, expected| {
+        std.debug.print("{s} : {s}\n", .{ parsed, expected });
         try std.testing.expect(std.mem.eql(u8, parsed, expected));
     }
 }
@@ -246,7 +247,7 @@ test "Value parsing: Bool array" {
 
     // Bool array
     const array_str = "[1 0 0 1 1]";
-    const array = parseArrayBool(allocator, array_str);
+    const array = try parseArrayBool(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [5]bool = .{ true, false, false, true, true };
     try std.testing.expect(std.mem.eql(bool, array, &expected_array));
@@ -267,7 +268,7 @@ test "Value parsing: Date" {
 
     // Date array
     const array_str = "[1920/01/01 1998/01/21 2024/12/31]";
-    const array = parseArrayDate(allocator, array_str);
+    const array = try parseArrayDate(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [3]DateTime = .{
         DateTime.init(1920, 1, 1, 0, 0, 0, 0),
@@ -295,7 +296,7 @@ test "Value parsing: Time" {
 
     // Time array
     const array_str = "[12:45:00.0000 18:12:53.7491 02:30:10 12:30]";
-    const array = parseArrayTime(allocator, array_str);
+    const array = try parseArrayTime(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [4]DateTime = .{
         DateTime.init(0, 0, 0, 12, 45, 0, 0),
@@ -324,7 +325,7 @@ test "Value parsing: Datetime" {
 
     // Time array
     const array_str = "[1920/01/01-12:45:00.0000 1920/01/01-18:12:53.7491 1920/01/01-02:30:10 1920/01/01-12:30]";
-    const array = parseArrayDatetime(allocator, array_str);
+    const array = try parseArrayDatetime(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [4]DateTime = .{
         DateTime.init(1920, 1, 1, 12, 45, 0, 0),

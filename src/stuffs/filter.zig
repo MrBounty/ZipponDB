@@ -24,6 +24,7 @@ const ComparisonOperator = enum {
     inferior,
     inferior_or_equal,
     in,
+    not_in,
 
     pub fn str(self: ComparisonOperator) []const u8 {
         return switch (self) {
@@ -34,6 +35,7 @@ const ComparisonOperator = enum {
             .inferior => "<",
             .inferior_or_equal => "<=",
             .in => "IN",
+            .not_in => "!IN",
         };
     }
 };
@@ -55,14 +57,14 @@ pub const ConditionValue = union(enum) {
     float: f64,
     str: []const u8,
     bool_: bool,
-    link: UUID,
+    self: UUID,
     unix: u64,
     int_array: std.ArrayList(i32),
     str_array: std.ArrayList([]const u8),
     float_array: std.ArrayList(f64),
     bool_array: std.ArrayList(bool),
-    link_array: std.ArrayList(UUID),
     unix_array: std.ArrayList(u64),
+    link: *std.AutoHashMap([16]u8, void),
 
     pub fn deinit(self: ConditionValue) void {
         switch (self) {
@@ -70,7 +72,6 @@ pub const ConditionValue = union(enum) {
             .str_array => self.str_array.deinit(),
             .float_array => self.float_array.deinit(),
             .bool_array => self.bool_array.deinit(),
-            .link_array => self.link_array.deinit(),
             .unix_array => self.unix_array.deinit(),
             else => {},
         }
@@ -86,6 +87,10 @@ pub const ConditionValue = union(enum) {
 
     pub fn initStr(value: []const u8) ConditionValue {
         return ConditionValue{ .str = value };
+    }
+
+    pub fn initSelf(value: UUID) ConditionValue {
+        return ConditionValue{ .self = value };
     }
 
     pub fn initBool(value: []const u8) ConditionValue {
@@ -131,6 +136,10 @@ pub const ConditionValue = union(enum) {
 
     pub fn initArrayDateTime(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
         return ConditionValue{ .unix_array = s2t.parseArrayDatetimeUnix(allocator, value) };
+    }
+
+    pub fn initLink(value: *std.AutoHashMap([16]u8, void)) ConditionValue {
+        return ConditionValue{ .link = value };
     }
 };
 
@@ -359,4 +368,30 @@ test "Evaluate" {
     filter.debugPrint();
 
     _ = filter.evaluate(&data);
+}
+
+test "ConditionValue: link" {
+    const allocator = std.testing.allocator;
+
+    // Create a hash map for storing UUIDs
+    var hash_map = std.AutoHashMap([16]u8, void).init(allocator);
+    defer hash_map.deinit();
+
+    // Create a UUID to add to the hash map
+    const uuid1 = try UUID.parse("123e4567-e89b-12d3-a456-426614174000");
+    const uuid2 = try UUID.parse("223e4567-e89b-12d3-a456-426614174000");
+
+    // Add UUIDs to the hash map
+    try hash_map.put(uuid1.bytes, {});
+    try hash_map.put(uuid2.bytes, {});
+
+    // Create a ConditionValue with the link
+    var value = ConditionValue.initLink(&hash_map);
+
+    // Check that the hash map contains the correct number of UUIDs
+    try std.testing.expectEqual(@as(usize, 2), value.link.count());
+
+    // Check that specific UUIDs are in the hash map
+    try std.testing.expect(value.link.contains(uuid1.bytes));
+    try std.testing.expect(value.link.contains(uuid2.bytes));
 }

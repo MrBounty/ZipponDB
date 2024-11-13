@@ -285,7 +285,11 @@ pub fn main() !void {
                 .expect_path_to_db => switch (token.tag) {
                     .identifier => {
                         db_engine.deinit();
-                        db_engine = DBEngine.init(allocator, try allocator.dupe(u8, toker.getTokenSlice(token)), null);
+                        db_engine = DBEngine.init(
+                            allocator,
+                            try allocator.dupe(u8, toker.getTokenSlice(token)),
+                            null,
+                        );
                         state = .end;
                     },
                     else => {
@@ -337,6 +341,7 @@ pub fn main() !void {
                         const main_path = try allocator.dupe(u8, db_engine.file_engine.path_to_ZipponDB_dir);
                         db_engine.deinit();
                         db_engine = DBEngine.init(allocator, main_path, toker.getTokenSlice(token));
+                        try db_engine.file_engine.writeSchemaFile(db_engine.schema_engine.null_terminated_schema_buff);
                         state = .end;
                     },
                     else => {

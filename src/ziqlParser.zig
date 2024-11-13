@@ -563,6 +563,9 @@ pub const Parser = struct {
                     .bool, .bool_array, .link, .link_array => null, // handle separately
                 };
 
+                var filter: ?Filter = null;
+                var additional_data = AdditionalData.init(self.allocator);
+
                 if (expected_tag) |tag| {
                     if (condition.data_type.is_array()) {
                         token = try self.checkTokensInArray(tag);
@@ -603,21 +606,51 @@ pub const Parser = struct {
                             }
                         }
                     } else if (condition.data_type == .link) {
-                        // If token is ", this mean a single UUID
-                        // If token is { or [, this mean a new filter
+                        switch (token.tag) {
+                            .l_bracket => {
+                                try self.parseAdditionalData(
+                                    &additional_data,
+                                    struct_name,
+                                );
+                            },
+                            else => {},
+                        }
+
+                        switch (token.tag) {
+                            .l_brace => {
+                                filter = try self.parseFilter(struct_name, false);
+                            },
+                            else => return printError(
+                                "Error: Expected new filter",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            ),
+                        }
                     }
                 }
 
-                condition.value = switch (condition.data_type) {
-                    .int => ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
-                    .float => ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
-                    .str => ConditionValue.initStr(self.toker.buffer[start_index + 1 .. token.loc.end - 1]),
-                    .date => ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]),
-                    .time => ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
-                    .datetime => ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
-                    .bool => ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
+                switch (condition.data_type) {
+                    .int => condition.value = ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
+                    .float => condition.value = ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
+                    .str => condition.value = ConditionValue.initStr(self.toker.buffer[start_index + 1 .. token.loc.end - 1]),
+                    .date => condition.value = ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]),
+                    .time => condition.value = ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
+                    .datetime => condition.value = ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
+                    .bool => condition.value = ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
+                    .link => {
+                        var map = std.AutoHashMap([16]u8, void).init(self.allocator);
+                        try self.file_engine.populateUUIDMap(
+                            struct_name,
+                            filter,
+                            &map,
+                            &additional_data,
+                        );
+                        condition.value = ConditionValue.initLink(&map);
+                    },
                     else => unreachable, // TODO: Make for link and array =/
-                };
+                }
                 state = .end;
             },
 
@@ -685,6 +718,17 @@ pub const Parser = struct {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, date, time, datetime can be compare with <.",
+                    ZiQlParserError.ConditionError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
+            },
+
+            .in => switch (condition.data_type) {
+                .link => {},
+                else => return printError(
+                    "Error: Only link can be compare with in.",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -870,19 +914,18 @@ pub const Parser = struct {
                     .int => .int_literal,
                     .float => .float_literal,
                     .str => .string_literal,
-                    .link, .self => .uuid_literal,
+                    .self => .uuid_literal,
                     .date => .date_literal,
                     .time => .time_literal,
                     .datetime => .datetime_literal,
                     .int_array => .int_literal,
                     .float_array => .float_literal,
-                    .link_array => .uuid_literal,
                     .str_array => .string_literal,
                     .date_array => .date_literal,
                     .time_array => .time_literal,
                     .datetime_array => .datetime_literal,
                     // Handle bool and arrays separately
-                    .bool, .bool_array => null,
+                    .bool, .bool_array, .link, .link_array => null,
                 };
 
                 if (expected_tag) |tag| {
@@ -957,6 +1000,26 @@ pub const Parser = struct {
                             }
                             member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
                         },
+                        .link => {
+                            switch (token.tag) {
+                                .keyword_none => {
+                                    member_map.put(member_name, "00000000-0000-0000-0000-000000000000") catch return ZipponError.MemoryError;
+                                },
+                                .uuid_literal => {
+                                    // TODO: Check if the uuid is in the struct, otherwise return and error
+                                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
+                                },
+                                .l_brace => {}, // TODO: Get the filter and return the first value found
+                                else => return printError(
+                                    "Error: Expected uuid or none",
+                                    ZiQlParserError.SynthaxError,
+                                    self.toker.buffer,
+                                    token.loc.start,
+                                    token.loc.end,
+                                ),
+                            }
+                        },
+                        .link_array => {},
                         else => unreachable,
                     }
                 }
@@ -1001,9 +1064,12 @@ pub const Parser = struct {
 };
 
 test "ADD" {
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], friends=[], bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+
+    // This need to take the first User named Bob as it is a unique link
+    //try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name = 'Bob'}, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
 }
 
 test "GRAB filter with string" {
@@ -1041,6 +1107,10 @@ test "Specific query" {
     try testParsing("GRAB User {}");
     try testParsing("GRAB User [1]");
 }
+
+//test "Relationship" {
+//    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
+//}
 
 test "DELETE" {
     try testParsing("DELETE User {name='Bob'}");

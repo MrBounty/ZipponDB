@@ -284,7 +284,7 @@ pub const FileEngine = struct {
 
         // Combine results
         for (thread_writer_list) |list| {
-            for (list.items) |uuid| map.put(uuid, void) catch return ZipponError.MemoryError;
+            for (list.items) |uuid| _ = map.getOrPut(uuid) catch return ZipponError.MemoryError;
         }
     }
 
@@ -315,7 +315,10 @@ pub const FileEngine = struct {
 
         while (iter.next() catch return) |row| {
             if (filter == null or filter.?.evaluate(row)) {
-                list.*.append(row[0].UUID);
+                list.*.append(row[0].UUID) catch |err| {
+                    sync_context.logError("Error initializing DataIterator", err);
+                    return;
+                };
 
                 if (sync_context.incrementAndCheckStructLimit()) break;
             }
@@ -681,8 +684,7 @@ pub const FileEngine = struct {
         defer new_writer.deinit();
 
         while (iter.next() catch |err| {
-            sync_context.logError("Error initializing DataWriter", err);
-            zid.deleteFile(new_path, dir) catch {};
+            sync_context.logError("Parsing files", err);
             return;
         }) |row| {
             if (filter == null or filter.?.evaluate(row)) {
@@ -701,21 +703,12 @@ pub const FileEngine = struct {
                     return;
                 };
 
-                writer.writeByte('{') catch |err| {
+                writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
                     sync_context.logError("Error initializing DataWriter", err);
                     zid.deleteFile(new_path, dir) catch {};
                     return;
                 };
-                writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
-                    sync_context.logError("Error initializing DataWriter", err);
-                    zid.deleteFile(new_path, dir) catch {};
-                    return;
-                };
-                writer.writeAll("},") catch |err| {
-                    sync_context.logError("Error initializing DataWriter", err);
-                    zid.deleteFile(new_path, dir) catch {};
-                    return;
-                };
+
                 if (sync_context.incrementAndCheckStructLimit()) break;
             } else {
                 new_writer.write(row) catch |err| {
@@ -804,6 +797,7 @@ pub const FileEngine = struct {
         }
 
         // Combine results
+        // TODO: Make a struct for writing
         writer.writeByte('[') catch return FileEngineError.WriteError;
         for (thread_writer_list) |list| {
             writer.writeAll(list.items) catch return FileEngineError.WriteError;
@@ -836,11 +830,11 @@ pub const FileEngine = struct {
         };
         defer iter.deinit();
 
-        const new_path = std.fmt.allocPrint(allocator, "{d}.zid.new", .{file_index}) catch |err| {
-            sync_context.logError("Error creating new file path", err);
+        var new_path_buffer: [128]u8 = undefined;
+        const new_path = std.fmt.bufPrint(&new_path_buffer, "{d}.zid.new", .{file_index}) catch |err| {
+            sync_context.logError("Error creating file path", err);
             return;
         };
-        defer allocator.free(new_path);
 
         zid.createFile(new_path, dir) catch |err| {
             sync_context.logError("Error creating new file", err);
@@ -853,11 +847,15 @@ pub const FileEngine = struct {
         };
         defer new_writer.deinit();
 
-        while (iter.next() catch return) |row| {
+        while (iter.next() catch |err| {
+            sync_context.logError("Error during iter", err);
+            return;
+        }) |row| {
             if (filter == null or filter.?.evaluate(row)) {
-                writer.writeByte('{') catch return;
-                writer.print("\"{s}\"", .{UUID.format_bytes(row[0].UUID)}) catch return;
-                writer.writeAll("},") catch return;
+                writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
+                    sync_context.logError("Error writting", err);
+                    return;
+                };
 
                 if (sync_context.incrementAndCheckStructLimit()) break;
             } else {
@@ -899,7 +897,7 @@ pub const FileEngine = struct {
             .str => return zid.Data.initStr(value),
             .link, .self => {
                 const uuid = UUID.parse(value) catch return FileEngineError.InvalidUUID;
-                return zid.Data{ .UUID = uuid.bytes };
+                return zid.Data.initUUID(uuid.bytes);
             },
             .int_array => {
                 const array = s2t.parseArrayInt(allocator, value) catch return FileEngineError.MemoryError;
@@ -925,12 +923,6 @@ pub const FileEngine = struct {
 
                 return zid.Data.initBoolArray(zid.allocEncodArray.Bool(allocator, array) catch return FileEngineError.AllocEncodError);
             },
-            .link_array => {
-                const array = s2t.parseArrayUUIDBytes(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
             .date_array => {
                 const array = s2t.parseArrayDateUnix(allocator, value) catch return FileEngineError.MemoryError;
                 defer allocator.free(array);
@@ -948,6 +940,12 @@ pub const FileEngine = struct {
                 defer allocator.free(array);
 
                 return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
+            },
+            .link_array => {
+                const array = s2t.parseArrayUUIDBytes(allocator, value) catch return FileEngineError.MemoryError;
+                defer allocator.free(array);
+
+                return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, array) catch return FileEngineError.AllocEncodError);
             },
         }
     }
@@ -973,6 +971,8 @@ pub const FileEngine = struct {
             datas[i] = try string2Data(allocator, dt, map.get(member).?);
         }
 
+        log.debug("New ordered data: {any}\n", .{datas});
+
         return datas;
     }
 
@@ -991,7 +991,7 @@ pub const FileEngine = struct {
             const file_stat = member_dir.statFile(entry.name) catch return FileEngineError.FileStatError;
             if (file_stat.size < MAX_FILE_SIZE) {
                 // Cant I just return i ? It is supossed that files are ordered. I think I already check and it is not
-                std.debug.print("{s}\n\n", .{entry.name[0..(entry.name.len - 4)]});
+                log.debug("{s}\n\n", .{entry.name});
                 return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return FileEngineError.InvalidFileIndex; // INFO: Hardcoded len of file extension
             }
         }
