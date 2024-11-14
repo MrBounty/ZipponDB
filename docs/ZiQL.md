@@ -107,7 +107,7 @@ This also works by using other filters. Here I get `User` entities that have a b
 GRAB User { bestfriend IN { name = 'Adrien' } }
 ```
 
-When using an array with `IN`, it will return all User entities that have at least one friend named Adrien:
+When using an array with `IN`, it will return all User entities that have AT LEAST one friend named Adrien:
 ```js
 GRAB User { friends IN { name = 'Adrien' } }
 ```
@@ -189,12 +189,13 @@ ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82
 
 You need to specify all members when adding an entity (default values are coming soon).
 
-#### Not yet implemented
 
 The `ADD` query will return a list of added IDs, e.g.:
 ```
 ["1e170a80-84c9-429a-be25-ab4657894653", "1e170a80-84c9-429a-be25-ab4657894654", ]
 ```
+
+#### Not yet implemented
 
 And you can also add them in batch 
 ```js
@@ -213,8 +214,6 @@ Similar to `GRAB` but deletes all entities found using the filter and returns a 
 DELETE User {name = 'Bob'}
 ```
 
-#### Not yet implemented
-
 The `DELETE` query will return a list of deleted IDs, e.g.:
 ```
 ["1e170a80-84c9-429a-be25-ab4657894653", "1e170a80-84c9-429a-be25-ab4657894654", ]
@@ -230,12 +229,12 @@ UPDATE User [5] {name='adrien'} TO (name = 'Adrien')
 
 Note that, compared to `ADD`, you don't need to specify all members between `()`. Only the ones specified will be updated.
 
-#### Not yet implemented
-
 The `UPDATE` query will return a list of updated IDs, e.g.:
 ```
 ["1e170a80-84c9-429a-be25-ab4657894653", "1e170a80-84c9-429a-be25-ab4657894654", ]
 ```
+
+#### Not yet implemented
 
 You can use operations on values themselves when updating:
 ```js

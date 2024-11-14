@@ -100,6 +100,11 @@ The main action is `GRAB`, this will parse files and return data.
 GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
 ```
 
+Here a preview to how to use relationship.
+```js
+GRAB User {best_friend = {name = 'Bob'}}
+```
+
 GRAB queries return a list of JSON objects with the data inside, e.g:
 ```
 [{id:"1e170a80-84c9-429a-be25-ab4657894653", name: "Gwendolyn Ray", age: 70, email: "austin92@example.org", scores: [ 77 ], friends: [], }, ]
@@ -204,7 +209,6 @@ TODO: Create a tech doc of what is happening inside.
 - [ ] Relationships  
 - [X] Custom data file
 - [X] Date
-- [ ] Linked query
 - [X] Logs
 - [X] Query multi threading
 
@@ -213,6 +217,7 @@ TODO: Create a tech doc of what is happening inside.
 - [ ] Dump/Bump data  
 - [ ] Recovery
 - [ ] Better CLI
+- [ ] Linked query
 
 ### Beta
 #### v0.4 - Usability  
