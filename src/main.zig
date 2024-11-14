@@ -49,6 +49,10 @@ pub const DBEngine = struct {
     pub fn init(allocator: std.mem.Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
         var self = DBEngine{ .allocator = allocator };
         const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_PATH");
+        defer {
+            log.debug("{s} {any}\n", .{ potential_main_path_or_environment_variable.?, potential_schema_path });
+            if (potential_main_path_or_environment_variable != null and potential_main_path == null) allocator.free(potential_main_path_or_environment_variable.?);
+        }
 
         if (potential_main_path_or_environment_variable) |main_path| {
             log_path = std.fmt.bufPrint(&log_buff, "{s}/LOG/log", .{main_path}) catch "";
@@ -100,6 +104,7 @@ pub const DBEngine = struct {
 
         log.info("Database don't have any schema yet, trying to add one.", .{});
         const potential_schema_path_or_environment_variable = potential_schema_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_SCHEMA");
+        if (potential_schema_path_or_environment_variable != null and potential_schema_path == null) allocator.free(potential_main_path_or_environment_variable.?);
         if (potential_schema_path_or_environment_variable) |schema_path| {
             log.info("Found schema path {s}.", .{schema_path});
             self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch |err| {

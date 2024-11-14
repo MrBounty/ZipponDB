@@ -564,7 +564,9 @@ pub const Parser = struct {
                 };
 
                 var filter: ?Filter = null;
+                defer if (filter != null) filter.?.deinit();
                 var additional_data = AdditionalData.init(self.allocator);
+                defer additional_data.deinit();
 
                 if (expected_tag) |tag| {
                     if (condition.data_type.is_array()) {
@@ -613,6 +615,33 @@ pub const Parser = struct {
                                     struct_name,
                                 );
                             },
+                            .uuid_literal => {},
+                            else => {},
+                        }
+
+                        additional_data.entity_count_to_find = 1;
+
+                        switch (token.tag) {
+                            .l_brace => {
+                                filter = try self.parseFilter(struct_name, false);
+                            },
+                            .uuid_literal => {},
+                            else => return printError(
+                                "Error: Expected new filter or UUID",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            ),
+                        }
+                    } else if (condition.data_type == .link_array) {
+                        switch (token.tag) { // TODO: Also be able to do an array of UUID like [00000-00000-00000 000000-000000-0000001]
+                            .l_bracket => {
+                                try self.parseAdditionalData(
+                                    &additional_data,
+                                    struct_name,
+                                );
+                            },
                             else => {},
                         }
 
@@ -639,7 +668,7 @@ pub const Parser = struct {
                     .time => condition.value = ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
                     .datetime => condition.value = ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
                     .bool => condition.value = ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
-                    .link => {
+                    .link_array => {
                         var map = std.AutoHashMap([16]u8, void).init(self.allocator);
                         try self.file_engine.populateUUIDMap(
                             struct_name,
@@ -647,7 +676,20 @@ pub const Parser = struct {
                             &map,
                             &additional_data,
                         );
-                        condition.value = ConditionValue.initLink(&map);
+                        condition.value = ConditionValue.initLinkArray(&map);
+                    },
+                    .link => switch (token.tag) {
+                        .l_brace, .l_bracket => {}, // Get the first entity using a filter
+                        .uuid_literal => {
+                            condition.value = ConditionValue.initLink(self.toker.buffer[start_index..token.loc.end]);
+                        },
+                        else => return printError(
+                            "Error: Expected filter or UUID",
+                            ZiQlParserError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        ),
                     },
                     else => unreachable, // TODO: Make for link and array =/
                 }
@@ -1108,9 +1150,9 @@ test "Specific query" {
     try testParsing("GRAB User [1]");
 }
 
-//test "Relationship" {
-//    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
-//}
+test "Relationship" {
+    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
+}
 
 test "DELETE" {
     try testParsing("DELETE User {name='Bob'}");

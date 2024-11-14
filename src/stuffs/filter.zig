@@ -59,12 +59,13 @@ pub const ConditionValue = union(enum) {
     bool_: bool,
     self: UUID,
     unix: u64,
+    link: UUID,
     int_array: std.ArrayList(i32),
     str_array: std.ArrayList([]const u8),
     float_array: std.ArrayList(f64),
     bool_array: std.ArrayList(bool),
     unix_array: std.ArrayList(u64),
-    link: *std.AutoHashMap([16]u8, void),
+    link_array: *std.AutoHashMap([16]u8, void),
 
     pub fn deinit(self: ConditionValue) void {
         switch (self) {
@@ -73,6 +74,7 @@ pub const ConditionValue = union(enum) {
             .float_array => self.float_array.deinit(),
             .bool_array => self.bool_array.deinit(),
             .unix_array => self.unix_array.deinit(),
+            .link_array => self.link_array.deinit(),
             else => {},
         }
     }
@@ -109,6 +111,14 @@ pub const ConditionValue = union(enum) {
         return ConditionValue{ .unix = s2t.parseDatetime(value).toUnix() };
     }
 
+    pub fn initLink(value: []const u8) ConditionValue {
+        const uuid = UUID.parse(value) catch {
+            std.debug.print("Error: {s}", .{value});
+            @panic("WFT ?");
+        };
+        return ConditionValue{ .link = uuid };
+    }
+
     // Array
     pub fn initArrayInt(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
         return ConditionValue{ .int_array = s2t.parseArrayInt(allocator, value) };
@@ -138,8 +148,8 @@ pub const ConditionValue = union(enum) {
         return ConditionValue{ .unix_array = s2t.parseArrayDatetimeUnix(allocator, value) };
     }
 
-    pub fn initLink(value: *std.AutoHashMap([16]u8, void)) ConditionValue {
-        return ConditionValue{ .link = value };
+    pub fn initLinkArray(value: *std.AutoHashMap([16]u8, void)) ConditionValue {
+        return ConditionValue{ .link_array = value };
     }
 };
 
@@ -386,12 +396,12 @@ test "ConditionValue: link" {
     try hash_map.put(uuid2.bytes, {});
 
     // Create a ConditionValue with the link
-    var value = ConditionValue.initLink(&hash_map);
+    var value = ConditionValue.initLinkArray(&hash_map);
 
     // Check that the hash map contains the correct number of UUIDs
-    try std.testing.expectEqual(@as(usize, 2), value.link.count());
+    try std.testing.expectEqual(@as(usize, 2), value.link_array.count());
 
     // Check that specific UUIDs are in the hash map
-    try std.testing.expect(value.link.contains(uuid1.bytes));
-    try std.testing.expect(value.link.contains(uuid2.bytes));
+    try std.testing.expect(value.link_array.contains(uuid1.bytes));
+    try std.testing.expect(value.link_array.contains(uuid2.bytes));
 }

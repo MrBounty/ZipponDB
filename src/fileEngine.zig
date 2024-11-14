@@ -329,6 +329,9 @@ pub const FileEngine = struct {
 
     /// Take a filter, parse all file and if one struct if validate by the filter, write it in a JSON format to the writer
     /// filter can be null. This will return all of them
+    /// TODO: For relationship, if they are in additional_data and I need to return it with the other members, I will need to parse the file
+    /// This is difficult, because that mean I need to parse file while parsing files ? I dont like that because it may be the same struct
+    /// And because of multi thread, I can read the same file at the same time...
     pub fn parseEntities(
         self: *FileEngine,
         struct_name: []const u8,
@@ -475,7 +478,14 @@ pub const FileEngine = struct {
             .Float => |v| try writer.print("{d}", .{v}),
             .Int => |v| try writer.print("{d}", .{v}),
             .Str => |v| try writer.print("\"{s}\"", .{v}),
-            .UUID => |v| try writer.print("\"{s}\"", .{UUID.format_bytes(v)}),
+            .UUID => |v| {
+                const uuid = try UUID.parse("00000000-0000-0000-0000-000000000000"); // Maybe pass that comptime to prevent parsing it everytime
+                if (!std.meta.eql(v, uuid.bytes)) {
+                    try writer.print("\"{s}\"", .{UUID.format_bytes(v)});
+                } else {
+                    try writer.print("{{}}", .{});
+                }
+            },
             .Bool => |v| try writer.print("{any}", .{v}),
             .Unix => |v| {
                 const datetime = DateTime.initUnix(v);
