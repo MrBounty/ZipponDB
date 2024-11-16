@@ -65,7 +65,7 @@ pub const ConditionValue = union(enum) {
     float_array: std.ArrayList(f64),
     bool_array: std.ArrayList(bool),
     unix_array: std.ArrayList(u64),
-    link_array: *std.AutoHashMap([16]u8, void),
+    link_array: *std.AutoHashMap(UUID, void),
 
     pub fn deinit(self: ConditionValue) void {
         switch (self) {
@@ -148,7 +148,7 @@ pub const ConditionValue = union(enum) {
         return ConditionValue{ .unix_array = s2t.parseArrayDatetimeUnix(allocator, value) };
     }
 
-    pub fn initLinkArray(value: *std.AutoHashMap([16]u8, void)) ConditionValue {
+    pub fn initLinkArray(value: *std.AutoHashMap(UUID, void)) ConditionValue {
         return ConditionValue{ .link_array = value };
     }
 };
@@ -384,7 +384,7 @@ test "ConditionValue: link" {
     const allocator = std.testing.allocator;
 
     // Create a hash map for storing UUIDs
-    var hash_map = std.AutoHashMap([16]u8, void).init(allocator);
+    var hash_map = std.AutoHashMap(UUID, void).init(allocator);
     defer hash_map.deinit();
 
     // Create a UUID to add to the hash map
@@ -392,8 +392,8 @@ test "ConditionValue: link" {
     const uuid2 = try UUID.parse("223e4567-e89b-12d3-a456-426614174000");
 
     // Add UUIDs to the hash map
-    try hash_map.put(uuid1.bytes, {});
-    try hash_map.put(uuid2.bytes, {});
+    try hash_map.put(uuid1, {});
+    try hash_map.put(uuid2, {});
 
     // Create a ConditionValue with the link
     var value = ConditionValue.initLinkArray(&hash_map);
@@ -402,6 +402,6 @@ test "ConditionValue: link" {
     try std.testing.expectEqual(@as(usize, 2), value.link_array.count());
 
     // Check that specific UUIDs are in the hash map
-    try std.testing.expect(value.link_array.contains(uuid1.bytes));
-    try std.testing.expect(value.link_array.contains(uuid2.bytes));
+    try std.testing.expect(value.link_array.contains(uuid1));
+    try std.testing.expect(value.link_array.contains(uuid2));
 }

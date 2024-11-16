@@ -104,29 +104,28 @@ pub const FileEngine = struct {
         const writer = buffer.writer();
         writer.print("Database path: {s}\n", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.WriteError;
         const main_size = utils.getDirTotalSize(main_dir) catch 0;
-        writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1e6}) catch return FileEngineError.WriteError;
+        writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
 
         const log_dir = main_dir.openDir("LOG", .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
         const log_size = utils.getDirTotalSize(log_dir) catch 0;
-        writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1e6}) catch return FileEngineError.WriteError;
+        writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
 
         const backup_dir = main_dir.openDir("BACKUP", .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
         const backup_size = utils.getDirTotalSize(backup_dir) catch 0;
-        writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1e6}) catch return FileEngineError.WriteError;
+        writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
 
         const data_dir = main_dir.openDir("DATA", .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
         const data_size = utils.getDirTotalSize(data_dir) catch 0;
-        writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1e6}) catch return FileEngineError.WriteError;
+        writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
 
         var iter = data_dir.iterate();
         while (iter.next() catch return FileEngineError.DirIterError) |entry| {
             if (entry.kind != .directory) continue;
             const sub_dir = data_dir.openDir(entry.name, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
             const size = utils.getDirTotalSize(sub_dir) catch 0;
-            // FIXME: This is not really MB
             writer.print("  {s}: {d:.}Mb {d} entities\n", .{
                 entry.name,
-                @as(f64, @floatFromInt(size)) / 1e6,
+                @as(f64, @floatFromInt(size)) / 1024.0 / 1024.0,
                 try self.getNumberOfEntity(entry.name),
             }) catch return FileEngineError.WriteError;
         }
@@ -224,12 +223,109 @@ pub const FileEngine = struct {
         return count;
     }
 
+    /// Populate a map with all UUID bytes as key and file index as value
+    /// This map is store in the SchemaStruct to then by using a list of UUID, get a list of file_index to parse
+    pub fn populateFileIndexUUIDMap(
+        self: *FileEngine,
+        struct_name: []const u8,
+        map: *std.AutoHashMap(UUID, usize),
+    ) ZipponError!void {
+        const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name);
+
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+
+        // Multi-threading setup
+        var arena = std.heap.ThreadSafeAllocator{
+            .child_allocator = self.allocator,
+        };
+
+        var pool: std.Thread.Pool = undefined;
+        defer pool.deinit();
+        pool.init(std.Thread.Pool.Options{
+            .allocator = arena.allocator(),
+            .n_jobs = CPU_CORE,
+        }) catch return ZipponError.ThreadError;
+
+        var sync_context = ThreadSyncContext.init(
+            0,
+            max_file_index + 1,
+        );
+
+        // Create a thread-safe writer for each file
+        var thread_writer_list = self.allocator.alloc(std.ArrayList([16]u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+        defer {
+            for (thread_writer_list) |list| list.deinit();
+            self.allocator.free(thread_writer_list);
+        }
+
+        for (thread_writer_list) |*list| {
+            list.* = std.ArrayList([16]u8).init(self.allocator);
+        }
+
+        // Spawn threads for each file
+        for (0..(max_file_index + 1)) |file_index| {
+            pool.spawn(populateFileIndexUUIDMapOneFile, .{
+                sstruct,
+                &thread_writer_list[file_index],
+                file_index,
+                dir,
+                &sync_context,
+            }) catch return FileEngineError.ThreadError;
+        }
+
+        // Wait for all threads to complete
+        while (!sync_context.isComplete()) {
+            std.time.sleep(10_000_000);
+        }
+
+        // Combine results
+        for (thread_writer_list, 0..) |list, file_index| {
+            for (list.items) |uuid| map.put(uuid, file_index) catch return ZipponError.MemoryError;
+        }
+    }
+
+    fn populateFileIndexUUIDMapOneFile(
+        sstruct: SchemaStruct,
+        list: *std.ArrayList(UUID),
+        file_index: u64,
+        dir: std.fs.Dir,
+        sync_context: *ThreadSyncContext,
+    ) void {
+        var data_buffer: [BUFFER_SIZE]u8 = undefined;
+        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
+        var path_buffer: [128]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
+            sync_context.logError("Error creating file path", err);
+            return;
+        };
+
+        var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch |err| {
+            sync_context.logError("Error initializing DataIterator", err);
+            return;
+        };
+        defer iter.deinit();
+
+        while (iter.next() catch return) |row| {
+            list.*.append(UUID{ .bytes = row[0].UUID }) catch |err| {
+                sync_context.logError("Error initializing DataIterator", err);
+                return;
+            };
+        }
+
+        _ = sync_context.completeThread();
+    }
+
     /// Use a struct name and filter to populate a map with all UUID bytes as key and void as value
-    pub fn populateUUIDMap(
+    /// This map is use as value for the link array, so I can do a `contains` on it.
+    pub fn populateVoidUUIDMap(
         self: *FileEngine,
         struct_name: []const u8,
         filter: ?Filter,
-        map: *std.AutoHashMap([16]u8, void),
+        map: *std.AutoHashMap(UUID, void),
         additional_data: *AdditionalData,
     ) ZipponError!void {
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
@@ -255,19 +351,19 @@ pub const FileEngine = struct {
         );
 
         // Create a thread-safe writer for each file
-        var thread_writer_list = self.allocator.alloc(std.ArrayList([16]u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+        var thread_writer_list = self.allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
         defer {
             for (thread_writer_list) |list| list.deinit();
             self.allocator.free(thread_writer_list);
         }
 
         for (thread_writer_list) |*list| {
-            list.* = std.ArrayList([16]u8).init(self.allocator);
+            list.* = std.ArrayList(UUID).init(self.allocator);
         }
 
         // Spawn threads for each file
         for (0..(max_file_index + 1)) |file_index| {
-            pool.spawn(populateUUIDMapOneFile, .{
+            pool.spawn(populateVoidUUIDMapOneFile, .{
                 sstruct,
                 filter,
                 &thread_writer_list[file_index],
@@ -288,10 +384,10 @@ pub const FileEngine = struct {
         }
     }
 
-    fn populateUUIDMapOneFile(
+    fn populateVoidUUIDMapOneFile(
         sstruct: SchemaStruct,
         filter: ?Filter,
-        list: *std.ArrayList([16]u8),
+        list: *std.ArrayList(UUID),
         file_index: u64,
         dir: std.fs.Dir,
         sync_context: *ThreadSyncContext,
@@ -315,7 +411,7 @@ pub const FileEngine = struct {
 
         while (iter.next() catch return) |row| {
             if (filter == null or filter.?.evaluate(row)) {
-                list.*.append(row[0].UUID) catch |err| {
+                list.*.append(UUID{ .bytes = row[0].UUID }) catch |err| {
                     sync_context.logError("Error initializing DataIterator", err);
                     return;
                 };

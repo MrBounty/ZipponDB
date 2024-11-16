@@ -669,8 +669,8 @@ pub const Parser = struct {
                     .datetime => condition.value = ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
                     .bool => condition.value = ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
                     .link_array => {
-                        var map = std.AutoHashMap([16]u8, void).init(self.allocator);
-                        try self.file_engine.populateUUIDMap(
+                        var map = std.AutoHashMap(UUID, void).init(self.allocator);
+                        try self.file_engine.populateVoidUUIDMap(
                             struct_name,
                             filter,
                             &map,
