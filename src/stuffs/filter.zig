@@ -16,6 +16,8 @@ const DateTime = @import("dtype").DateTime;
 const UUID = @import("dtype").UUID;
 const Data = @import("ZipponData").Data;
 
+const log = std.log.scoped(.filter);
+
 const ComparisonOperator = enum {
     equal,
     different,
@@ -64,7 +66,7 @@ pub const ConditionValue = union(enum) {
     float_array: std.ArrayList(f64),
     bool_array: std.ArrayList(bool),
     unix_array: std.ArrayList(u64),
-    link_array: *std.AutoHashMap(UUID, void),
+    link: *std.AutoHashMap(UUID, void),
 
     pub fn deinit(self: ConditionValue, allocator: std.mem.Allocator) void {
         switch (self) {
@@ -73,9 +75,9 @@ pub const ConditionValue = union(enum) {
             .float_array => self.float_array.deinit(),
             .bool_array => self.bool_array.deinit(),
             .unix_array => self.unix_array.deinit(),
-            .link_array => {
-                self.link_array.deinit();
-                allocator.destroy(self.link_array);
+            .link => {
+                self.link.deinit();
+                allocator.destroy(self.link);
             },
             else => {},
         }
@@ -142,8 +144,8 @@ pub const ConditionValue = union(enum) {
         return ConditionValue{ .unix_array = s2t.parseArrayDatetimeUnix(allocator, value) };
     }
 
-    pub fn initLinkArray(value: *std.AutoHashMap(UUID, void)) ConditionValue {
-        return ConditionValue{ .link_array = value };
+    pub fn initLink(value: *std.AutoHashMap(UUID, void)) ConditionValue {
+        return ConditionValue{ .link = value };
     }
 };
 
@@ -267,9 +269,9 @@ pub const Filter = struct {
     fn evaluateNode(self: Filter, node: *FilterNode, row: []Data) bool {
         return switch (node.*) {
             .condition => |cond| Filter.evaluateCondition(cond, row),
-            .logical => |log| switch (log.operator) {
-                .AND => self.evaluateNode(log.left, row) and self.evaluateNode(log.right, row),
-                .OR => self.evaluateNode(log.left, row) or self.evaluateNode(log.right, row),
+            .logical => |logical| switch (logical.operator) {
+                .AND => self.evaluateNode(logical.left, row) and self.evaluateNode(logical.right, row),
+                .OR => self.evaluateNode(logical.left, row) or self.evaluateNode(logical.right, row),
             },
             .empty => true,
         };
@@ -277,6 +279,7 @@ pub const Filter = struct {
 
     fn evaluateCondition(condition: Condition, row: []Data) bool {
         const row_value: Data = row[condition.data_index];
+        log.debug("Checking condition {any}", .{condition});
         return switch (condition.operation) {
             .equal => switch (condition.data_type) {
                 .int => row_value.Int == condition.value.int,
@@ -324,7 +327,15 @@ pub const Filter = struct {
                 else => unreachable,
             },
 
-            else => false,
+            .in => switch (condition.data_type) {
+                .link => condition.value.link.contains(UUID{ .bytes = row_value.UUID }),
+                else => unreachable,
+            },
+
+            .not_in => switch (condition.data_type) {
+                .link => !condition.value.link.contains(UUID{ .bytes = row_value.UUID }),
+                else => unreachable,
+            },
         };
     }
 
@@ -390,12 +401,12 @@ test "ConditionValue: link" {
     try hash_map.put(uuid2, {});
 
     // Create a ConditionValue with the link
-    var value = ConditionValue.initLinkArray(&hash_map);
+    var value = ConditionValue.initLink(&hash_map);
 
     // Check that the hash map contains the correct number of UUIDs
-    try std.testing.expectEqual(@as(usize, 2), value.link_array.count());
+    try std.testing.expectEqual(@as(usize, 2), value.link.count());
 
     // Check that specific UUIDs are in the hash map
-    try std.testing.expect(value.link_array.contains(uuid1));
-    try std.testing.expect(value.link_array.contains(uuid2));
+    try std.testing.expect(value.link.contains(uuid1));
+    try std.testing.expect(value.link.contains(uuid2));
 }

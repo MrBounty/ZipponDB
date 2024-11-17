@@ -582,9 +582,8 @@ pub const Parser = struct {
                             );
                         }
                     }
-                } else {
-                    // handle bool and bool array separately
-                    if (condition.data_type == .bool) {
+                } else switch (condition.data_type) {
+                    .bool => {
                         if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
                             return printError(
                                 "Error: Expected bool",
@@ -594,7 +593,8 @@ pub const Parser = struct {
                                 token.loc.end,
                             );
                         }
-                    } else if (condition.data_type == .bool_array) {
+                    },
+                    .bool_array => {
                         token = self.toker.next();
                         while (token.tag != .r_bracket) : (token = self.toker.next()) {
                             if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
@@ -607,7 +607,8 @@ pub const Parser = struct {
                                 );
                             }
                         }
-                    } else if (condition.data_type == .link) {
+                    },
+                    .link, .link_array => {
                         switch (token.tag) {
                             .l_bracket => {
                                 try self.parseAdditionalData(
@@ -619,7 +620,7 @@ pub const Parser = struct {
                             else => {},
                         }
 
-                        additional_data.entity_count_to_find = 1;
+                        if (condition.data_type == .link) additional_data.entity_count_to_find = 1;
 
                         switch (token.tag) {
                             .l_brace => {
@@ -634,30 +635,8 @@ pub const Parser = struct {
                                 token.loc.end,
                             ),
                         }
-                    } else if (condition.data_type == .link_array) {
-                        switch (token.tag) { // TODO: Also be able to do an array of UUID like [00000-00000-00000 000000-000000-0000001]
-                            .l_bracket => {
-                                try self.parseAdditionalData(
-                                    &additional_data,
-                                    struct_name,
-                                );
-                            },
-                            else => {},
-                        }
-
-                        switch (token.tag) {
-                            .l_brace => {
-                                filter = try self.parseFilter(struct_name, false);
-                            },
-                            else => return printError(
-                                "Error: Expected new filter",
-                                ZiQlParserError.SynthaxError,
-                                self.toker.buffer,
-                                token.loc.start,
-                                token.loc.end,
-                            ),
-                        }
-                    }
+                    },
+                    else => unreachable,
                 }
 
                 switch (condition.data_type) {
@@ -672,7 +651,6 @@ pub const Parser = struct {
                         .l_brace, .l_bracket => {
                             const map = self.allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
                             map.* = std.AutoHashMap(UUID, void).init(self.allocator);
-                            if (condition.data_type == .link) additional_data.entity_count_to_find = 1; // FIXME: Look like it return 2 of them, not 1
                             try self.file_engine.populateVoidUUIDMap(
                                 struct_name,
                                 filter,
@@ -680,7 +658,7 @@ pub const Parser = struct {
                                 &additional_data,
                             );
                             log.debug("Found {d} entity when parsing for populateVoidUUID\n", .{map.count()});
-                            condition.value = ConditionValue.initLinkArray(map);
+                            condition.value = ConditionValue.initLink(map);
                         },
                         else => return printError(
                             "Error: Expected filter",
@@ -769,7 +747,7 @@ pub const Parser = struct {
             .in => switch (condition.data_type) {
                 .link => {},
                 else => return printError(
-                    "Error: Only link can be compare with in.",
+                    "Error: Only link can be compare with in for now.",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
