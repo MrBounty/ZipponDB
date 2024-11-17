@@ -125,7 +125,6 @@ pub const SchemaEngine = struct {
     /// Chech if the name of a struct is in the current schema
     pub fn isStructNameExists(self: *SchemaEngine, struct_name: []const u8) bool {
         var i: u16 = 0;
-        log.debug("\n\n{any}\n\n", .{self.struct_array});
         while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) return true;
         return false;
     }

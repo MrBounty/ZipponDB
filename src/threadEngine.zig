@@ -34,7 +34,13 @@ pub const ThreadSyncContext = struct {
     pub fn incrementAndCheckStructLimit(self: *ThreadSyncContext) bool {
         if (self.max_struct == 0) return false;
         const new_count = self.processed_struct.fetchAdd(1, .monotonic);
-        return new_count >= self.max_struct;
+        return (new_count + 1) >= self.max_struct;
+    }
+
+    pub fn checkStructLimit(self: *ThreadSyncContext) bool {
+        if (self.max_struct == 0) return false;
+        const count = self.processed_struct.load(.monotonic);
+        return (count) >= self.max_struct;
     }
 
     pub fn logError(self: *ThreadSyncContext, message: []const u8, err: anyerror) void {

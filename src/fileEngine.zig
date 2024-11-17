@@ -279,7 +279,7 @@ pub const FileEngine = struct {
     }
 
     /// Use a struct name and filter to populate a map with all UUID bytes as key and void as value
-    /// This map is use as value for the link array, so I can do a `contains` on it.
+    /// This map is use as value for the ConditionValue of links, so I can do a `contains` on it.
     pub fn populateVoidUUIDMap(
         self: *FileEngine,
         struct_name: []const u8,
@@ -330,6 +330,16 @@ pub const FileEngine = struct {
         for (thread_writer_list) |list| {
             for (list.items) |uuid| _ = map.getOrPut(uuid) catch return ZipponError.MemoryError;
         }
+
+        if (additional_data.entity_count_to_find == 0) return;
+
+        if (map.count() > additional_data.entity_count_to_find) {
+            log.err("Found {d} entity in populateVoidUUIDMap but max is: {d}", .{ map.count(), additional_data.entity_count_to_find });
+            var iter = map.iterator();
+            while (iter.next()) |entry| {
+                log.debug("{s}", .{UUID.format_bytes(entry.key_ptr.bytes)});
+            }
+        }
     }
 
     fn populateVoidUUIDMapOneFile(
@@ -358,6 +368,7 @@ pub const FileEngine = struct {
         defer iter.deinit();
 
         while (iter.next() catch return) |row| {
+            if (sync_context.checkStructLimit()) break;
             if (filter == null or filter.?.evaluate(row)) {
                 list.*.append(UUID{ .bytes = row[0].UUID }) catch |err| {
                     sync_context.logError("Error initializing DataIterator", err);
@@ -474,6 +485,7 @@ pub const FileEngine = struct {
             sync_context.logError("Error in iter next", err);
             return;
         }) |row| {
+            if (sync_context.checkStructLimit()) break;
             if (filter) |f| if (!f.evaluate(row)) continue;
 
             writeEntity(
@@ -719,6 +731,7 @@ pub const FileEngine = struct {
             sync_context.logError("Parsing files", err);
             return;
         }) |row| {
+            if (sync_context.checkStructLimit()) break;
             if (filter == null or filter.?.evaluate(row)) {
                 // Add the unchanged Data in the new_data_buff
                 new_data_buff[0] = row[0];
@@ -872,6 +885,7 @@ pub const FileEngine = struct {
             sync_context.logError("Error during iter", err);
             return;
         }) |row| {
+            if (sync_context.checkStructLimit()) break;
             if (filter == null or filter.?.evaluate(row)) {
                 writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
                     sync_context.logError("Error writting", err);
