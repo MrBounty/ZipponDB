@@ -59,7 +59,6 @@ pub const ConditionValue = union(enum) {
     bool_: bool,
     self: UUID,
     unix: u64,
-    link: UUID,
     int_array: std.ArrayList(i32),
     str_array: std.ArrayList([]const u8),
     float_array: std.ArrayList(f64),
@@ -67,14 +66,17 @@ pub const ConditionValue = union(enum) {
     unix_array: std.ArrayList(u64),
     link_array: *std.AutoHashMap(UUID, void),
 
-    pub fn deinit(self: ConditionValue) void {
+    pub fn deinit(self: ConditionValue, allocator: std.mem.Allocator) void {
         switch (self) {
             .int_array => self.int_array.deinit(),
             .str_array => self.str_array.deinit(),
             .float_array => self.float_array.deinit(),
             .bool_array => self.bool_array.deinit(),
             .unix_array => self.unix_array.deinit(),
-            .link_array => self.link_array.deinit(),
+            .link_array => {
+                self.link_array.deinit();
+                allocator.destroy(self.link_array);
+            },
             else => {},
         }
     }
@@ -109,14 +111,6 @@ pub const ConditionValue = union(enum) {
 
     pub fn initDateTime(value: []const u8) ConditionValue {
         return ConditionValue{ .unix = s2t.parseDatetime(value).toUnix() };
-    }
-
-    pub fn initLink(value: []const u8) ConditionValue {
-        const uuid = UUID.parse(value) catch {
-            std.debug.print("Error: {s}", .{value});
-            @panic("WFT ?");
-        };
-        return ConditionValue{ .link = uuid };
     }
 
     // Array
@@ -159,8 +153,8 @@ pub const Condition = struct {
     data_type: DataType = undefined,
     data_index: usize = undefined, // Index in the file
 
-    pub fn deinit(self: Condition) void {
-        self.value.deinit();
+    pub fn deinit(self: Condition, allocator: std.mem.Allocator) void {
+        self.value.deinit(allocator);
     }
 };
 
@@ -187,7 +181,7 @@ pub const Filter = struct {
     pub fn deinit(self: *Filter) void {
         switch (self.root.*) {
             .logical => self.freeNode(self.root),
-            .condition => |condition| condition.deinit(),
+            .condition => |condition| condition.deinit(self.allocator),
             else => {},
         }
         self.allocator.destroy(self.root);
@@ -201,7 +195,7 @@ pub const Filter = struct {
                 self.allocator.destroy(logical.left);
                 self.allocator.destroy(logical.right);
             },
-            .condition => |condition| condition.deinit(),
+            .condition => |condition| condition.deinit(self.allocator),
             .empty => {},
         }
     }

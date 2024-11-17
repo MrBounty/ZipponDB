@@ -46,8 +46,6 @@ pub const SchemaEngine = struct {
             };
         }
 
-        log.debug("SchemaEngine init with {d} SchemaStruct after populateFileIndexUUIDMap.", .{struct_array.items.len});
-
         return SchemaEngine{
             .allocator = allocator,
             .null_terminated_schema_buff = null_terminated_schema_buff,

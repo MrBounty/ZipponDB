@@ -668,23 +668,22 @@ pub const Parser = struct {
                     .time => condition.value = ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
                     .datetime => condition.value = ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
                     .bool => condition.value = ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
-                    .link_array => {
-                        var map = std.AutoHashMap(UUID, void).init(self.allocator);
-                        try self.file_engine.populateVoidUUIDMap(
-                            struct_name,
-                            filter,
-                            &map,
-                            &additional_data,
-                        );
-                        condition.value = ConditionValue.initLinkArray(&map);
-                    },
-                    .link => switch (token.tag) {
-                        .l_brace, .l_bracket => {}, // Get the first entity using a filter
-                        .uuid_literal => {
-                            condition.value = ConditionValue.initLink(self.toker.buffer[start_index..token.loc.end]);
+                    .link_array, .link => switch (token.tag) {
+                        .l_brace, .l_bracket => {
+                            const map = self.allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
+                            map.* = std.AutoHashMap(UUID, void).init(self.allocator);
+                            if (condition.data_type == .link) additional_data.entity_count_to_find = 1; // FIXME: Look like it return 2 of them, not 1
+                            try self.file_engine.populateVoidUUIDMap(
+                                struct_name,
+                                filter,
+                                map,
+                                &additional_data,
+                            );
+                            log.debug("Found {d} entity when parsing for populateVoidUUID\n", .{map.count()});
+                            condition.value = ConditionValue.initLinkArray(map);
                         },
                         else => return printError(
-                            "Error: Expected filter or UUID",
+                            "Error: Expected filter",
                             ZiQlParserError.SynthaxError,
                             self.toker.buffer,
                             token.loc.start,
