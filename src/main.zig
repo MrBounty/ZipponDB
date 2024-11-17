@@ -2,9 +2,11 @@ const std = @import("std");
 const utils = @import("stuffs/utils.zig");
 const send = utils.send;
 const Allocator = std.mem.Allocator;
+const Pool = std.Thread.Pool;
 
 const FileEngine = @import("fileEngine.zig").FileEngine;
 const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
+const ThreadEngine = @import("threadEngine.zig").ThreadEngine;
 
 const cliTokenizer = @import("tokenizers/cli.zig").Tokenizer;
 const cliToken = @import("tokenizers/cli.zig").Token;
@@ -15,8 +17,10 @@ const ziqlParser = @import("ziqlParser.zig").Parser;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
-const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
-const HELP_MESSAGE = @import("config.zig").HELP_MESSAGE;
+const config = @import("config.zig");
+const BUFFER_SIZE = config.BUFFER_SIZE;
+const CPU_CORE = config.CPU_CORE;
+const HELP_MESSAGE = config.HELP_MESSAGE;
 
 const State = enum {
     expect_main_command,
@@ -45,19 +49,22 @@ pub const DBEngine = struct {
     state: DBEngineState = .Init,
     file_engine: FileEngine = undefined,
     schema_engine: SchemaEngine = undefined,
+    thread_engine: ThreadEngine = undefined,
 
     pub fn init(allocator: std.mem.Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
         var self = DBEngine{ .allocator = allocator };
+
+        self.thread_engine = ThreadEngine.init(allocator);
+
         const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_PATH");
         defer {
-            log.debug("{s} {any}\n", .{ potential_main_path_or_environment_variable.?, potential_schema_path });
             if (potential_main_path_or_environment_variable != null and potential_main_path == null) allocator.free(potential_main_path_or_environment_variable.?);
         }
 
         if (potential_main_path_or_environment_variable) |main_path| {
             log_path = std.fmt.bufPrint(&log_buff, "{s}/LOG/log", .{main_path}) catch "";
             log.info("Found ZIPPONDB_PATH: {s}.", .{main_path});
-            self.file_engine = FileEngine.init(self.allocator, main_path) catch {
+            self.file_engine = FileEngine.init(self.allocator, main_path, self.thread_engine.thread_pool) catch {
                 log.err("Error when init FileEngine", .{});
                 self.state = .MissingFileEngine;
                 return self;
@@ -123,12 +130,14 @@ pub const DBEngine = struct {
         } else {
             log.info(HELP_MESSAGE.no_schema, .{self.file_engine.path_to_ZipponDB_dir});
         }
+
         return self;
     }
 
     pub fn deinit(self: *DBEngine) void {
         if (self.state == .Ok or self.state == .MissingSchemaEngine) self.file_engine.deinit(); // Pretty sure I can use like state > 2 because enum of just number
         if (self.state == .Ok) self.schema_engine.deinit();
+        self.thread_engine.deinit();
     }
 
     pub fn runQuery(self: *DBEngine, null_term_query_str: [:0]const u8) void {

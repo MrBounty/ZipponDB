@@ -6,6 +6,7 @@ const Pool = std.Thread.Pool;
 const Allocator = std.mem.Allocator;
 const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
 const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
+const ThreadSyncContext = @import("threadEngine.zig").ThreadSyncContext;
 
 const dtype = @import("dtype");
 const s2t = dtype.s2t;
@@ -30,40 +31,6 @@ const log = std.log.scoped(.fileEngine);
 // TODO: Start using State at the start and end of each function for debugging
 const FileEngineState = enum { Parsing, Waiting };
 
-const ThreadSyncContext = struct {
-    processed_struct: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    error_file: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    completed_file: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    max_struct: u64,
-    max_file: u64,
-
-    fn init(max_struct: u64, max_file: u64) ThreadSyncContext {
-        return ThreadSyncContext{
-            .max_struct = max_struct,
-            .max_file = max_file,
-        };
-    }
-
-    fn isComplete(self: *ThreadSyncContext) bool {
-        return (self.completed_file.load(.acquire) + self.error_file.load(.acquire)) >= self.max_file;
-    }
-
-    fn completeThread(self: *ThreadSyncContext) void {
-        _ = self.completed_file.fetchAdd(1, .release);
-    }
-
-    fn incrementAndCheckStructLimit(self: *ThreadSyncContext) bool {
-        if (self.max_struct == 0) return false;
-        const new_count = self.processed_struct.fetchAdd(1, .monotonic);
-        return new_count >= self.max_struct;
-    }
-
-    fn logError(self: *ThreadSyncContext, message: []const u8, err: anyerror) void {
-        log.err("{s}: {any}", .{ message, err });
-        _ = self.error_file.fetchAdd(1, .acquire);
-    }
-};
-
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
 pub const FileEngine = struct {
@@ -71,12 +38,14 @@ pub const FileEngine = struct {
     state: FileEngineState,
     path_to_ZipponDB_dir: []const u8,
     schema_engine: SchemaEngine = undefined, // I dont really like that here
+    thread_pool: *Pool = undefined,
 
-    pub fn init(allocator: Allocator, path: []const u8) ZipponError!FileEngine {
+    pub fn init(allocator: Allocator, path: []const u8, thread_pool: *Pool) ZipponError!FileEngine {
         return FileEngine{
             .allocator = allocator,
             .path_to_ZipponDB_dir = allocator.dupe(u8, path) catch return ZipponError.MemoryError,
             .state = .Waiting,
+            .thread_pool = thread_pool,
         };
     }
 
@@ -236,17 +205,6 @@ pub const FileEngine = struct {
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         // Multi-threading setup
-        var arena = std.heap.ThreadSafeAllocator{
-            .child_allocator = self.allocator,
-        };
-
-        var pool: std.Thread.Pool = undefined;
-        defer pool.deinit();
-        pool.init(std.Thread.Pool.Options{
-            .allocator = arena.allocator(),
-            .n_jobs = CPU_CORE,
-        }) catch return ZipponError.ThreadError;
-
         var sync_context = ThreadSyncContext.init(
             0,
             max_file_index + 1,
@@ -265,7 +223,7 @@ pub const FileEngine = struct {
 
         // Spawn threads for each file
         for (0..(max_file_index + 1)) |file_index| {
-            pool.spawn(populateFileIndexUUIDMapOneFile, .{
+            self.thread_pool.spawn(populateFileIndexUUIDMapOneFile, .{
                 sstruct,
                 &thread_writer_list[file_index],
                 file_index,
@@ -334,17 +292,6 @@ pub const FileEngine = struct {
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         // Multi-threading setup
-        var arena = std.heap.ThreadSafeAllocator{
-            .child_allocator = self.allocator,
-        };
-
-        var pool: std.Thread.Pool = undefined;
-        defer pool.deinit();
-        pool.init(std.Thread.Pool.Options{
-            .allocator = arena.allocator(),
-            .n_jobs = CPU_CORE,
-        }) catch return ZipponError.ThreadError;
-
         var sync_context = ThreadSyncContext.init(
             additional_data.entity_count_to_find,
             max_file_index + 1,
@@ -363,7 +310,7 @@ pub const FileEngine = struct {
 
         // Spawn threads for each file
         for (0..(max_file_index + 1)) |file_index| {
-            pool.spawn(populateVoidUUIDMapOneFile, .{
+            self.thread_pool.spawn(populateVoidUUIDMapOneFile, .{
                 sstruct,
                 filter,
                 &thread_writer_list[file_index],
@@ -449,17 +396,6 @@ pub const FileEngine = struct {
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
 
         // Multi thread stuffs
-        var arena = std.heap.ThreadSafeAllocator{
-            .child_allocator = self.allocator,
-        };
-
-        var pool: std.Thread.Pool = undefined;
-        defer pool.deinit();
-        pool.init(std.Thread.Pool.Options{
-            .allocator = arena.allocator(),
-            .n_jobs = CPU_CORE,
-        }) catch return ZipponError.ThreadError;
-
         var sync_context = ThreadSyncContext.init(
             additional_data.entity_count_to_find,
             max_file_index + 1,
@@ -483,7 +419,7 @@ pub const FileEngine = struct {
         for (0..(max_file_index + 1)) |file_index| {
             thread_writer_list[file_index] = std.ArrayList(u8).init(allocator);
 
-            pool.spawn(parseEntitiesOneFile, .{
+            self.thread_pool.spawn(parseEntitiesOneFile, .{
                 thread_writer_list[file_index].writer(),
                 file_index,
                 dir,
@@ -674,17 +610,6 @@ pub const FileEngine = struct {
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         // Multi-threading setup
-        var arena = std.heap.ThreadSafeAllocator{
-            .child_allocator = self.allocator,
-        };
-
-        var pool: std.Thread.Pool = undefined;
-        defer pool.deinit();
-        pool.init(std.Thread.Pool.Options{
-            .allocator = arena.allocator(),
-            .n_jobs = CPU_CORE,
-        }) catch return ZipponError.ThreadError;
-
         var sync_context = ThreadSyncContext.init(
             additional_data.entity_count_to_find,
             max_file_index + 1,
@@ -718,7 +643,7 @@ pub const FileEngine = struct {
 
         // Spawn threads for each file
         for (0..(max_file_index + 1)) |file_index| {
-            pool.spawn(updateEntitiesOneFile, .{
+            self.thread_pool.spawn(updateEntitiesOneFile, .{
                 new_data_buff,
                 sstruct,
                 filter,
@@ -858,17 +783,6 @@ pub const FileEngine = struct {
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         // Multi-threading setup
-        var arena = std.heap.ThreadSafeAllocator{
-            .child_allocator = self.allocator,
-        };
-
-        var pool: std.Thread.Pool = undefined;
-        defer pool.deinit();
-        pool.init(std.Thread.Pool.Options{
-            .allocator = arena.allocator(),
-            .n_jobs = CPU_CORE,
-        }) catch return ZipponError.ThreadError;
-
         var sync_context = ThreadSyncContext.init(
             additional_data.entity_count_to_find,
             max_file_index + 1,
@@ -887,7 +801,7 @@ pub const FileEngine = struct {
 
         // Spawn threads for each file
         for (0..(max_file_index + 1)) |file_index| {
-            pool.spawn(deleteEntitiesOneFile, .{
+            self.thread_pool.spawn(deleteEntitiesOneFile, .{
                 sstruct,
                 filter,
                 thread_writer_list[file_index].writer(),
