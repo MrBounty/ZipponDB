@@ -145,7 +145,6 @@ test "Multiple Node UUIDIndexMap with Deep Subdivisions" {
 
     for (non_existent_uuids) |uuid_str| {
         const uuid = try UUID.parse(uuid_str);
-        std.debug.print("{s}\n", .{uuid_str});
         try std.testing.expect(!imap.contains(uuid));
         try std.testing.expectEqual(imap.get(uuid), null);
     }
@@ -164,7 +163,7 @@ test "Multiple Node UUIDIndexMap with Deep Subdivisions" {
     }
 }
 
-test "Radix benchmark insert" {
+test "UUIDIndexMap benchmark" {
     const allocator = std.testing.allocator;
 
     var imap = try UUIDIndexMap.init(allocator);

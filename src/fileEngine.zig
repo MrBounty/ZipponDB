@@ -192,14 +192,15 @@ pub const FileEngine = struct {
         return count;
     }
 
+    const UUIDFileIndex = @import("stuffs/UUIDFileIndex.zig").UUIDIndexMap;
+
     /// Populate a map with all UUID bytes as key and file index as value
     /// This map is store in the SchemaStruct to then by using a list of UUID, get a list of file_index to parse
     pub fn populateFileIndexUUIDMap(
         self: *FileEngine,
-        struct_name: []const u8,
-        map: *std.AutoHashMap(UUID, usize),
+        sstruct: SchemaStruct,
+        map: *UUIDFileIndex,
     ) ZipponError!void {
-        const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
@@ -211,14 +212,14 @@ pub const FileEngine = struct {
         );
 
         // Create a thread-safe writer for each file
-        var thread_writer_list = self.allocator.alloc(std.ArrayList([16]u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+        var thread_writer_list = self.allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
         defer {
             for (thread_writer_list) |list| list.deinit();
             self.allocator.free(thread_writer_list);
         }
 
         for (thread_writer_list) |*list| {
-            list.* = std.ArrayList([16]u8).init(self.allocator);
+            list.* = std.ArrayList(UUID).init(self.allocator);
         }
 
         // Spawn threads for each file

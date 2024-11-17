@@ -90,7 +90,7 @@ pub const DBEngine = struct {
             defer allocator.free(schema_path);
 
             log.info("Schema founded in the database directory.", .{});
-            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch |err| {
+            self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
                 log.err("Error when init SchemaEngine: {any}", .{err});
                 self.state = .MissingSchemaEngine;
                 return self;
@@ -114,7 +114,7 @@ pub const DBEngine = struct {
         if (potential_schema_path_or_environment_variable != null and potential_schema_path == null) allocator.free(potential_main_path_or_environment_variable.?);
         if (potential_schema_path_or_environment_variable) |schema_path| {
             log.info("Found schema path {s}.", .{schema_path});
-            self.schema_engine = SchemaEngine.init(self.allocator, schema_path) catch |err| {
+            self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
                 log.err("Error when init SchemaEngine: {any}", .{err});
                 self.state = .MissingSchemaEngine;
                 return self;

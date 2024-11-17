@@ -22,7 +22,7 @@ pub const SchemaEngine = struct {
     struct_array: []SchemaStruct,
 
     // The path is the path to the schema file
-    pub fn init(allocator: Allocator, path: []const u8) ZipponError!SchemaEngine {
+    pub fn init(allocator: Allocator, path: []const u8, file_engine: *FileEngine) ZipponError!SchemaEngine {
         log.debug("Trying to init a SchemaEngine with path {s}", .{path});
         var schema_buf = allocator.alloc(u8, BUFFER_SIZE) catch return ZipponError.MemoryError;
         defer allocator.free(schema_buf);
@@ -39,6 +39,14 @@ pub const SchemaEngine = struct {
         parser.parse(&struct_array) catch return ZipponError.SchemaNotConform;
 
         log.debug("SchemaEngine init with {d} SchemaStruct.", .{struct_array.items.len});
+
+        for (struct_array.items) |sstruct| {
+            file_engine.populateFileIndexUUIDMap(sstruct, sstruct.uuid_file_index) catch |err| {
+                log.err("Error populate file index UUID map {any}", .{err});
+            };
+        }
+
+        log.debug("SchemaEngine init with {d} SchemaStruct after populateFileIndexUUIDMap.", .{struct_array.items.len});
 
         return SchemaEngine{
             .allocator = allocator,
@@ -119,13 +127,14 @@ pub const SchemaEngine = struct {
     /// Chech if the name of a struct is in the current schema
     pub fn isStructNameExists(self: *SchemaEngine, struct_name: []const u8) bool {
         var i: u16 = 0;
+        log.debug("\n\n{any}\n\n", .{self.struct_array});
         while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) return true;
         return false;
     }
 
     /// Check if a struct have the member name
     pub fn isMemberNameInStruct(self: *SchemaEngine, struct_name: []const u8, member_name: []const u8) ZipponError!bool {
-        for (try self.structName2structMembers(struct_name)) |mn| { // I do not return an error here because I should already check before is the struct exist
+        for (try self.structName2structMembers(struct_name)) |mn| {
             if (std.mem.eql(u8, mn, member_name)) return true;
         }
         return false;
