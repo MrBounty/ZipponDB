@@ -36,6 +36,10 @@ const State = enum {
 const log_allocator = std.heap.page_allocator;
 var log_buff: [1024]u8 = undefined;
 var log_path: []const u8 = undefined;
+var path_buffer: [1024]u8 = undefined;
+var line_buffer: [BUFFER_SIZE]u8 = undefined;
+var in_buffer: [BUFFER_SIZE]u8 = undefined;
+var out_buffer: [BUFFER_SIZE]u8 = undefined;
 
 const log = std.log.scoped(.cli);
 pub const std_options = .{
@@ -45,26 +49,21 @@ pub const std_options = .{
 const DBEngineState = enum { MissingFileEngine, MissingSchemaEngine, Ok, Init };
 
 pub const DBEngine = struct {
-    allocator: Allocator,
     state: DBEngineState = .Init,
     file_engine: FileEngine = undefined,
     schema_engine: SchemaEngine = undefined,
     thread_engine: ThreadEngine = undefined,
 
-    pub fn init(allocator: std.mem.Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
-        var self = DBEngine{ .allocator = allocator };
+    pub fn init(potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
+        var self = DBEngine{};
 
-        self.thread_engine = ThreadEngine.init(allocator);
+        self.thread_engine = ThreadEngine.init();
 
-        const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_PATH");
-        defer {
-            if (potential_main_path_or_environment_variable != null and potential_main_path == null) allocator.free(potential_main_path_or_environment_variable.?);
-        }
-
+        const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable("ZIPPONDB_PATH");
         if (potential_main_path_or_environment_variable) |main_path| {
             log_path = std.fmt.bufPrint(&log_buff, "{s}/LOG/log", .{main_path}) catch "";
             log.info("Found ZIPPONDB_PATH: {s}.", .{main_path});
-            self.file_engine = FileEngine.init(self.allocator, main_path, self.thread_engine.thread_pool) catch {
+            self.file_engine = FileEngine.init(main_path, self.thread_engine.thread_pool) catch {
                 log.err("Error when init FileEngine", .{});
                 self.state = .MissingFileEngine;
                 return self;
@@ -83,14 +82,13 @@ pub const DBEngine = struct {
         }
 
         if (self.file_engine.isSchemaFileInDir() and potential_schema_path == null) {
-            const schema_path = std.fmt.allocPrint(allocator, "{s}/schema", .{self.file_engine.path_to_ZipponDB_dir}) catch {
+            const schema_path = std.fmt.bufPrint(&path_buffer, "{s}/schema", .{self.file_engine.path_to_ZipponDB_dir}) catch {
                 self.state = .MissingSchemaEngine;
                 return self;
             };
-            defer allocator.free(schema_path);
 
             log.info("Schema founded in the database directory.", .{});
-            self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
+            self.schema_engine = SchemaEngine.init(schema_path, &self.file_engine) catch |err| {
                 log.err("Error when init SchemaEngine: {any}", .{err});
                 self.state = .MissingSchemaEngine;
                 return self;
@@ -110,11 +108,10 @@ pub const DBEngine = struct {
         }
 
         log.info("Database don't have any schema yet, trying to add one.", .{});
-        const potential_schema_path_or_environment_variable = potential_schema_path orelse utils.getEnvVariable(allocator, "ZIPPONDB_SCHEMA");
-        if (potential_schema_path_or_environment_variable != null and potential_schema_path == null) allocator.free(potential_main_path_or_environment_variable.?);
+        const potential_schema_path_or_environment_variable = potential_schema_path orelse utils.getEnvVariable("ZIPPONDB_SCHEMA");
         if (potential_schema_path_or_environment_variable) |schema_path| {
             log.info("Found schema path {s}.", .{schema_path});
-            self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
+            self.schema_engine = SchemaEngine.init(schema_path, &self.file_engine) catch |err| {
                 log.err("Error when init SchemaEngine: {any}", .{err});
                 self.state = .MissingSchemaEngine;
                 return self;
@@ -135,9 +132,7 @@ pub const DBEngine = struct {
     }
 
     pub fn deinit(self: *DBEngine) void {
-        if (self.state == .Ok or self.state == .MissingSchemaEngine) self.file_engine.deinit(); // Pretty sure I can use like state > 2 because enum of just number
         if (self.state == .Ok) self.schema_engine.deinit();
-        self.thread_engine.deinit();
     }
 
     pub fn runQuery(self: *DBEngine, null_term_query_str: [:0]const u8) void {
@@ -199,31 +194,26 @@ pub fn myLog(
 
 // TODO: If an argument is given when starting the binary, it is the db path
 pub fn main() !void {
-    errdefer log.warn("Main function ended with an error", .{});
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer switch (gpa.deinit()) {
-        .ok => {},
-        .leak => log.debug("We fucked it up bro...\n", .{}),
-    };
-
-    var db_engine = DBEngine.init(allocator, null, null);
+    var db_engine = DBEngine.init(null, null);
     defer db_engine.deinit();
 
-    const line_buf = try allocator.alloc(u8, BUFFER_SIZE);
-    defer allocator.free(line_buf);
+    var fa = std.heap.FixedBufferAllocator.init(&out_buffer);
+    const allocator = fa.allocator();
 
     while (true) {
+        fa.reset();
+        db_engine.thread_engine.reset();
         std.debug.print("> ", .{}); // TODO: Find something better than just std.debug.print
-        const line = try std.io.getStdIn().reader().readUntilDelimiterOrEof(line_buf, '\n');
+        const line = std.io.getStdIn().reader().readUntilDelimiterOrEof(&in_buffer, '\n') catch {
+            log.debug("Command too long for buffer", .{});
+            continue;
+        };
 
         if (line) |line_str| {
             const start_time = std.time.milliTimestamp();
             log.debug("Query received: {s}", .{line_str});
 
-            const null_term_line_str = try allocator.dupeZ(u8, line_str[0..line_str.len]);
-            defer allocator.free(null_term_line_str);
+            const null_term_line_str = try std.fmt.bufPrintZ(&line_buffer, "{s}", .{line_str});
 
             var toker = cliTokenizer.init(null_term_line_str);
             var token = toker.next();
@@ -299,11 +289,7 @@ pub fn main() !void {
                 .expect_path_to_db => switch (token.tag) {
                     .identifier => {
                         db_engine.deinit();
-                        db_engine = DBEngine.init(
-                            allocator,
-                            try allocator.dupe(u8, toker.getTokenSlice(token)),
-                            null,
-                        );
+                        db_engine = DBEngine.init(toker.getTokenSlice(token), null);
                         state = .end;
                     },
                     else => {
@@ -316,7 +302,7 @@ pub fn main() !void {
                     .string_literal => {
                         const null_term_query_str = try allocator.dupeZ(u8, toker.buffer[token.loc.start + 1 .. token.loc.end - 1]);
                         defer allocator.free(null_term_query_str);
-                        db_engine.runQuery(null_term_query_str);
+                        db_engine.runQuery(null_term_query_str); // TODO: THis should return something and I should send from here, not from the parser
                         state = .end;
                     },
                     .keyword_help => {
@@ -333,7 +319,7 @@ pub fn main() !void {
                     .keyword_describe => {
                         if (db_engine.state == .MissingFileEngine) send("Error: No database selected. Please use 'db new' or 'db use'.", .{});
                         if (db_engine.state == .MissingSchemaEngine) send("Error: No schema in database. Please use 'schema init'.", .{});
-                        send("Schema:\n {s}", .{db_engine.schema_engine.null_terminated_schema_buff});
+                        send("Schema:\n {s}", .{db_engine.schema_engine.null_terminated});
                         state = .end;
                     },
                     .keyword_init => {
@@ -354,8 +340,8 @@ pub fn main() !void {
                     .identifier => {
                         const main_path = try allocator.dupe(u8, db_engine.file_engine.path_to_ZipponDB_dir);
                         db_engine.deinit();
-                        db_engine = DBEngine.init(allocator, main_path, toker.getTokenSlice(token));
-                        try db_engine.file_engine.writeSchemaFile(db_engine.schema_engine.null_terminated_schema_buff);
+                        db_engine = DBEngine.init(main_path, toker.getTokenSlice(token));
+                        try db_engine.file_engine.writeSchemaFile(db_engine.schema_engine.null_terminated);
                         state = .end;
                     },
                     else => {

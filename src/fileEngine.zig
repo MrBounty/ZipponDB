@@ -5,7 +5,7 @@ const U64 = std.atomic.Value(u64);
 const Pool = std.Thread.Pool;
 const Allocator = std.mem.Allocator;
 const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
-const SchemaStruct = @import("schemaParser.zig").Parser.SchemaStruct;
+const SchemaStruct = @import("schemaEngine.zig").SchemaStruct;
 const ThreadSyncContext = @import("threadEngine.zig").ThreadSyncContext;
 
 const dtype = @import("dtype");
@@ -22,39 +22,30 @@ const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
 const config = @import("config.zig");
 const BUFFER_SIZE = config.BUFFER_SIZE;
+const OUT_BUFFER_SIZE = config.OUT_BUFFER_SIZE;
 const MAX_FILE_SIZE = config.MAX_FILE_SIZE;
 const RESET_LOG_AT_RESTART = config.RESET_LOG_AT_RESTART;
 const CPU_CORE = config.CPU_CORE;
 
 const log = std.log.scoped(.fileEngine);
 
-// TODO: Start using State at the start and end of each function for debugging
-const FileEngineState = enum { Parsing, Waiting };
+// I really like that, just some buffer in each file. Like that I can know EXACTLY how many memory I give the DB
+var parsing_buffer: [OUT_BUFFER_SIZE]u8 = undefined;
+var path_buffer: [1024]u8 = undefined;
+var path_to_ZipponDB_dir_buffer: [1024]u8 = undefined;
 
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
 pub const FileEngine = struct {
-    allocator: Allocator,
-    state: FileEngineState,
     path_to_ZipponDB_dir: []const u8,
-    schema_engine: SchemaEngine = undefined, // I dont really like that here
-    thread_pool: *Pool = undefined,
+    thread_pool: *Pool, // same pool as the ThreadEngine
+    schema_engine: SchemaEngine = undefined, // This is init after the FileEngine and I attach after. Do I need to init after tho ?
 
-    pub fn init(allocator: Allocator, path: []const u8, thread_pool: *Pool) ZipponError!FileEngine {
+    pub fn init(path: []const u8, thread_pool: *Pool) ZipponError!FileEngine {
         return FileEngine{
-            .allocator = allocator,
-            .path_to_ZipponDB_dir = allocator.dupe(u8, path) catch return ZipponError.MemoryError,
-            .state = .Waiting,
+            .path_to_ZipponDB_dir = std.fmt.bufPrint(&path_to_ZipponDB_dir_buffer, "{s}", .{path}) catch return ZipponError.MemoryError,
             .thread_pool = thread_pool,
         };
-    }
-
-    pub fn deinit(self: *FileEngine) void {
-        self.allocator.free(self.path_to_ZipponDB_dir);
-    }
-
-    pub fn usable(self: FileEngine) bool {
-        return self.state == .Waiting;
     }
 
     // --------------------Other--------------------
@@ -105,8 +96,7 @@ pub const FileEngine = struct {
     /// Create the main folder. Including DATA, LOG and BACKUP
     /// TODO: Maybe start using a fixed lenght buffer instead of free everytime, but that not that important
     pub fn createMainDirectories(self: *FileEngine) ZipponError!void {
-        var path_buff = std.fmt.allocPrint(self.allocator, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path_buff);
+        var path_buff = std.fmt.bufPrint(&path_buffer, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
         const cwd = std.fs.cwd();
 
@@ -115,32 +105,28 @@ pub const FileEngine = struct {
             else => return FileEngineError.CantMakeDir,
         };
 
-        self.allocator.free(path_buff);
-        path_buff = std.fmt.allocPrint(self.allocator, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+        path_buff = std.fmt.bufPrint(&path_buffer, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return FileEngineError.CantMakeDir,
         };
 
-        self.allocator.free(path_buff);
-        path_buff = std.fmt.allocPrint(self.allocator, "{s}/BACKUP", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+        path_buff = std.fmt.bufPrint(&path_buffer, "{s}/BACKUP", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return FileEngineError.CantMakeDir,
         };
 
-        self.allocator.free(path_buff);
-        path_buff = std.fmt.allocPrint(self.allocator, "{s}/LOG", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+        path_buff = std.fmt.bufPrint(&path_buffer, "{s}/LOG", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
         cwd.makeDir(path_buff) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return FileEngineError.CantMakeDir,
         };
 
-        self.allocator.free(path_buff);
-        path_buff = std.fmt.allocPrint(self.allocator, "{s}/LOG/log", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+        path_buff = std.fmt.bufPrint(&path_buffer, "{s}/LOG/log", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
         if (RESET_LOG_AT_RESTART) {
             _ = cwd.createFile(path_buff, .{}) catch return FileEngineError.CantMakeFile;
@@ -173,6 +159,10 @@ pub const FileEngine = struct {
     /// Use a struct name to populate a list with all UUID of this struct
     /// TODO: Multi thread that too
     pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) ZipponError!usize {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
         var count: usize = 0;
@@ -180,10 +170,9 @@ pub const FileEngine = struct {
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         for (0..(max_file_index + 1)) |i| {
-            const path_buff = std.fmt.allocPrint(self.allocator, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
-            defer self.allocator.free(path_buff);
+            const path_buff = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
 
-            var iter = zid.DataIterator.init(self.allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+            var iter = zid.DataIterator.init(allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
             defer iter.deinit();
 
             while (iter.next() catch return FileEngineError.ZipponDataError) |_| count += 1;
@@ -201,6 +190,10 @@ pub const FileEngine = struct {
         sstruct: SchemaStruct,
         map: *UUIDFileIndex,
     ) ZipponError!void {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
@@ -212,14 +205,14 @@ pub const FileEngine = struct {
         );
 
         // Create a thread-safe writer for each file
-        var thread_writer_list = self.allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
+        var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
         defer {
             for (thread_writer_list) |list| list.deinit();
-            self.allocator.free(thread_writer_list);
+            allocator.free(thread_writer_list);
         }
 
         for (thread_writer_list) |*list| {
-            list.* = std.ArrayList(UUID).init(self.allocator);
+            list.* = std.ArrayList(UUID).init(allocator);
         }
 
         // Spawn threads for each file
@@ -256,7 +249,6 @@ pub const FileEngine = struct {
         defer fa.reset();
         const allocator = fa.allocator();
 
-        var path_buffer: [128]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
             sync_context.logError("Error creating file path", err);
             return;
@@ -287,6 +279,10 @@ pub const FileEngine = struct {
         map: *std.AutoHashMap(UUID, void),
         additional_data: *AdditionalData,
     ) ZipponError!void {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
@@ -299,14 +295,10 @@ pub const FileEngine = struct {
         );
 
         // Create a thread-safe writer for each file
-        var thread_writer_list = self.allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
-        defer {
-            for (thread_writer_list) |list| list.deinit();
-            self.allocator.free(thread_writer_list);
-        }
+        var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
 
         for (thread_writer_list) |*list| {
-            list.* = std.ArrayList(UUID).init(self.allocator);
+            list.* = std.ArrayList(UUID).init(allocator);
         }
 
         // Spawn threads for each file
@@ -355,7 +347,6 @@ pub const FileEngine = struct {
         defer fa.reset();
         const allocator = fa.allocator();
 
-        var path_buffer: [128]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
             sync_context.logError("Error creating file path", err);
             return;
@@ -394,6 +385,10 @@ pub const FileEngine = struct {
         additional_data: *AdditionalData,
         writer: anytype,
     ) ZipponError!void {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
@@ -401,7 +396,7 @@ pub const FileEngine = struct {
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
         if (additional_data.member_to_find.items.len == 0) {
-            additional_data.populateWithEverything(self.allocator, sstruct.members) catch return FileEngineError.MemoryError;
+            additional_data.populateWithEverything(allocator, sstruct.members) catch return FileEngineError.MemoryError;
         }
 
         // Open the dir that contain all files
@@ -415,17 +410,11 @@ pub const FileEngine = struct {
 
         // Do one array and writer for each thread otherwise then create error by writing at the same time
         // Maybe use fixed lenght buffer for speed here
-        var thread_writer_list = self.allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+        var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
         defer {
             for (thread_writer_list) |list| list.deinit();
-            self.allocator.free(thread_writer_list);
+            allocator.free(thread_writer_list);
         }
-
-        // Maybe do one buffer per files ?
-        var data_buffer: [BUFFER_SIZE]u8 = undefined;
-        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
-        defer fa.reset();
-        const allocator = fa.allocator();
 
         // Start parsing all file in multiple thread
         for (0..(max_file_index + 1)) |file_index| {
@@ -470,7 +459,6 @@ pub const FileEngine = struct {
         defer fa.reset();
         const allocator = fa.allocator();
 
-        var path_buffer: [16]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
             sync_context.logError("Error creating file path", err);
             return;
@@ -584,21 +572,14 @@ pub const FileEngine = struct {
         writer: anytype,
         n: usize,
     ) ZipponError!void {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         const file_index = try self.getFirstUsableIndexFile(struct_name);
 
-        const path = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.zid",
-            .{ self.path_to_ZipponDB_dir, struct_name, file_index },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path);
-
-        var data_buffer: [BUFFER_SIZE]u8 = undefined;
-        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
-        defer fa.reset();
-        const data_allocator = fa.allocator();
-
-        const data = try self.orderedNewData(data_allocator, struct_name, map);
+        const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
+        const data = try self.orderedNewData(allocator, struct_name, map);
 
         var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
         defer data_writer.deinit();
@@ -617,6 +598,10 @@ pub const FileEngine = struct {
         writer: anytype,
         additional_data: *AdditionalData,
     ) ZipponError!void {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
@@ -629,29 +614,19 @@ pub const FileEngine = struct {
         );
 
         // Create a thread-safe writer for each file
-        var thread_writer_list = self.allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
-        defer {
-            for (thread_writer_list) |list| list.deinit();
-            self.allocator.free(thread_writer_list);
-        }
-
+        var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
         for (thread_writer_list) |*list| {
-            list.* = std.ArrayList(u8).init(self.allocator);
+            list.* = std.ArrayList(u8).init(allocator);
         }
 
-        var data_buffer: [BUFFER_SIZE]u8 = undefined;
-        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
-        defer fa.reset();
-        const data_allocator = fa.allocator();
-
-        var new_data_buff = data_allocator.alloc(zid.Data, sstruct.members.len) catch return ZipponError.MemoryError;
+        var new_data_buff = allocator.alloc(zid.Data, sstruct.members.len) catch return ZipponError.MemoryError;
 
         // Convert the map to an array of ZipponData Data type, to be use with ZipponData writter
         for (sstruct.members, 0..) |member, i| {
             if (!map.contains(member)) continue;
 
             const dt = try self.schema_engine.memberName2DataType(struct_name, member);
-            new_data_buff[i] = try string2Data(data_allocator, dt, map.get(member).?);
+            new_data_buff[i] = try string2Data(allocator, dt, map.get(member).?);
         }
 
         // Spawn threads for each file
@@ -697,7 +672,6 @@ pub const FileEngine = struct {
         defer fa.reset();
         const allocator = fa.allocator();
 
-        var path_buffer: [128]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
             sync_context.logError("Error creating file path", err);
             return;
@@ -791,6 +765,10 @@ pub const FileEngine = struct {
         writer: anytype,
         additional_data: *AdditionalData,
     ) ZipponError!void {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
@@ -803,14 +781,9 @@ pub const FileEngine = struct {
         );
 
         // Create a thread-safe writer for each file
-        var thread_writer_list = self.allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
-        defer {
-            for (thread_writer_list) |list| list.deinit();
-            self.allocator.free(thread_writer_list);
-        }
-
+        var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
         for (thread_writer_list) |*list| {
-            list.* = std.ArrayList(u8).init(self.allocator);
+            list.* = std.ArrayList(u8).init(allocator);
         }
 
         // Spawn threads for each file
@@ -852,7 +825,6 @@ pub const FileEngine = struct {
         defer fa.reset();
         const allocator = fa.allocator();
 
-        var path_buffer: [128]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
             sync_context.logError("Error creating file path", err);
             return;
@@ -1031,13 +1003,7 @@ pub const FileEngine = struct {
             }
         }
 
-        const path = std.fmt.allocPrint(
-            self.allocator,
-            "{s}/DATA/{s}/{d}.zid",
-            .{ self.path_to_ZipponDB_dir, struct_name, i },
-        ) catch return FileEngineError.MemoryError;
-        defer self.allocator.free(path);
-
+        const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, i }) catch return FileEngineError.MemoryError;
         zid.createFile(path, null) catch return FileEngineError.ZipponDataError;
 
         return i;

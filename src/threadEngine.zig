@@ -7,7 +7,12 @@ const Allocator = std.mem.Allocator;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 const CPU_CORE = @import("config.zig").CPU_CORE;
+const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
 const log = std.log.scoped(.thread);
+
+var alloc_buff: [BUFFER_SIZE]u8 = undefined;
+var fa = std.heap.FixedBufferAllocator.init(&alloc_buff);
+const allocator = fa.allocator();
 
 pub const ThreadSyncContext = struct {
     processed_struct: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
@@ -50,12 +55,10 @@ pub const ThreadSyncContext = struct {
 };
 
 pub const ThreadEngine = struct {
-    allocator: Allocator,
     thread_arena: *std.heap.ThreadSafeAllocator = undefined,
     thread_pool: *Pool = undefined,
 
-    // TODO: Make better error handeling
-    pub fn init(allocator: Allocator) ThreadEngine {
+    pub fn init() ThreadEngine {
         const thread_arena = allocator.create(std.heap.ThreadSafeAllocator) catch @panic("=(");
         thread_arena.* = std.heap.ThreadSafeAllocator{
             .child_allocator = allocator,
@@ -68,15 +71,12 @@ pub const ThreadEngine = struct {
         }) catch @panic("=(");
 
         return ThreadEngine{
-            .allocator = allocator,
             .thread_pool = thread_pool,
             .thread_arena = thread_arena,
         };
     }
 
-    pub fn deinit(self: *ThreadEngine) void {
-        self.thread_pool.deinit();
-        self.allocator.destroy(self.thread_pool);
-        self.allocator.destroy(self.thread_arena);
+    pub fn reset(_: ThreadEngine) void {
+        fa.reset();
     }
 };

@@ -1,12 +1,12 @@
 const std = @import("std");
 const zid = @import("ZipponData");
+const SchemaStruct = @import("schemaEngine.zig").SchemaStruct;
 const Allocator = std.mem.Allocator;
 const DataType = @import("dtype").DataType;
 const UUID = @import("dtype").UUID;
 const Toker = @import("tokenizers/schema.zig").Tokenizer;
 const Token = @import("tokenizers/schema.zig").Token;
 const Loc = @import("tokenizers/shared/loc.zig").Loc;
-const UUIDFileIndex = @import("stuffs/UUIDFileIndex.zig").UUIDIndexMap;
 const send = @import("stuffs/utils.zig").send;
 const printError = @import("stuffs/utils.zig").printError;
 
@@ -38,71 +38,6 @@ pub const Parser = struct {
     }
 
     // Rename something better and move it somewhere else
-    pub const SchemaStruct = struct {
-        allocator: Allocator,
-        name: []const u8,
-        members: [][]const u8,
-        types: []DataType,
-        zid_schema: []zid.DType,
-        links: std.StringHashMap([]const u8), // Map key as member_name and value as struct_name of the link
-        uuid_file_index: *UUIDFileIndex, // Map UUID to the index of the file store in
-
-        pub fn init(
-            allocator: Allocator,
-            name: []const u8,
-            members: [][]const u8,
-            types: []DataType,
-            links: std.StringHashMap([]const u8),
-        ) SchemaParserError!SchemaStruct {
-            const uuid_file_index = allocator.create(UUIDFileIndex) catch return SchemaParserError.MemoryError;
-            uuid_file_index.* = UUIDFileIndex.init(allocator) catch return SchemaParserError.MemoryError;
-            return SchemaStruct{
-                .allocator = allocator,
-                .name = name,
-                .members = members,
-                .types = types,
-                .zid_schema = SchemaStruct.fileDataSchema(allocator, types) catch return SchemaParserError.MemoryError,
-                .links = links,
-                .uuid_file_index = uuid_file_index,
-            };
-        }
-
-        pub fn deinit(self: *SchemaStruct) void {
-            self.allocator.free(self.members);
-            self.allocator.free(self.types);
-            self.allocator.free(self.zid_schema);
-            self.links.deinit();
-            self.uuid_file_index.deinit();
-            self.allocator.destroy(self.uuid_file_index);
-        }
-
-        fn fileDataSchema(allocator: Allocator, dtypes: []DataType) SchemaParserError![]zid.DType {
-            var schema = std.ArrayList(zid.DType).init(allocator);
-
-            for (dtypes) |dt| {
-                schema.append(switch (dt) {
-                    .int => .Int,
-                    .float => .Float,
-                    .str => .Str,
-                    .bool => .Bool,
-                    .link => .UUID,
-                    .self => .UUID,
-                    .date => .Unix,
-                    .time => .Unix,
-                    .datetime => .Unix,
-                    .int_array => .IntArray,
-                    .float_array => .FloatArray,
-                    .str_array => .StrArray,
-                    .bool_array => .BoolArray,
-                    .date_array => .UnixArray,
-                    .time_array => .UnixArray,
-                    .datetime_array => .UnixArray,
-                    .link_array => .UUIDArray,
-                }) catch return SchemaParserError.MemoryError;
-            }
-            return schema.toOwnedSlice() catch return SchemaParserError.MemoryError;
-        }
-    };
 
     pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
         var state: State = .expect_struct_name_OR_end;
