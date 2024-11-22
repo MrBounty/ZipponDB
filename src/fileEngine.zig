@@ -29,8 +29,7 @@ const CPU_CORE = config.CPU_CORE;
 
 const log = std.log.scoped(.fileEngine);
 
-// I really like that, just some buffer in each file. Like that I can know EXACTLY how many memory I give the DB
-var parsing_buffer: [OUT_BUFFER_SIZE]u8 = undefined;
+var parsing_buffer: [OUT_BUFFER_SIZE]u8 = undefined; // Maybe use an arena but this is faster
 var path_buffer: [1024]u8 = undefined;
 var path_to_ZipponDB_dir_buffer: [1024]u8 = undefined;
 
@@ -191,7 +190,7 @@ pub const FileEngine = struct {
         map: *UUIDFileIndex,
     ) ZipponError!void {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        defer fa.reset();
+        fa.reset();
         const allocator = fa.allocator();
 
         const max_file_index = try self.maxFileIndex(sstruct.name);
@@ -386,7 +385,7 @@ pub const FileEngine = struct {
         writer: anytype,
     ) ZipponError!void {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        defer fa.reset();
+        fa.reset();
         const allocator = fa.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
@@ -411,10 +410,6 @@ pub const FileEngine = struct {
         // Do one array and writer for each thread otherwise then create error by writing at the same time
         // Maybe use fixed lenght buffer for speed here
         var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
-        defer {
-            for (thread_writer_list) |list| list.deinit();
-            allocator.free(thread_writer_list);
-        }
 
         // Start parsing all file in multiple thread
         for (0..(max_file_index + 1)) |file_index| {

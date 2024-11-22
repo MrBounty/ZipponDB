@@ -20,8 +20,6 @@ const printError = @import("stuffs/utils.zig").printError;
 const ZiQlParserError = @import("stuffs/errors.zig").ZiQlParserError;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
-const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
-
 const log = std.log.scoped(.ziqlParser);
 
 const State = enum {
@@ -66,16 +64,14 @@ const State = enum {
 };
 
 pub const Parser = struct {
-    allocator: Allocator,
     toker: *Tokenizer,
     file_engine: *FileEngine,
     schema_engine: *SchemaEngine,
 
     // TODO: Improve memory management, stop using an alloc in init maybe
-    pub fn init(allocator: Allocator, toker: *Tokenizer, file_engine: *FileEngine, schema_engine: *SchemaEngine) Parser {
+    pub fn init(toker: *Tokenizer, file_engine: *FileEngine, schema_engine: *SchemaEngine) Parser {
         // Do I need to init a FileEngine at each Parser, can't I put it in the CLI parser instead ?
         return Parser{
-            .allocator = allocator,
             .toker = toker,
             .file_engine = file_engine,
             .schema_engine = schema_engine,
@@ -83,13 +79,15 @@ pub const Parser = struct {
     }
 
     pub fn parse(self: Parser) ZipponError!void {
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+
         var state: State = .start;
-        var additional_data = AdditionalData.init(self.allocator);
+        var additional_data = AdditionalData.init(allocator);
         defer additional_data.deinit();
         var struct_name: []const u8 = undefined;
         var action: enum { GRAB, ADD, UPDATE, DELETE } = undefined;
-
-        const out_allocator = self.allocator;
 
         var token = self.toker.next();
         var keep_next = false; // Use in the loop to prevent to get the next token when continue. Just need to make it true and it is reset at every loop
@@ -169,7 +167,7 @@ pub const Parser = struct {
             },
 
             .parse_additional_data => {
-                try self.parseAdditionalData(&additional_data, struct_name);
+                try self.parseAdditionalData(allocator, &additional_data, struct_name);
                 state = switch (action) {
                     .GRAB => .filter_and_send,
                     .UPDATE => .filter_and_update,
@@ -180,10 +178,10 @@ pub const Parser = struct {
 
             .filter_and_send => switch (token.tag) {
                 .l_brace => {
-                    var filter = try self.parseFilter(struct_name, false);
+                    var filter = try self.parseFilter(allocator, struct_name, false);
                     defer filter.deinit();
 
-                    var buff = std.ArrayList(u8).init(out_allocator);
+                    var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
 
                     try self.file_engine.parseEntities(struct_name, filter, &additional_data, &buff.writer());
@@ -191,7 +189,7 @@ pub const Parser = struct {
                     state = .end;
                 },
                 .eof => {
-                    var buff = std.ArrayList(u8).init(out_allocator);
+                    var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
 
                     try self.file_engine.parseEntities(struct_name, null, &additional_data, &buff.writer());
@@ -210,7 +208,7 @@ pub const Parser = struct {
             // TODO: Optimize so it doesnt use parseFilter but just parse the file and directly check the condition. Here I end up parsing 2 times.
             .filter_and_update => switch (token.tag) {
                 .l_brace => {
-                    var filter = try self.parseFilter(struct_name, false);
+                    var filter = try self.parseFilter(allocator, struct_name, false);
                     defer filter.deinit();
 
                     token = self.toker.last();
@@ -232,11 +230,11 @@ pub const Parser = struct {
                         token.loc.end,
                     );
 
-                    var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                    var data_map = std.StringHashMap([]const u8).init(allocator);
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    var buff = std.ArrayList(u8).init(out_allocator);
+                    var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
 
                     try self.file_engine.updateEntities(struct_name, filter, data_map, &buff.writer(), &additional_data);
@@ -253,11 +251,11 @@ pub const Parser = struct {
                         token.loc.end,
                     );
 
-                    var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                    var data_map = std.StringHashMap([]const u8).init(allocator);
                     defer data_map.deinit();
                     try self.parseNewData(&data_map, struct_name);
 
-                    var buff = std.ArrayList(u8).init(out_allocator);
+                    var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
 
                     try self.file_engine.updateEntities(struct_name, null, data_map, &buff.writer(), &additional_data);
@@ -275,10 +273,10 @@ pub const Parser = struct {
 
             .filter_and_delete => switch (token.tag) {
                 .l_brace => {
-                    var filter = try self.parseFilter(struct_name, false);
+                    var filter = try self.parseFilter(allocator, struct_name, false);
                     defer filter.deinit();
 
-                    var buff = std.ArrayList(u8).init(out_allocator);
+                    var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
 
                     try self.file_engine.deleteEntities(struct_name, filter, &buff.writer(), &additional_data);
@@ -286,7 +284,7 @@ pub const Parser = struct {
                     state = .end;
                 },
                 .eof => {
-                    var buff = std.ArrayList(u8).init(out_allocator);
+                    var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
 
                     try self.file_engine.deleteEntities(struct_name, null, &buff.writer(), &additional_data);
@@ -317,11 +315,11 @@ pub const Parser = struct {
             },
 
             .parse_new_data_and_add_data => {
-                var data_map = std.StringHashMap([]const u8).init(self.allocator);
+                var data_map = std.StringHashMap([]const u8).init(allocator);
                 defer data_map.deinit();
                 try self.parseNewData(&data_map, struct_name);
 
-                var error_message_buffer = std.ArrayList(u8).init(self.allocator);
+                var error_message_buffer = std.ArrayList(u8).init(allocator);
                 defer error_message_buffer.deinit();
 
                 const error_message_buffer_writer = error_message_buffer.writer();
@@ -340,7 +338,7 @@ pub const Parser = struct {
                         token.loc.end,
                     );
                 }
-                var buff = std.ArrayList(u8).init(out_allocator);
+                var buff = std.ArrayList(u8).init(allocator);
                 defer buff.deinit();
 
                 token = self.toker.last_token;
@@ -359,8 +357,8 @@ pub const Parser = struct {
 
     /// Take an array of UUID and populate it with what match what is between {}
     /// Main is to know if between {} or (), main is true if between {}, otherwise between () inside {}
-    fn parseFilter(self: Parser, struct_name: []const u8, is_sub: bool) ZipponError!Filter {
-        var filter = try Filter.init(self.allocator);
+    fn parseFilter(self: Parser, allocator: Allocator, struct_name: []const u8, is_sub: bool) ZipponError!Filter {
+        var filter = try Filter.init(allocator);
         errdefer filter.deinit();
 
         var keep_next = false;
@@ -400,14 +398,14 @@ pub const Parser = struct {
                         }
                     },
                     .l_paren => {
-                        var sub_filter = try self.parseFilter(struct_name, true);
+                        var sub_filter = try self.parseFilter(allocator, struct_name, true);
                         filter.addSubFilter(&sub_filter);
                         token = self.toker.last();
                         keep_next = true;
                         state = .expect_ANDOR_OR_end;
                     },
                     .identifier => {
-                        const condition = try self.parseCondition(&token, struct_name);
+                        const condition = try self.parseCondition(allocator, &token, struct_name);
                         try filter.addCondition(condition);
                         token = self.toker.last();
                         keep_next = true;
@@ -475,7 +473,7 @@ pub const Parser = struct {
 
     /// Parse to get a Condition. Which is a struct that is use by the FileEngine to retreive data.
     /// In the query, it is this part name = 'Bob' or age <= 10
-    fn parseCondition(self: Parser, token_ptr: *Token, struct_name: []const u8) ZipponError!Condition {
+    fn parseCondition(self: Parser, allocator: Allocator, token_ptr: *Token, struct_name: []const u8) ZipponError!Condition {
         var keep_next = false;
         var state: State = .expect_member;
         var token = token_ptr.*;
@@ -566,7 +564,7 @@ pub const Parser = struct {
 
                 var filter: ?Filter = null;
                 defer if (filter != null) filter.?.deinit();
-                var additional_data = AdditionalData.init(self.allocator);
+                var additional_data = AdditionalData.init(allocator);
                 defer additional_data.deinit();
 
                 if (expected_tag) |tag| {
@@ -612,10 +610,7 @@ pub const Parser = struct {
                     .link, .link_array => {
                         switch (token.tag) {
                             .l_bracket => {
-                                try self.parseAdditionalData(
-                                    &additional_data,
-                                    struct_name,
-                                );
+                                try self.parseAdditionalData(allocator, &additional_data, struct_name);
                             },
                             .uuid_literal => {},
                             else => {},
@@ -625,7 +620,7 @@ pub const Parser = struct {
 
                         switch (token.tag) {
                             .l_brace => {
-                                filter = try self.parseFilter(struct_name, false);
+                                filter = try self.parseFilter(allocator, struct_name, false);
                             },
                             .uuid_literal => {},
                             else => return printError(
@@ -650,8 +645,8 @@ pub const Parser = struct {
                     .bool => condition.value = ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
                     .link_array, .link => switch (token.tag) {
                         .l_brace, .l_bracket => {
-                            const map = self.allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
-                            map.* = std.AutoHashMap(UUID, void).init(self.allocator);
+                            const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
+                            map.* = std.AutoHashMap(UUID, void).init(allocator);
                             try self.file_engine.populateVoidUUIDMap(
                                 struct_name,
                                 filter,
@@ -677,7 +672,13 @@ pub const Parser = struct {
             else => unreachable,
         };
 
-        // Check if the condition is valid
+        try self.checkConditionValidity(condition, token);
+
+        return condition;
+    }
+
+    /// Will check if what is compared is ok, like comparing if a string is superior to another string is not for example.
+    fn checkConditionValidity(self: Parser, condition: Condition, token: Token) ZipponError!void {
         switch (condition.operation) {
             .equal => switch (condition.data_type) {
                 .int, .float, .str, .bool, .link, .date, .time, .datetime => {},
@@ -758,13 +759,11 @@ pub const Parser = struct {
 
             else => unreachable,
         }
-
-        return condition;
     }
 
     /// When this function is call, next token should be [
     /// Check if an int is here -> check if ; is here -> check if member is here -> check if [ is here -> loop
-    fn parseAdditionalData(self: Parser, additional_data: *AdditionalData, struct_name: []const u8) ZipponError!void {
+    fn parseAdditionalData(self: Parser, allocator: Allocator, additional_data: *AdditionalData, struct_name: []const u8) ZipponError!void {
         var token = self.toker.next();
         var keep_next = false;
         var state: State = .expect_count_of_entity_to_find;
@@ -826,7 +825,7 @@ pub const Parser = struct {
                     }
                     additional_data.member_to_find.append(
                         AdditionalDataMember.init(
-                            self.allocator,
+                            allocator,
                             self.toker.getTokenSlice(token),
                             try self.schema_engine.memberName2DataIndex(struct_name, self.toker.getTokenSlice(token)),
                         ),
@@ -848,6 +847,7 @@ pub const Parser = struct {
                 .r_bracket => state = .end,
                 .l_bracket => {
                     try self.parseAdditionalData(
+                        allocator,
                         &additional_data.member_to_find.items[additional_data.member_to_find.items.len - 1].additional_data,
                         struct_name,
                     );
@@ -973,75 +973,72 @@ pub const Parser = struct {
                     }
 
                     switch (data_type) {
-                        .str => member_map.put(member_name, self.toker.buffer[start_index + 1 .. token.loc.end - 1]) catch return ZipponError.MemoryError,
+                        .str => member_map.put(member_name, self.toker.buffer[start_index + 1 .. token.loc.end - 1]) catch return ZipponError.MemoryError, // TO remove ' on each side
                         else => member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError,
                     }
-                } else {
-                    // Handle bool and bool array
-                    switch (data_type) {
-                        .bool => {
-                            switch (token.tag) {
-                                .bool_literal_true => {
-                                    member_map.put(member_name, "1") catch return ZiQlParserError.MemoryError;
-                                },
-                                .bool_literal_false => {
-                                    member_map.put(member_name, "0") catch return ZiQlParserError.MemoryError;
-                                },
-                                else => return printError(
-                                    "Error: Expected bool: true, false, or null",
-                                    ZiQlParserError.SynthaxError,
-                                    self.toker.buffer,
-                                    token.loc.start,
-                                    token.loc.end,
-                                ),
-                            }
-                        },
-                        .bool_array => {
-                            if (token.tag != .l_bracket) {
+                } else switch (data_type) {
+                    .bool => {
+                        switch (token.tag) {
+                            .bool_literal_true => {
+                                member_map.put(member_name, "1") catch return ZiQlParserError.MemoryError;
+                            },
+                            .bool_literal_false => {
+                                member_map.put(member_name, "0") catch return ZiQlParserError.MemoryError;
+                            },
+                            else => return printError(
+                                "Error: Expected bool: true, false, or null",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            ),
+                        }
+                    },
+                    .bool_array => {
+                        if (token.tag != .l_bracket) {
+                            return printError(
+                                "Error: Expected [ to start an array",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            );
+                        }
+                        token = self.toker.next();
+                        while (token.tag != .r_bracket) : (token = self.toker.next()) {
+                            if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
                                 return printError(
-                                    "Error: Expected [ to start an array",
+                                    "Error: Expected bool or ]",
                                     ZiQlParserError.SynthaxError,
                                     self.toker.buffer,
                                     token.loc.start,
                                     token.loc.end,
                                 );
                             }
-                            token = self.toker.next();
-                            while (token.tag != .r_bracket) : (token = self.toker.next()) {
-                                if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
-                                    return printError(
-                                        "Error: Expected bool or ]",
-                                        ZiQlParserError.SynthaxError,
-                                        self.toker.buffer,
-                                        token.loc.start,
-                                        token.loc.end,
-                                    );
-                                }
-                            }
-                            member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                        },
-                        .link => {
-                            switch (token.tag) {
-                                .keyword_none => {
-                                    member_map.put(member_name, "00000000-0000-0000-0000-000000000000") catch return ZipponError.MemoryError;
-                                },
-                                .uuid_literal => {
-                                    // TODO: Check if the uuid is in the struct, otherwise return and error
-                                    member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
-                                },
-                                .l_brace => {}, // TODO: Get the filter and return the first value found
-                                else => return printError(
-                                    "Error: Expected uuid or none",
-                                    ZiQlParserError.SynthaxError,
-                                    self.toker.buffer,
-                                    token.loc.start,
-                                    token.loc.end,
-                                ),
-                            }
-                        },
-                        .link_array => {},
-                        else => unreachable,
-                    }
+                        }
+                        member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
+                    },
+                    .link => {
+                        switch (token.tag) {
+                            .keyword_none => {
+                                member_map.put(member_name, "00000000-0000-0000-0000-000000000000") catch return ZipponError.MemoryError;
+                            },
+                            .uuid_literal => {
+                                // TODO: Check if the uuid is in the struct, otherwise return and error
+                                member_map.put(member_name, self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.MemoryError;
+                            },
+                            .l_brace => {}, // TODO: Get the filter and return the first value found
+                            else => return printError(
+                                "Error: Expected uuid or none",
+                                ZiQlParserError.SynthaxError,
+                                self.toker.buffer,
+                                token.loc.start,
+                                token.loc.end,
+                            ),
+                        }
+                    },
+                    .link_array => {},
+                    else => unreachable,
                 }
 
                 state = .expect_comma_OR_end;
@@ -1064,8 +1061,6 @@ pub const Parser = struct {
             else => unreachable,
         };
     }
-
-    // Utils
 
     /// Check if all token in an array is of one specific type
     fn checkTokensInArray(self: Parser, tag: Token.Tag) ZipponError!Token {
@@ -1160,14 +1155,12 @@ const DBEngine = @import("main.zig").DBEngine;
 
 fn testParsing(source: [:0]const u8) !void {
     const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
-    const allocator = std.testing.allocator;
 
     var db_engine = DBEngine.init(TEST_DATA_DIR, null);
     defer db_engine.deinit();
 
     var toker = Tokenizer.init(source);
     var parser = Parser.init(
-        allocator,
         &toker,
         &db_engine.file_engine,
         &db_engine.schema_engine,
@@ -1178,14 +1171,12 @@ fn testParsing(source: [:0]const u8) !void {
 
 fn expectParsingError(source: [:0]const u8, err: ZiQlParserError) !void {
     const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
-    const allocator = std.testing.allocator;
 
     var db_engine = DBEngine.init(TEST_DATA_DIR, null);
     defer db_engine.deinit();
 
     var toker = Tokenizer.init(source);
     var parser = Parser.init(
-        allocator,
         &toker,
         &db_engine.file_engine,
         &db_engine.schema_engine,
@@ -1205,20 +1196,22 @@ test "Parse filter" {
 
 fn testParseFilter(source: [:0]const u8) !void {
     const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
-    const allocator = std.testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
     var db_engine = DBEngine.init(TEST_DATA_DIR, null);
     defer db_engine.deinit();
 
     var toker = Tokenizer.init(source);
     var parser = Parser.init(
-        allocator,
         &toker,
         &db_engine.file_engine,
         &db_engine.schema_engine,
     );
 
-    var filter = try parser.parseFilter("User", false);
+    var filter = try parser.parseFilter(allocator, "User", false);
     defer filter.deinit();
     std.debug.print("{s}\n", .{source});
     filter.debugPrint();

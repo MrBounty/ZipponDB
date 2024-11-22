@@ -1,6 +1,6 @@
 pub const BUFFER_SIZE = 1024 * 10; // Used a bit everywhere. The size for the schema for example. 10kB
 pub const OUT_BUFFER_SIZE = 1024 * 1024 * 16; // Mostly use in the fileEngine for the parsing, limit of what can be write to be send basically. 16MB
-pub const MAX_FILE_SIZE = 1024 * 1024 * 64; // 64MB
+pub const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 pub const CPU_CORE = 16;
 
 // Testing

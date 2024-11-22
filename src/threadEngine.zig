@@ -7,12 +7,13 @@ const Allocator = std.mem.Allocator;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 const CPU_CORE = @import("config.zig").CPU_CORE;
-const BUFFER_SIZE = @import("config.zig").BUFFER_SIZE;
+const OUT_BUFFER_SIZE = @import("config.zig").OUT_BUFFER_SIZE;
 const log = std.log.scoped(.thread);
 
-var alloc_buff: [BUFFER_SIZE]u8 = undefined;
-var fa = std.heap.FixedBufferAllocator.init(&alloc_buff);
-const allocator = fa.allocator();
+const allocator = std.heap.page_allocator;
+
+var thread_arena: std.heap.ThreadSafeAllocator = undefined;
+var thread_pool: Pool = undefined;
 
 pub const ThreadSyncContext = struct {
     processed_struct: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
@@ -55,28 +56,26 @@ pub const ThreadSyncContext = struct {
 };
 
 pub const ThreadEngine = struct {
-    thread_arena: *std.heap.ThreadSafeAllocator = undefined,
-    thread_pool: *Pool = undefined,
+    thread_arena: *std.heap.ThreadSafeAllocator,
+    thread_pool: *Pool,
 
     pub fn init() ThreadEngine {
-        const thread_arena = allocator.create(std.heap.ThreadSafeAllocator) catch @panic("=(");
-        thread_arena.* = std.heap.ThreadSafeAllocator{
+        thread_arena = std.heap.ThreadSafeAllocator{
             .child_allocator = allocator,
         };
 
-        const thread_pool = allocator.create(Pool) catch @panic("=(");
-        thread_pool.*.init(std.Thread.Pool.Options{
+        thread_pool.init(std.Thread.Pool.Options{
             .allocator = thread_arena.allocator(),
             .n_jobs = CPU_CORE,
         }) catch @panic("=(");
 
         return ThreadEngine{
-            .thread_pool = thread_pool,
-            .thread_arena = thread_arena,
+            .thread_pool = &thread_pool,
+            .thread_arena = &thread_arena,
         };
     }
 
-    pub fn reset(_: ThreadEngine) void {
-        fa.reset();
+    pub fn deinit(_: ThreadEngine) void {
+        thread_pool.deinit();
     }
 };

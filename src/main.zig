@@ -33,9 +33,13 @@ const State = enum {
     end,
 };
 
-const log_allocator = std.heap.page_allocator;
+// End up using like 302kB of memory here
 var log_buff: [1024]u8 = undefined;
 var log_path: []const u8 = undefined;
+var date_buffer: [64]u8 = undefined;
+var date_fa = std.heap.FixedBufferAllocator.init(&date_buffer);
+const date_allocator = date_fa.allocator();
+
 var path_buffer: [1024]u8 = undefined;
 var line_buffer: [BUFFER_SIZE]u8 = undefined;
 var in_buffer: [BUFFER_SIZE]u8 = undefined;
@@ -45,6 +49,40 @@ const log = std.log.scoped(.cli);
 pub const std_options = .{
     .logFn = myLog,
 };
+
+pub fn myLog(
+    comptime message_level: std.log.Level,
+    comptime scope: @Type(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const level_txt = comptime message_level.asText();
+    const prefix = if (scope == .default) " - " else "(" ++ @tagName(scope) ++ ") - ";
+
+    const potential_file: ?std.fs.File = std.fs.cwd().openFile(log_path, .{ .mode = .write_only }) catch null;
+
+    date_fa.reset();
+    const now = @import("dtype").DateTime.now();
+    var date_format_buffer = std.ArrayList(u8).init(date_allocator);
+    defer date_format_buffer.deinit();
+    now.format("YYYY/MM/DD-HH:mm:ss.SSSS", date_format_buffer.writer()) catch return;
+
+    if (potential_file) |file| {
+        file.seekFromEnd(0) catch return;
+        const writer = file.writer();
+
+        writer.print("{s}{s}Time: {s} - ", .{ level_txt, prefix, date_format_buffer.items }) catch return;
+        writer.print(format, args) catch return;
+        writer.writeByte('\n') catch return;
+        file.close();
+    } else {
+        const writer = std.io.getStdErr().writer();
+
+        writer.print("{s}{s}Time: {s} - ", .{ level_txt, prefix, date_format_buffer.items }) catch return;
+        writer.print(format, args) catch return;
+        writer.writeByte('\n') catch return;
+    }
+}
 
 const DBEngineState = enum { MissingFileEngine, MissingSchemaEngine, Ok, Init };
 
@@ -95,7 +133,6 @@ pub const DBEngine = struct {
             };
             self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch |err| {
                 log.err("Error when creating struct directories: {any}", .{err});
-                self.schema_engine.deinit();
                 self.state = .MissingSchemaEngine;
                 return self;
             };
@@ -118,7 +155,6 @@ pub const DBEngine = struct {
             };
             self.file_engine.createStructDirectories(self.schema_engine.struct_array) catch |err| {
                 log.err("Error when creating struct directories: {any}", .{err});
-                self.schema_engine.deinit();
                 self.state = .MissingSchemaEngine;
                 return self;
             };
@@ -131,66 +167,17 @@ pub const DBEngine = struct {
         return self;
     }
 
-    pub fn deinit(self: *DBEngine) void {
-        if (self.state == .Ok) self.schema_engine.deinit();
+    pub fn runQuery(self: *DBEngine, null_term_query_str: [:0]const u8) void {
+        var toker = ziqlTokenizer.init(null_term_query_str);
+        var parser = ziqlParser.init(&toker, &self.file_engine, &self.schema_engine);
+        parser.parse() catch |err| log.err("Error parsing: {any}", .{err});
     }
 
-    pub fn runQuery(self: *DBEngine, null_term_query_str: [:0]const u8) void {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){}; // Maybe use an arena here
-        const allocator = gpa.allocator();
-
-        var toker = ziqlTokenizer.init(null_term_query_str);
-
-        var parser = ziqlParser.init(
-            allocator,
-            &toker,
-            &self.file_engine,
-            &self.schema_engine,
-        );
-
-        parser.parse() catch |err| {
-            log.err("Error parsing: {any}", .{err});
-        };
-
-        switch (gpa.deinit()) {
-            .ok => {},
-            .leak => std.log.debug("We fucked it up bro...\n", .{}),
-        }
+    pub fn deinit(self: *DBEngine) void {
+        self.thread_engine.deinit();
+        self.schema_engine.deinit();
     }
 };
-
-pub fn myLog(
-    comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    const level_txt = comptime message_level.asText();
-    const prefix = if (scope == .default) " - " else "(" ++ @tagName(scope) ++ ") - ";
-
-    const potential_file: ?std.fs.File = std.fs.cwd().openFile(log_path, .{ .mode = .write_only }) catch null;
-
-    const now = @import("dtype").DateTime.now();
-    var date_format_buffer = std.ArrayList(u8).init(log_allocator);
-    defer date_format_buffer.deinit();
-    now.format("YYYY/MM/DD-HH:mm:ss.SSSS", date_format_buffer.writer()) catch return;
-
-    if (potential_file) |file| {
-        file.seekFromEnd(0) catch return;
-        const writer = file.writer();
-
-        writer.print("{s}{s}Time: {s} - ", .{ level_txt, prefix, date_format_buffer.items }) catch return;
-        writer.print(format, args) catch return;
-        writer.writeByte('\n') catch return;
-        file.close();
-    } else {
-        const writer = std.io.getStdErr().writer();
-
-        writer.print("{s}{s}Time: {s} - ", .{ level_txt, prefix, date_format_buffer.items }) catch return;
-        writer.print(format, args) catch return;
-        writer.writeByte('\n') catch return;
-    }
-}
 
 // TODO: If an argument is given when starting the binary, it is the db path
 pub fn main() !void {
@@ -202,7 +189,7 @@ pub fn main() !void {
 
     while (true) {
         fa.reset();
-        db_engine.thread_engine.reset();
+
         std.debug.print("> ", .{}); // TODO: Find something better than just std.debug.print
         const line = std.io.getStdIn().reader().readUntilDelimiterOrEof(&in_buffer, '\n') catch {
             log.debug("Command too long for buffer", .{});

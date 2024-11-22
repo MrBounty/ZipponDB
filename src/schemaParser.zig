@@ -43,16 +43,6 @@ pub const Parser = struct {
         var state: State = .expect_struct_name_OR_end;
         var keep_next = false;
 
-        errdefer {
-            for (0..struct_array.items.len) |i| {
-                struct_array.items[i].deinit();
-            }
-
-            for (0..struct_array.items.len) |_| {
-                _ = struct_array.pop();
-            }
-        }
-
         var member_token: Token = undefined;
 
         var name: []const u8 = undefined;
@@ -113,7 +103,6 @@ pub const Parser = struct {
 
             .add_struct => {
                 struct_array.append(try SchemaStruct.init(
-                    self.allocator,
                     name,
                     member_list.toOwnedSlice() catch return SchemaParserError.MemoryError,
                     type_list.toOwnedSlice() catch return SchemaParserError.MemoryError,

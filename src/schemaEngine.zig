@@ -14,12 +14,14 @@ const BUFFER_SIZE = config.BUFFER_SIZE;
 
 var schema_buffer: [BUFFER_SIZE]u8 = undefined;
 
+var arena: std.heap.ArenaAllocator = undefined;
+var allocator: Allocator = undefined;
+
 const log = std.log.scoped(.schemaEngine);
 
 // TODO: Make better memory management
 
 pub const SchemaStruct = struct {
-    allocator: Allocator,
     name: []const u8,
     members: [][]const u8,
     types: []DataType,
@@ -28,7 +30,6 @@ pub const SchemaStruct = struct {
     uuid_file_index: *UUIDFileIndex, // Map UUID to the index of the file store in
 
     pub fn init(
-        allocator: Allocator,
         name: []const u8,
         members: [][]const u8,
         types: []DataType,
@@ -37,26 +38,16 @@ pub const SchemaStruct = struct {
         const uuid_file_index = allocator.create(UUIDFileIndex) catch return ZipponError.MemoryError;
         uuid_file_index.* = UUIDFileIndex.init(allocator) catch return ZipponError.MemoryError;
         return SchemaStruct{
-            .allocator = allocator,
             .name = name,
             .members = members,
             .types = types,
-            .zid_schema = SchemaStruct.fileDataSchema(allocator, types) catch return ZipponError.MemoryError,
+            .zid_schema = SchemaStruct.fileDataSchema(types) catch return ZipponError.MemoryError,
             .links = links,
             .uuid_file_index = uuid_file_index,
         };
     }
 
-    pub fn deinit(self: *SchemaStruct) void {
-        self.allocator.free(self.members);
-        self.allocator.free(self.types);
-        self.allocator.free(self.zid_schema);
-        self.links.deinit();
-        self.uuid_file_index.deinit();
-        self.allocator.destroy(self.uuid_file_index);
-    }
-
-    fn fileDataSchema(allocator: Allocator, dtypes: []DataType) ZipponError![]zid.DType {
+    fn fileDataSchema(dtypes: []DataType) ZipponError![]zid.DType {
         var schema = std.ArrayList(zid.DType).init(allocator);
 
         for (dtypes) |dt| {
@@ -88,13 +79,13 @@ pub const SchemaStruct = struct {
 /// This include keeping in memory the schema and schema file, and some functions to get like all members of a specific struct.
 /// For now it is a bit empty. But this is where I will manage migration
 pub const SchemaEngine = struct {
-    allocator: Allocator,
     struct_array: []SchemaStruct,
     null_terminated: [:0]u8,
 
     // The path is the path to the schema file
     pub fn init(path: []const u8, file_engine: *FileEngine) ZipponError!SchemaEngine {
-        const allocator = std.heap.page_allocator;
+        arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        allocator = arena.allocator();
 
         var buffer: [BUFFER_SIZE]u8 = undefined;
 
@@ -118,15 +109,13 @@ pub const SchemaEngine = struct {
         }
 
         return SchemaEngine{
-            .allocator = allocator,
             .struct_array = struct_array.toOwnedSlice() catch return ZipponError.MemoryError,
             .null_terminated = null_terminated,
         };
     }
 
-    pub fn deinit(self: *SchemaEngine) void {
-        for (self.struct_array) |*elem| elem.deinit();
-        self.allocator.free(self.struct_array);
+    pub fn deinit(_: SchemaEngine) void {
+        arena.deinit();
     }
 
     /// Get the type of the member
