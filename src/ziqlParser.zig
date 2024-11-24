@@ -793,21 +793,23 @@ pub const Parser = struct {
             .expect_new_value => {
                 const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZiQlParserError.StructNotFound;
                 map.put(member_name, try self.parseConditionValue(allocator, struct_name, data_type, &token)) catch return ZipponError.MemoryError;
+                if (data_type == .link or data_type == .link_array) {
+                    token = self.toker.last_token;
+                    keep_next = true;
+                }
                 state = .expect_comma_OR_end;
             },
 
-            .expect_comma_OR_end => {
-                switch (token.tag) {
-                    .r_paren => state = .end,
-                    .comma => state = .expect_member,
-                    else => return printError(
-                        "Error: Expect , or )",
-                        ZiQlParserError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    ),
-                }
+            .expect_comma_OR_end => switch (token.tag) {
+                .r_paren => state = .end,
+                .comma => state = .expect_member,
+                else => return printError(
+                    "Error: Expect , or )",
+                    ZiQlParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
             },
 
             else => unreachable,
@@ -909,12 +911,20 @@ pub const Parser = struct {
             .time => value = ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
             .datetime => value = ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
             .bool => value = ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
+            .int_array => value = try ConditionValue.initArrayInt(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .str_array => value = try ConditionValue.initArrayStr(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .bool_array => value = try ConditionValue.initArrayBool(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .float_array => value = try ConditionValue.initArrayFloat(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .date_array => value = try ConditionValue.initArrayDate(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .time_array => value = try ConditionValue.initArrayTime(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .datetime_array => value = try ConditionValue.initArrayDateTime(allocator, self.toker.buffer[start_index..token.loc.end]),
             .link_array, .link => switch (token.tag) {
                 .keyword_none => {
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
                     map.* = std.AutoHashMap(UUID, void).init(allocator);
                     _ = map.getOrPut(UUID.parse("00000000-0000-0000-0000-000000000000") catch @panic("Sorry wot ?")) catch return ZipponError.MemoryError;
                     value = ConditionValue.initLink(map);
+                    _ = self.toker.next();
                 },
                 .uuid_literal => {
                     const uuid = UUID.parse(self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.InvalidUUID;
@@ -930,6 +940,7 @@ pub const Parser = struct {
                     map.* = std.AutoHashMap(UUID, void).init(allocator);
                     _ = map.getOrPut(uuid) catch return ZipponError.MemoryError;
                     value = ConditionValue.initLink(map);
+                    _ = self.toker.next();
                 },
                 .l_brace, .l_bracket => {
                     var filter: ?Filter = null;
@@ -972,13 +983,6 @@ pub const Parser = struct {
                     token.loc.end,
                 ),
             },
-            .int_array => value = try ConditionValue.initArrayInt(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .str_array => value = try ConditionValue.initArrayStr(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .bool_array => value = try ConditionValue.initArrayBool(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .float_array => value = try ConditionValue.initArrayFloat(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .date_array => value = try ConditionValue.initArrayDate(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .time_array => value = try ConditionValue.initArrayTime(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .datetime_array => value = try ConditionValue.initArrayDateTime(allocator, self.toker.buffer[start_index..token.loc.end]),
             else => unreachable,
         }
 
@@ -1007,7 +1011,7 @@ test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
 
     // This need to take the first User named Bob as it is a unique link
-    //try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name = 'Bob'}, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name = 'Bob'}, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
 }
 
 test "GRAB filter with string" {
@@ -1060,9 +1064,9 @@ test "Specific query" {
 //    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
 //}
 
-//test "DELETE" {
-//    try testParsing("DELETE User {name='Bob'}");
-//}
+test "DELETE" {
+    try testParsing("DELETE User {name='Bob'}");
+}
 
 test "Synthax error" {
     try expectParsingError("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=7db1f06d-a5a7-4917-8cc6-4d490191c9c1, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)", ZiQlParserError.SynthaxError);
