@@ -16,6 +16,7 @@ const DataType = dtype.DataType;
 
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const Filter = @import("stuffs/filter.zig").Filter;
+const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
@@ -563,7 +564,7 @@ pub const FileEngine = struct {
     pub fn addEntity(
         self: *FileEngine,
         struct_name: []const u8,
-        map: std.StringHashMap([]const u8),
+        map: std.StringHashMap(ConditionValue),
         writer: anytype,
         n: usize,
     ) ZipponError!void {
@@ -589,7 +590,7 @@ pub const FileEngine = struct {
         self: *FileEngine,
         struct_name: []const u8,
         filter: ?Filter,
-        map: std.StringHashMap([]const u8),
+        map: std.StringHashMap(ConditionValue),
         writer: anytype,
         additional_data: *AdditionalData,
     ) ZipponError!void {
@@ -619,9 +620,7 @@ pub const FileEngine = struct {
         // Convert the map to an array of ZipponData Data type, to be use with ZipponData writter
         for (sstruct.members, 0..) |member, i| {
             if (!map.contains(member)) continue;
-
-            const dt = try self.schema_engine.memberName2DataType(struct_name, member);
-            new_data_buff[i] = try string2Data(allocator, dt, map.get(member).?);
+            new_data_buff[i] = try string2Data(allocator, map.get(member).?);
         }
 
         // Spawn threads for each file
@@ -655,7 +654,7 @@ pub const FileEngine = struct {
         new_data_buff: []zid.Data,
         sstruct: SchemaStruct,
         filter: ?Filter,
-        map: *const std.StringHashMap([]const u8),
+        map: *const std.StringHashMap(ConditionValue),
         writer: anytype,
         file_index: u64,
         dir: std.fs.Dir,
@@ -888,67 +887,34 @@ pub const FileEngine = struct {
 
     // --------------------ZipponData utils--------------------
 
-    fn string2Data(allocator: Allocator, dt: DataType, value: []const u8) ZipponError!zid.Data {
-        switch (dt) {
-            .int => return zid.Data.initInt(s2t.parseInt(value)),
-            .float => return zid.Data.initFloat(s2t.parseFloat(value)),
-            .bool => return zid.Data.initBool(s2t.parseBool(value)),
-            .date => return zid.Data.initUnix(s2t.parseDate(value).toUnix()),
-            .time => return zid.Data.initUnix(s2t.parseTime(value).toUnix()),
-            .datetime => return zid.Data.initUnix(s2t.parseDatetime(value).toUnix()),
-            .str => return zid.Data.initStr(value),
-            .link, .self => {
-                const uuid = UUID.parse(value) catch return FileEngineError.InvalidUUID;
-                return zid.Data.initUUID(uuid.bytes);
-            },
-            .int_array => {
-                const array = s2t.parseArrayInt(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
+    //TODO: Update to make it use ConditionValue
+    fn string2Data(allocator: Allocator, value: ConditionValue) ZipponError!zid.Data {
+        switch (value) {
+            .int => |v| return zid.Data.initInt(v),
+            .float => |v| return zid.Data.initFloat(v),
+            .bool_ => |v| return zid.Data.initBool(v),
+            .unix => |v| return zid.Data.initUnix(v),
+            .str => |v| return zid.Data.initStr(v),
+            .link => |v| {
+                var iter = v.keyIterator();
+                if (v.count() == 1) {
+                    return zid.Data.initUUID(iter.next().?.bytes);
+                } else {
+                    var items = std.ArrayList([16]u8).init(allocator);
+                    defer items.deinit();
 
-                return zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, array) catch return FileEngineError.AllocEncodError);
+                    while (iter.next()) |uuid| {
+                        items.append(uuid.bytes) catch return ZipponError.MemoryError;
+                    }
+                    return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, items.items) catch return FileEngineError.AllocEncodError);
+                }
             },
-            .float_array => {
-                const array = s2t.parseArrayFloat(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
-            .str_array => {
-                const array = s2t.parseArrayStr(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
-            .bool_array => {
-                const array = s2t.parseArrayBool(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initBoolArray(zid.allocEncodArray.Bool(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
-            .date_array => {
-                const array = s2t.parseArrayDateUnix(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
-            .time_array => {
-                const array = s2t.parseArrayTimeUnix(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
-            .datetime_array => {
-                const array = s2t.parseArrayDatetimeUnix(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
-            .link_array => {
-                const array = s2t.parseArrayUUIDBytes(allocator, value) catch return FileEngineError.MemoryError;
-                defer allocator.free(array);
-
-                return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, array) catch return FileEngineError.AllocEncodError);
-            },
+            .self => |v| return zid.Data.initUUID(v.bytes),
+            .int_array => |v| return zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, v) catch return FileEngineError.AllocEncodError),
+            .float_array => |v| return zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, v) catch return FileEngineError.AllocEncodError),
+            .str_array => |v| return zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, v) catch return FileEngineError.AllocEncodError),
+            .bool_array => |v| return zid.Data.initBoolArray(zid.allocEncodArray.Bool(allocator, v) catch return FileEngineError.AllocEncodError),
+            .unix_array => |v| return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, v) catch return FileEngineError.AllocEncodError),
         }
     }
 
@@ -958,19 +924,17 @@ pub const FileEngine = struct {
         self: *FileEngine,
         allocator: Allocator,
         struct_name: []const u8,
-        map: std.StringHashMap([]const u8),
+        map: std.StringHashMap(ConditionValue),
     ) ZipponError![]zid.Data {
         const members = try self.schema_engine.structName2structMembers(struct_name);
-        const types = try self.schema_engine.structName2DataType(struct_name);
-
         var datas = allocator.alloc(zid.Data, (members.len)) catch return FileEngineError.MemoryError;
 
         const new_uuid = UUID.init();
         datas[0] = zid.Data.initUUID(new_uuid.bytes);
 
-        for (members, types, 0..) |member, dt, i| {
+        for (members, 0..) |member, i| {
             if (i == 0) continue; // Skip the id
-            datas[i] = try string2Data(allocator, dt, map.get(member).?);
+            datas[i] = try string2Data(allocator, map.get(member).?);
         }
 
         log.debug("New ordered data: {any}\n", .{datas});

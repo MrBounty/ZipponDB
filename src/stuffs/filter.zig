@@ -18,7 +18,7 @@ const Data = @import("ZipponData").Data;
 
 const log = std.log.scoped(.filter);
 
-const ComparisonOperator = enum {
+pub const ComparisonOperator = enum {
     equal,
     different,
     superior,
@@ -61,27 +61,12 @@ pub const ConditionValue = union(enum) {
     bool_: bool,
     self: UUID,
     unix: u64,
-    int_array: std.ArrayList(i32),
-    str_array: std.ArrayList([]const u8),
-    float_array: std.ArrayList(f64),
-    bool_array: std.ArrayList(bool),
-    unix_array: std.ArrayList(u64),
+    int_array: []const i32,
+    str_array: []const []const u8,
+    float_array: []const f64,
+    bool_array: []const bool,
+    unix_array: []const u64,
     link: *std.AutoHashMap(UUID, void),
-
-    pub fn deinit(self: ConditionValue, allocator: std.mem.Allocator) void {
-        switch (self) {
-            .int_array => self.int_array.deinit(),
-            .str_array => self.str_array.deinit(),
-            .float_array => self.float_array.deinit(),
-            .bool_array => self.bool_array.deinit(),
-            .unix_array => self.unix_array.deinit(),
-            .link => {
-                self.link.deinit();
-                allocator.destroy(self.link);
-            },
-            else => {},
-        }
-    }
 
     pub fn initInt(value: []const u8) ConditionValue {
         return ConditionValue{ .int = s2t.parseInt(value) };
@@ -116,32 +101,32 @@ pub const ConditionValue = union(enum) {
     }
 
     // Array
-    pub fn initArrayInt(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
-        return ConditionValue{ .int_array = s2t.parseArrayInt(allocator, value) };
+    pub fn initArrayInt(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .int_array = s2t.parseArrayInt(allocator, value) catch return ZipponError.ParsingValueError };
     }
 
-    pub fn initArrayFloat(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
-        return ConditionValue{ .float_array = s2t.parseArrayFloat(allocator, value) };
+    pub fn initArrayFloat(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .float_array = s2t.parseArrayFloat(allocator, value) catch return ZipponError.ParsingValueError };
     }
 
-    pub fn initArrayStr(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
-        return ConditionValue{ .str_array = s2t.parseArrayStr(allocator, value) };
+    pub fn initArrayStr(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .str_array = s2t.parseArrayStr(allocator, value) catch return ZipponError.ParsingValueError };
     }
 
-    pub fn initArrayBool(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
-        return ConditionValue{ .bool_array = s2t.parseArrayBool(allocator, value) };
+    pub fn initArrayBool(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .bool_array = s2t.parseArrayBool(allocator, value) catch return ZipponError.ParsingValueError };
     }
 
-    pub fn initArrayDate(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
-        return ConditionValue{ .unix_array = s2t.parseArrayDateUnix(allocator, value) };
+    pub fn initArrayDate(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .unix_array = s2t.parseArrayDateUnix(allocator, value) catch return ZipponError.ParsingValueError };
     }
 
-    pub fn initArrayTime(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
-        return ConditionValue{ .unix_array = s2t.parseArrayTimeUnix(allocator, value) };
+    pub fn initArrayTime(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .unix_array = s2t.parseArrayTimeUnix(allocator, value) catch return ZipponError.ParsingValueError };
     }
 
-    pub fn initArrayDateTime(allocator: std.mem.Allocator, value: []const u8) ConditionValue {
-        return ConditionValue{ .unix_array = s2t.parseArrayDatetimeUnix(allocator, value) };
+    pub fn initArrayDateTime(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .unix_array = s2t.parseArrayDatetimeUnix(allocator, value) catch return ZipponError.ParsingValueError };
     }
 
     pub fn initLink(value: *std.AutoHashMap(UUID, void)) ConditionValue {
@@ -154,10 +139,6 @@ pub const Condition = struct {
     operation: ComparisonOperator = undefined,
     data_type: DataType = undefined,
     data_index: usize = undefined, // Index in the file
-
-    pub fn deinit(self: Condition, allocator: std.mem.Allocator) void {
-        self.value.deinit(allocator);
-    }
 };
 
 const FilterNode = union(enum) {
@@ -183,7 +164,6 @@ pub const Filter = struct {
     pub fn deinit(self: *Filter) void {
         switch (self.root.*) {
             .logical => self.freeNode(self.root),
-            .condition => |condition| condition.deinit(self.allocator),
             else => {},
         }
         self.allocator.destroy(self.root);
@@ -197,8 +177,7 @@ pub const Filter = struct {
                 self.allocator.destroy(logical.left);
                 self.allocator.destroy(logical.right);
             },
-            .condition => |condition| condition.deinit(self.allocator),
-            .empty => {},
+            else => {},
         }
     }
 

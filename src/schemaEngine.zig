@@ -6,6 +6,8 @@ const Tokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
+const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
+const UUID = dtype.UUID;
 const UUIDFileIndex = @import("stuffs/UUIDFileIndex.zig").UUIDIndexMap;
 const FileEngine = @import("fileEngine.zig").FileEngine;
 
@@ -200,7 +202,7 @@ pub const SchemaEngine = struct {
     pub fn checkIfAllMemberInMap(
         self: *SchemaEngine,
         struct_name: []const u8,
-        map: *std.StringHashMap([]const u8),
+        map: *std.StringHashMap(ConditionValue),
         error_message_buffer: *std.ArrayList(u8),
     ) ZipponError!bool {
         const all_struct_member = try self.structName2structMembers(struct_name);
@@ -214,5 +216,10 @@ pub const SchemaEngine = struct {
         }
 
         return ((count == all_struct_member.len - 1) and (count == map.count()));
+    }
+
+    pub fn isUUIDExist(self: *SchemaEngine, struct_name: []const u8, uuid: UUID) bool {
+        const sstruct = self.structName2SchemaStruct(struct_name) catch return false;
+        return sstruct.uuid_file_index.contains(uuid);
     }
 };
