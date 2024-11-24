@@ -7,6 +7,7 @@ pub const CPU_CORE = 16;
 pub const TEST_DATA_DIR = "data"; // Maybe put that directly in the build
 
 // Debug
+pub const PRINT_STATE = false;
 pub const DONT_SEND = true;
 pub const RESET_LOG_AT_RESTART = false; // If true, will reset the log file at the start of the db, otherwise just keep adding to it
 

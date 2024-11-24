@@ -260,7 +260,10 @@ pub const FileEngine = struct {
         };
         defer iter.deinit();
 
-        while (iter.next() catch return) |row| {
+        while (iter.next() catch |err| {
+            sync_context.logError("Error initializing DataIterator", err);
+            return;
+        }) |row| {
             list.*.append(UUID{ .bytes = row[0].UUID }) catch |err| {
                 sync_context.logError("Error initializing DataIterator", err);
                 return;

@@ -21,6 +21,8 @@ const printError = @import("stuffs/utils.zig").printError;
 const ZiQlParserError = @import("stuffs/errors.zig").ZiQlParserError;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
+const PRINT_STATE = @import("config.zig").PRINT_STATE;
+
 const log = std.log.scoped(.ziqlParser);
 
 const State = enum {
@@ -96,6 +98,7 @@ pub const Parser = struct {
         while (state != State.end) : ({
             token = if (!keep_next) self.toker.next() else token;
             keep_next = false;
+            if (PRINT_STATE) std.debug.print("parse: {any}\n", .{state});
         }) switch (state) {
             .start => switch (token.tag) {
                 .keyword_grab => {
@@ -369,6 +372,7 @@ pub const Parser = struct {
         while (state != .end) : ({
             token = if (keep_next) token else self.toker.next();
             keep_next = false;
+            if (PRINT_STATE) std.debug.print("parseFilter: {any}\n", .{state});
         }) {
             switch (state) {
                 .expect_condition => switch (token.tag) {
@@ -484,6 +488,7 @@ pub const Parser = struct {
         while (state != .end) : ({
             token = if (!keep_next) self.toker.next() else token;
             keep_next = false;
+            if (PRINT_STATE) std.debug.print("parseCondition: {any}\n", .{state});
         }) switch (state) {
             .expect_member => switch (token.tag) {
                 .identifier => {
@@ -635,6 +640,7 @@ pub const Parser = struct {
         while (state != .end) : ({
             token = if ((!keep_next) and (state != .end)) self.toker.next() else token;
             keep_next = false;
+            if (PRINT_STATE) std.debug.print("parseAdditionalData: {any}\n", .{state});
         }) switch (state) {
             .expect_count_of_entity_to_find => switch (token.tag) {
                 .int_literal => {
@@ -754,6 +760,7 @@ pub const Parser = struct {
         while (state != .end) : ({
             token = if (!keep_next) self.toker.next() else token;
             keep_next = false;
+            if (PRINT_STATE) std.debug.print("parseNewData: {any}\n", .{state});
         }) switch (state) {
             .expect_member => switch (token.tag) {
                 .identifier => {
@@ -1007,8 +1014,9 @@ pub const Parser = struct {
 
 test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
 
     // This need to take the first User named Bob as it is a unique link
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name = 'Bob'}, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
@@ -1052,13 +1060,10 @@ test "Specific query" {
 
 // TODO: next step is to make this work
 
-//test "ADD relationship" {
-//    try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=25, scores=[ ], best_friend={name='Bob'}, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-//}
-
-//test "UPDATE relationship" {
-//    try testParsing("UPDATE User [1] {} TO (best_friend={name='Boba'})");
-//}
+test "UPDATE relationship" {
+    try testParsing("UPDATE User [1] {} TO (best_friend = {name='Boba'} )");
+    try testParsing("GRAB User {best_friend IN {name = 'Boba'}}"); // Not yet working
+}
 
 //test "GRAB Relationship" {
 //    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
