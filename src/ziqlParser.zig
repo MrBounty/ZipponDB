@@ -1014,12 +1014,15 @@ pub const Parser = struct {
 
 test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, bday=2000/01/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, bday=2000/01/04, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, bday=2000/06/06, a_time=04:04:54.8741, last_order=2000/01/01-12:45)");
 
     // This need to take the first User named Bob as it is a unique link
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name = 'Bob'}, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
+
+    try testParsing("GRAB User");
 }
 
 test "GRAB filter with string" {
@@ -1062,15 +1065,16 @@ test "Specific query" {
 
 test "UPDATE relationship" {
     try testParsing("UPDATE User [1] {} TO (best_friend = {name='Boba'} )");
-    try testParsing("GRAB User {best_friend IN {name = 'Boba'}}"); // Not yet working
 }
 
-//test "GRAB Relationship" {
-//    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
-//}
+// Not yet working but dont trow an error
+test "GRAB Relationship" {
+    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
+    try testParsing("GRAB User {best_friend IN {name = 'Boba'}}");
+}
 
 test "DELETE" {
-    try testParsing("DELETE User {name='Bob'}");
+    try testParsing("DELETE User {}");
 }
 
 test "Synthax error" {

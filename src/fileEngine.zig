@@ -437,9 +437,9 @@ pub const FileEngine = struct {
         }
 
         // Append all writer to each other
-        writer.writeByte('[') catch return FileEngineError.WriteError;
+        //writer.writeByte('[') catch return FileEngineError.WriteError;
         for (thread_writer_list) |list| writer.writeAll(list.items) catch return FileEngineError.WriteError;
-        writer.writeByte(']') catch return FileEngineError.WriteError;
+        //writer.writeByte(']') catch return FileEngineError.WriteError;
     }
 
     fn parseEntitiesOneFile(
@@ -475,7 +475,7 @@ pub const FileEngine = struct {
             if (sync_context.checkStructLimit()) break;
             if (filter) |f| if (!f.evaluate(row)) continue;
 
-            writeEntity(
+            writeEntityTable(
                 writer,
                 row,
                 additional_data,
@@ -490,7 +490,21 @@ pub const FileEngine = struct {
         _ = sync_context.completeThread();
     }
 
-    fn writeEntity(
+    fn writeEntityTable(
+        writer: anytype,
+        row: []zid.Data,
+        additional_data: *AdditionalData,
+        data_types: []const DataType,
+    ) !void {
+        try writer.writeAll("| ");
+        for (additional_data.member_to_find.items) |member| {
+            try writeValue(writer, row[member.index], data_types[member.index]);
+            try writer.writeAll(" \t| ");
+        }
+        try writer.writeByte('\n');
+    }
+
+    fn writeEntityJSON(
         writer: anytype,
         row: []zid.Data,
         additional_data: *AdditionalData,

@@ -44,7 +44,7 @@ pub fn parseDate(value_str: []const u8) DateTime {
     const month: u16 = std.fmt.parseInt(u16, value_str[5..7], 10) catch 0;
     const day: u16 = std.fmt.parseInt(u16, value_str[8..10], 10) catch 0;
 
-    return DateTime.init(year, month, day, 0, 0, 0, 0);
+    return DateTime.init(year, month - 1, day - 1, 0, 0, 0, 0);
 }
 
 pub fn parseArrayDate(allocator: std.mem.Allocator, array_str: []const u8) ![]const DateTime {
@@ -109,7 +109,7 @@ pub fn parseDatetime(value_str: []const u8) DateTime {
     const seconds: u16 = if (value_str.len > 17) std.fmt.parseInt(u16, value_str[17..19], 10) catch 0 else 0;
     const milliseconds: u16 = if (value_str.len > 20) std.fmt.parseInt(u16, value_str[20..24], 10) catch 0 else 0;
 
-    return DateTime.init(year, month, day, hours, minutes, seconds, milliseconds);
+    return DateTime.init(year, month - 1, day - 1, hours, minutes, seconds, milliseconds);
 }
 
 pub fn parseArrayDatetime(allocator: std.mem.Allocator, array_str: []const u8) ![]const DateTime {
@@ -258,9 +258,9 @@ test "Value parsing: Date" {
     // Date
     const values: [3][]const u8 = .{ "1920/01/01", "1998/01/21", "2024/12/31" };
     const expected_values: [3]DateTime = .{
-        DateTime.init(1920, 1, 1, 0, 0, 0, 0),
-        DateTime.init(1998, 1, 21, 0, 0, 0, 0),
-        DateTime.init(2024, 12, 31, 0, 0, 0, 0),
+        DateTime.init(1920, 0, 0, 0, 0, 0, 0),
+        DateTime.init(1998, 0, 20, 0, 0, 0, 0),
+        DateTime.init(2024, 11, 30, 0, 0, 0, 0),
     };
     for (values, 0..) |value, i| {
         try std.testing.expect(expected_values[i].compareDate(parseDate(value)));
@@ -271,9 +271,9 @@ test "Value parsing: Date" {
     const array = try parseArrayDate(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [3]DateTime = .{
-        DateTime.init(1920, 1, 1, 0, 0, 0, 0),
-        DateTime.init(1998, 1, 21, 0, 0, 0, 0),
-        DateTime.init(2024, 12, 31, 0, 0, 0, 0),
+        DateTime.init(1920, 0, 0, 0, 0, 0, 0),
+        DateTime.init(1998, 0, 20, 0, 0, 0, 0),
+        DateTime.init(2024, 11, 30, 0, 0, 0, 0),
     };
     for (array, expected_array) |parsed, expected| {
         try std.testing.expect(expected.compareDate(parsed));
@@ -314,10 +314,10 @@ test "Value parsing: Datetime" {
 
     const values: [4][]const u8 = .{ "1920/01/01-12:45:00.0000", "1920/01/01-18:12:53.7491", "1920/01/01-02:30:10", "1920/01/01-12:30" };
     const expected_values: [4]DateTime = .{
-        DateTime.init(1920, 1, 1, 12, 45, 0, 0),
-        DateTime.init(1920, 1, 1, 18, 12, 53, 7491),
-        DateTime.init(1920, 1, 1, 2, 30, 10, 0),
-        DateTime.init(1920, 1, 1, 12, 30, 0, 0),
+        DateTime.init(1920, 0, 0, 12, 45, 0, 0),
+        DateTime.init(1920, 0, 0, 18, 12, 53, 7491),
+        DateTime.init(1920, 0, 0, 2, 30, 10, 0),
+        DateTime.init(1920, 0, 0, 12, 30, 0, 0),
     };
     for (values, 0..) |value, i| {
         try std.testing.expect(expected_values[i].compareDatetime(parseDatetime(value)));
@@ -328,10 +328,10 @@ test "Value parsing: Datetime" {
     const array = try parseArrayDatetime(allocator, array_str);
     defer allocator.free(array);
     const expected_array: [4]DateTime = .{
-        DateTime.init(1920, 1, 1, 12, 45, 0, 0),
-        DateTime.init(1920, 1, 1, 18, 12, 53, 7491),
-        DateTime.init(1920, 1, 1, 2, 30, 10, 0),
-        DateTime.init(1920, 1, 1, 12, 30, 0, 0),
+        DateTime.init(1920, 0, 0, 12, 45, 0, 0),
+        DateTime.init(1920, 0, 0, 18, 12, 53, 7491),
+        DateTime.init(1920, 0, 0, 2, 30, 10, 0),
+        DateTime.init(1920, 0, 0, 12, 30, 0, 0),
     };
     for (array, expected_array) |parsed, expected| {
         try std.testing.expect(expected.compareDatetime(parsed));

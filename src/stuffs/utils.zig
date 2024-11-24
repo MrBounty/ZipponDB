@@ -103,3 +103,39 @@ pub fn printOpenFile(comptime format: []const u8, args: anytype, options: std.fs
     const path = std.fmt.bufPrint(&path_buffer, format, args) catch return ZipponError.CantOpenDir;
     return std.fs.cwd().openFile(path, options) catch ZipponError.CantOpenFile;
 }
+
+pub fn printTable(writer: anytype, headers: []const []const u8, data: []const []const []const u8) !void {
+    // Calculate column widths
+    var col_widths = [_]usize{0} ** 10;
+
+    // Determine max width for each column
+    for (headers, 0..) |header, i| {
+        col_widths[i] = @max(col_widths[i], header.len);
+    }
+
+    for (data) |row| {
+        for (row, 0..) |cell, i| {
+            col_widths[i] = @max(col_widths[i], cell.len);
+        }
+    }
+
+    // Print headers
+    for (headers, 0..) |header, i| {
+        try writer.print("{s:<[*]}", .{ header, col_widths[i] + 2 });
+    }
+    try writer.print("\n", .{});
+
+    // Print separator
+    for (headers, 0..) |_, i| {
+        try writer.print("{s:-<[*]}", .{ "-", col_widths[i] + 2 });
+    }
+    try writer.print("\n", .{});
+
+    // Print data rows
+    for (data) |row| {
+        for (row, 0..) |cell, i| {
+            try writer.print("{s:<[*]}", .{ cell, col_widths[i] + 2 });
+        }
+        try writer.print("\n", .{});
+    }
+}

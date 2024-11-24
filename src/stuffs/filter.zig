@@ -247,7 +247,7 @@ pub const Filter = struct {
 
     fn evaluateNode(self: Filter, node: *FilterNode, row: []Data) bool {
         return switch (node.*) {
-            .condition => |cond| Filter.evaluateCondition(cond, row),
+            .condition => |cond| Filter.evaluateCondition(cond, row[cond.data_index]),
             .logical => |logical| switch (logical.operator) {
                 .AND => self.evaluateNode(logical.left, row) and self.evaluateNode(logical.right, row),
                 .OR => self.evaluateNode(logical.left, row) or self.evaluateNode(logical.right, row),
@@ -256,9 +256,7 @@ pub const Filter = struct {
         };
     }
 
-    fn evaluateCondition(condition: Condition, row: []Data) bool {
-        const row_value: Data = row[condition.data_index];
-        log.debug("Checking condition {any}", .{condition});
+    fn evaluateCondition(condition: Condition, row_value: Data) bool {
         return switch (condition.operation) {
             .equal => switch (condition.data_type) {
                 .int => row_value.Int == condition.value.int,
