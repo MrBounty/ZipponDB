@@ -1,5 +1,5 @@
 site_name: ZipponDB Documentation
-site_url: https://docs.bouvai.com
+site_url: https://MrBounty.github.io/ZipponDB/
 theme:
   name: readthedocs
 markdown_extensions:
