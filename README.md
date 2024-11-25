@@ -12,20 +12,9 @@ ZipponDB's goal is to be ACID, light, simple, and high-performance. It aims at s
 - Simple and minimal query language
 - Small, light, fast, and implementable everywhere
 
+For more informations visit the docs: https://mrbounty.github.io/ZipponDB/
+
 ***Note: ZipponDB is still in Alpha v0.1 and is missing a lot of features, see roadmap at the end of this README.***
-
-# Quickstart
-
-1. **Get a binary:** You can build the binary directly from the source code for any architecture (tutorial is coming), or using the binary in the release (coming too).
-2. **Create a database:** You can then run the binary, this will start a Command Line Interface. The first thing to do is to create a new database. For that, run the command `db new path/to/directory`,
-it will create a ZipponDB directory. Then `db metrics` to see if it worked.
-3. **Select a database:** You can select a database by using `db use path/to/ZipponDB`. You can also set the environment variable ZIPPONDB_PATH, and it will use this path,
-this needs to be the path to a directory with proper DATA, BACKUP, and LOG directories.
-4. **Attach a schema:** Once the database is created, you need to attach a schema to it (see next section for how to define a schema). For that, you can run `schema init path/to/schema.txt`.
-This will create new directories and empty files used to store data. You can test the current db schema by running `schema describe`.
-5. **Use the database:** ou can now start using the database by sending queries like that: `run "ADD User (name = 'Bob')"`.
-
-***Note: For the moment, ZipponDB uses the current working directory as the main directory, so all paths are sub-paths of it.***
 
 # Declare a schema
 
@@ -44,39 +33,6 @@ User (
 
 Note that the best friend is a link to another `User`.
 
-Here is a more advanced example with multiple structs:
-```lua
-User (
-    name: str,
-    email: str,
-    friends: []User,
-    posts: []Post,
-    comments: []Comment,
-)
-
-Post (
-    title: str,
-    image: str,
-    at: date,
-    like_by: []User,
-    comments: []Comment,
-)
-
-Comment (
-    content: str,
-    at: date,
-    like_by: []User,
-)
-```
-
-***Note: `[]` before the type means a list/array of this type.***
-
-***Note: Members order matter for now!***
-
-### Migration to a new schema - Not yet implemented
-
-In the future, you will be able to update the schema, such as adding a new member to a struct, and update the database. For the moment, you can't change the schema once it's initialized.
-
 # ZipponQL
 
 ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the key points to remember:
@@ -89,11 +45,7 @@ ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the k
 
 ***Disclaimer: Lot of stuff are still missing and the language may change over time.***
 
-## ZiQL Quickstart
-
-**For more information see [ZiQL Introduction](https://github.com/MrBounty/ZipponDB/blob/main/ZiQL.md)**
-
-### GRAB
+## GRAB
 
 The main action is `GRAB`, this will parse files and return data.  
 ```js
@@ -110,38 +62,27 @@ GRAB queries return a list of JSON objects with the data inside, e.g:
 [{id:"1e170a80-84c9-429a-be25-ab4657894653", name: "Gwendolyn Ray", age: 70, email: "austin92@example.org", scores: [ 77 ], friends: [], }, ]
 ```
 
-### ADD
+## ADD
 
 The `ADD` action adds one entity to the database. The syntax is similar to `GRAB`, but uses `()`. This signifies that the data is not yet in the database.
 ```js
 ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82])
 ```
 
-### DELETE
+## DELETE
 
 Similar to `GRAB` but deletes all entities found using the filter and returns a list of deleted UUIDs.
 ```js
 DELETE User {name = 'Bob'}
 ```
 
-### UPDATE
+## UPDATE
 
 A mix of `GRAB` and `ADD`. It takes a filter first, then the new data.
 Here, we update the first 5 `User` entities named 'bob' to capitalize the name and become 'Bob':
 ```js
 UPDATE User [5] {name='bob'} TO (name = 'Bob')
 ```
-
-### Not yet implemented
-
-A lot of things are not yet implemented, you can find examples in the [ZiQL Introduction](https://github.com/MrBounty/ZipponDB/blob/main/ZiQL.md).
-
-This include:
-- Relationship
-- Ordering
-- Batch
-- Array manipulation
-- And more...
 
 ## Link query - Not yet implemented
 
@@ -165,97 +106,3 @@ Which is the same as:
 ```js
 GRAB User {name != 'Bob' AND age > 18}
 ```
-
-# Data types
-
-There is 8 data types:
-- `int`: 64 bit integer
-- `float`: 64 bit float. Need to have a dot, `1.` is a float `1` is an integer.
-- `bool`: Boolean, can be `true` or `false`
-- `string`: Character array between `''`
-- `UUID`: Id in the UUID format, used for relationship, ect. All struct have an id member.
-- `date`: A date in yyyy/mm/dd
-- `time`: A time in hh:mm:ss.mmmm
-- `datetime`: A date time in yyyy/mm/dd-hh:mm:ss:mmmm
-
-All data types can be an array of those types using `[]` in front of it. So `[]int` is an array of integer.
-
-# Why I created it ?
-
-Well, the first reason is to learn both Zig and databases.
-
-The second is to use it in my apps. I like to deploy Golang + HTMX apps on Fly.io, but I often find myself struggling to get a simple database. I can either host it myself, but then I need to link my app and the database securely. Or I can use a cloud database service, but that means my database is far from my app. All I want is to give a Fly machine 10GB of storage, do some backups on it, and call it a day. But for that, I need to include it in the Dockerfile of my app. What easier way than just a binary?
-
-So that's my long-term goal: to use it in my apps as a simple database that lives with the app, sharing CPU and memory.
-
-# How does it work ?
-
-TODO: Create a tech doc of what is happening inside.
-
-# Roadmap
-
-***Note: This will probably evolve over time.***
-
-### Alpha
-#### v0.1 - Base  
-- [X] UUID  
-- [X] CLI  
-- [X] Tokenizers  
-- [X] ZiQL parser
-- [X] Schema engine  
-- [X] File engine  
-
-#### v0.2 - Usable  
-- [ ] Relationships  
-- [X] Custom data file
-- [X] Date
-- [X] Logs
-- [X] Query multi threading
-
-#### v0.3 - QoL  
-- [ ] Schema migration   
-- [ ] Dump/Bump data  
-- [ ] Recovery
-- [ ] Better CLI
-- [ ] Linked query
-
-### Beta
-#### v0.4 - Usability  
-- [ ] Server  
-- [ ] Docker  
-- [ ] Config file
-- [ ] Python interface  
-- [ ] Go interface  
-
-#### v0.5 - In memory  
-- [ ] In memory option  
-- [ ] Cache
-
-#### v0.6 - Performance  
-- [ ] Transaction  
-- [ ] Other multi threading
-- [ ] Query optimization  
-- [ ] Index
-
-#### v0.7 - Safety  
-- [ ] Auth  
-- [ ] Metrics
-- [ ] Durability
-
-### Gold
-#### v0.8 - Advanced  
-- [ ] Query optimizer  
-
-#### v0.9 - Docs  
-- [ ] ZiQL tuto  
-- [ ] Deployment tuto  
-- [ ] Code docs  
-- [ ] CLI help
-
-#### v1.0 - Web interface  
-- [ ] Query builder  
-- [ ] Tables  
-- [ ] Schema visualization  
-- [ ] Dashboard metrics  
-
-Let's see where it (or my brain) start to explode ;)
