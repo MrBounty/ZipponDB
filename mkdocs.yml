@@ -8,3 +8,13 @@ markdown_extensions:
   - pymdownx.blocks.caption
 plugins:
   - glightbox
+
+nav:
+  - Home: index.md
+  - Quickstart: Quickstart.md
+  - Schema: Schema.md
+  - ZipponQL: ZiQL.md
+  - Data types: Data type.md
+  - Commands: Commands.md
+  - Benchmark: Benchmark.md
+  - Roadmap: Roadmap.md
