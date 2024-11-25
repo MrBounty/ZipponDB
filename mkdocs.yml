@@ -1,0 +1,10 @@
+site_name: ZipponDB Documentation
+site_url: https://docs.bouvai.com
+theme:
+  name: readthedocs
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - pymdownx.blocks.caption
+plugins:
+  - glightbox

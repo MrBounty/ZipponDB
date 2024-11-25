@@ -6,5 +6,6 @@ User (
   last_order: datetime,
   a_time: time,
   scores: []int,
-  friends: []str,
+  best_friend: User,
+  friends: []User,
 )
