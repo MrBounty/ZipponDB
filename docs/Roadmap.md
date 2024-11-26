@@ -19,7 +19,8 @@
 - [X] Logs
 - [X] Query multi threading
 
-#### v0.3 - QoL  
+#### v0.3 - QoL 
+- [X] Docs website
 - [ ] Schema migration   
 - [ ] Dump/Bump data  
 - [ ] Recovery
