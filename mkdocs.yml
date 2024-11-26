@@ -1,7 +1,7 @@
 site_name: ZipponDB Documentation
 site_url: https://MrBounty.github.io/ZipponDB/
 theme:
-  name: readthedocs
+  name: material
   logo: images/banner.png
   features:
     - search.suggest
