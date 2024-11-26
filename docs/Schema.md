@@ -7,7 +7,7 @@ In ZipponDB, you use structures, or structs for short, and not tables to organiz
 ZipponDB use a seperate file to declare all structs to use in the database.
 
 Here an example of a file:
-```
+```lua
 User (
     name: str,
     email: str,
@@ -18,7 +18,7 @@ User (
 Note that `best_friend` is a link to another `User`.
 
 Here is a more advanced example with multiple structs:
-```
+```lua
 User (
     name: str,
     email: str,

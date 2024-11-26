@@ -17,12 +17,12 @@ User (
 ```
 
 Here a user example:
-```
+```lua
 run "ADD User (name = 'Diana Lopez',age = 2,email = 'allisonwilliams@example.org',scores=[37 85 90 71 88 85 68],friends = [],bday=1973/11/13,last_order=1979/07/18-15:05:26.590261,a_time=03:04:06.862213)
 ```
 
 First let's do a query that parse all file but dont return anything, so we have the time to read and evaluate file but not writting and sending output.
-```
+```lua
 run "GRAB User {name = 'asdfqwer'}"
 ```
 

@@ -15,7 +15,7 @@ ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the k
 ## Making errors
 
 When you make an error writing ZiQL, you should see something like this to help you understand where you made a mistake:
-```
+```lua
 Error: Expected string
 GRAB User {name = Bob}
                   ^^^ 
@@ -39,7 +39,7 @@ You can see it as `WHERE` in SQL.
 
 You can also link query. Each query returns a list of UUID of a specific struct. You can use it in the next query.
 Here an example where I create a new `Comment` that I then append to the list of comment of one specific `User`.
-```js
+```python
 ADD Comment (content='Hello world', at=NOW, like_by=[]) => added_comment => UPDATE User {id = '000'} TO (comments APPEND added_comment)
 ```
 
@@ -47,7 +47,7 @@ The name between `=>` is the variable name of the list of UUID used for the next
 You can also just use one `=>` but the list of UUID is discarded in that case.
 
 This can be use with GRAB too. So you can create variable before making the query. Here an example:
-```js
+```python
 GRAB User {name = 'Bob'} => bobs =>
 GRAB User {age > 18} => adults =>
 GRAB User {IN adults AND !IN bobs}
@@ -68,32 +68,32 @@ The main action is `GRAB`, this will parse files and return data.
 
 
 Here's how to return all `User` entities without any filtering:
-```js
+```python
 GRAB User
 ```
 
 To get all `User` entities above 30 years old:
-```js
+```python
 GRAB User {age > 30}
 ```
 
 To return only the `name` member of `User` entities:
-```js
+```python
 GRAB User [name] {age > 30}
 ```
 
 To return the 10 first `User` entities:
-```js
+```lua
 GRAB User [10] {age > 30}
 ```
 
 You can combine these options:
-```js
+```lua
 GRAB User [10; name] {age > 30}
 ```
 
 Use multiple conditions:
-```js
+```lua
 GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
 ```
 
@@ -213,7 +213,7 @@ GRAB Comment.like_by { at < '2024/01/01'}
 The `ADD` action adds one entity to the database. The syntax is similar to `GRAB`, but uses `()`. This signifies that the data is not yet in the database.
 
 Here's an example:
-```js
+```lua
 ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82])
 ```
 
