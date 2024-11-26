@@ -12,7 +12,7 @@
 - [X] File engine  
 
 #### v0.2 - Usable  
-- [ ] Relationships  
+- [~] Relationships  
 - [ ] Arrays
 - [X] Custom data file
 - [X] Date
@@ -25,7 +25,7 @@
 - [ ] Dump/Bump data  
 - [ ] Recovery
 - [ ] Better CLI
-- [ ] Linked query
+- [ ] Linked query  
 
 ### Beta
 #### v0.4 - Usability  

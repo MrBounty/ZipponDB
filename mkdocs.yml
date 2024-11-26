@@ -2,6 +2,21 @@ site_name: ZipponDB Documentation
 site_url: https://MrBounty.github.io/ZipponDB/
 theme:
   name: readthedocs
+  logo: images/logo.jpeg
+  collapse_navigation: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
 markdown_extensions:
   - attr_list
   - md_in_html
