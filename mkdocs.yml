@@ -10,6 +10,7 @@ theme:
     - navigation.sections  # Enable collapsible sections within the sidebar
     - navigation.expand
     - navigation.top
+    - content.code.annotate
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -26,8 +27,13 @@ theme:
 markdown_extensions:
   - attr_list
   - md_in_html
-  - pymdownx.blocks.caption
-  - pymdownx.superfences  # Often needed with Material for code highlighting
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
 plugins:
   - glightbox
   - search
