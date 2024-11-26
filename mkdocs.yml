@@ -44,6 +44,7 @@ nav:
   - Schema: Schema.md
   - ZipponQL: ZiQL.md
   - Data types: Data type.md
-  - Commands: Commands.md
+  - Command Line Interface: cli.md
   - Benchmark: Benchmark.md
+  - Technical: Technical docs.md
   - Roadmap: Roadmap.md

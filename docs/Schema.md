@@ -1,12 +1,10 @@
 # Schema
 
-In ZipponDB, you use structures, or structs for short, and not tables to organize how your data is stored and manipulated. A struct has a name like `User` and members like `name` and `age`.
+In ZipponDB, data is organized and manipulated using structures, or structs, rather than traditional tables. A struct is defined by a name, such as `User`, and members, such as `name` and `age`.
 
-## Create a Schema
+## Defining a Schema
 
-ZipponDB use a seperate file to declare all structs to use in the database.
-
-Here an example of a file:
+To declare structs for use in your database, create a separate file containing the schema definitions. Below is an example of a simple schema file:
 ```lua
 User (
     name: str,
@@ -15,9 +13,9 @@ User (
 )
 ```
 
-Note that `best_friend` is a link to another `User`.
+In this example, the `best_friend` member is a reference to another `User` struct, demonstrating how relationships between structs can be established.
 
-Here is a more advanced example with multiple structs:
+Here's a more complex example featuring multiple structs:
 ```lua
 User (
     name: str,
@@ -42,14 +40,16 @@ Comment (
 )
 ```
 
-***Note: `[]` before the type means an array of this type.***
+*Note: The [] symbol preceding a type indicates an array of that type. For example, []User represents an array of User structs.*
 
-## Migration to a new schema - Not yet implemented
+## Schema Migration (Coming Soon)
 
-In the future, you will be able to update the schema, such as adding a new member to a struct, and update the database. For the moment, you can't change the schema once it's initialized.
+In future releases, ZipponDB will support schema updates, allowing you to modify existing structs or add new ones, and then apply these changes to your database. Currently, schema modifications are not possible once the database has been initialized.
 
-## Commands
+### Planned Migration Features
 
-`schema init path/to/schema.file`: Init the database using a schema file.
-
-`schema describe`: Print the schema use by the currently selected database.
+- Add new members to existing structs
+- Modify or remove existing members
+- Rename structs or members
+- Update relationships between structs
+- More...

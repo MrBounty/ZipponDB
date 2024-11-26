@@ -1,5 +1,7 @@
 # Command Line Interface
 
+ZipponDB use a CLI to interact, there is few commands available for now as focus was given to ZiQL. But more commands will be added in the future.
+
 ## run
 
 Run a ZiQL query on the selected database.
@@ -11,12 +13,6 @@ run QUERY
 ```
 
 ## db
-
-**Usage:**
-
-```
-db COMMAND
-```
 
 ### db metrics
 
@@ -93,6 +89,16 @@ schema use path/to/schema.file [OPTIONS]
 Name | Type | Description         | Default
 ---- | ---- | ------------------- | ----
 TODO | TODO | TODO | TODO
+
+### schema describe
+
+Print the schema use by the selected database.
+
+**Usage:**
+
+```
+schema use path/to/schema.file [OPTIONS]
+```
 
 ## quit
 

@@ -2,26 +2,22 @@
 
 TODO
 
-***Note: Code snipped do not necessary represent the actual codebase but are use to explain principle.***
+***Note: Code snippets in this documentation are simplified examples and may not represent the actual codebase.***
 
-# Tokenizers
+## Tokenizers
 
-All `Tokenizer` work similary and are based on the [zig tokenizer.](https://github.com/ziglang/zig/blob/master/lib/std/zig/tokenizer.zig)
+Tokenizers are responsible for converting a buffer string into a list of tokens. Each token has a `Tag` enum that represents its type, such as `equal` for the `=` symbol, and a `Loc` struct with start and end indices that represent its position in the buffer.
 
-The `Tokenizer` role is to take a buffer string and convert it into a list of `Token`. A token have an enum `Tag` that represent what the token is, for example `=` is the tag `equal`, and a `Loc` with a `start` and `end` usize that represent the emplacement in the buffer.
+All tokenizers work similarly and are based on the [zig tokenizer.](https://github.com/ziglang/zig/blob/master/lib/std/zig/tokenizer.zig) They have two main methods: next, which returns the next token, and getTokenSlice, which returns the slice of the buffer that represents the token.
 
-The `Tokenizer` itself have 2 methods: `next` that return the next `Token`. And `getTokenSlice` that return the slice of the buffer that represent the `Token`, using it's `Loc`.
-
-This is how to use it:
+Here's an example of how to use a tokenizer:
 ```zig
 const toker = Tokenizer.init(buff);
 const token = toker.next();
 std.debug.print("{s}", .{toker.getTokenSlice(token)});
 ```
 
-I usually use a `Tokenizer` in a loop until the `Tag` is `end`. And in each loop I take the next token and will use a switch on the `Tag` to do stuffs.
-
-Here a simple example:
+Tokenizers are often used in a loop until the `end` tag is reached. In each iteration, the next token is retrieved and processed based on its tag. Here's a simple example:
 ```zig
 const toker = Tokenizer.init(buff);
 var token = toker.next();
@@ -31,31 +27,23 @@ while (token.tag != .end) : (token = toker.next()) switch (token.tag) {
 }
 ```
 
-### All tokenizers
+### Available Tokenizers
 
-There is 4 differents tokenizer in ZipponDB, I know, that a lot. Here the list:
+There are four different tokenizers in ZipponDB:
+
 - **ZiQL:** Tokenizer for the query language.
 - **cli:** Tokenizer the commands.
 - **schema:** Tokenizer for the schema file.
-- **data:** Tokenizer for csv file.
 
-They all have different `Tag` and way to parse the array of bytes but overall are very similar. The only noticable difference is that some use a null terminated string (based on the zig tokenizer) and other not.
-Mostly because I need to use dupeZ to get a new null terminated array, not necessary.
+Each tokenizer has its own set of tags and parsing rules, but they all work similarly.
 
-# Parser
+## Parser
 
-`Parser` are the next step after the tokenizer. Its role is to take `Token` and do stuff or raise error. There is 3 `Parser`, the main one is for ZiQL, one for the schema and one for the cli. 
-Note that the cli one is just the `main` function in `main.zig` and not it's own struct but overall do the same thing.
+Parsers are the next step after tokenization. They take tokens and perform actions or raise errors. There are three parsers in ZipponDB: one for ZiQL, one for schema files, and one for CLI commands.
 
-A `Parser` have a `State` and a `Tokenizer` as member and have a `parse` method. Similary to `Tokenizer`, it will enter a while loop. This loop will continue until the `State` is `end`.
+A parser has a `State` enum and a `Tokenizer` instance as members, and a parse method that processes tokens until the `end` state is reached.
 
-Let's take as example the schema parser that need to parse this file:
-```
-User (name: str)
-```
-
-When I run the `parse` method, it will init the `State` as `start`. When in `start`, I check if the `Token` is a identifier (a variable name), if it is one I add it to the list of struct in the current schema, if not I raise an error pointing to this token. 
-Here the idea for a `parse` method:
+Here's an example of how a parser works:
 ```zig
 var state = .start;
 var token = self.toker.next();
@@ -68,54 +56,59 @@ while (state != .end) : (token = self.toker.next()) switch (state) {
 }
 ```
 
-The issue here is obviously that we are in an infinite loop that just going to add struct or print error. I need to change the `state` based on the combinaison of the current `state` and `token.tag`. For that I usually use very implicite name for `State`.
-For example in this situation, after a struct name, I expect `(` so I will call it something like `expect_l_paren`. Here the idea:
-```zig
-var state = .start;
-var token = self.toker.next();
-while (state != .end) : (token = self.toker.next()) switch (state) {
-  .start => switch (token.tag) {
-    .identifier => {
-        self.addStruct(token);
-        state = .expect_l_parent;
-      },
-    else => printError("Error: Expected a struct name.", token),
-  },
-  .expect_l_parent => switch (token.tag) {
-    .l_paren => {},
-    else => printError("Error: Expected (.", token),
-  },
-  else => {},
-}
-```
+The parser's state is updated based on the combination of the current state and token tag. This process continues until the `end` state is reached.
 
-And that's basicly it, the entire `Parser` work like that. It is fairly easy to debug as I can print the `state` and `token.tag` at each iteration and follow the path of the `Parser`.
+The ZiQL parser uses different methods for parsing:
 
-Note that the `ZiQLParser` use different methods for parsing:
-- **parse:** The main one that will then use the other.
-- **parseFilter:** This will create a `Filter`, this is a tree that contain all condition in the query, what is between `{}`.
-- **parseCondition:** Create a `Condition` based on a part of what is between `{}`. E.g. `name = 'Bob'`.
-- **parseAdditionalData:** Populate the `AdditionalData` that represent what is between `[]`.
-- **parseNewData:** Return a string map with key as member name and value as value of what is between `()`. E.g. `(name = 'Bob')` will return a map with one key `name` with the value `Bob`.
-- **parseOption:** Not done yet. Parse what is between `||`
+- `parse`: The main parsing method that calls other methods.
+- `parseFilter`: Creates a filter tree from the query.
+- `parseCondition`: Creates a condition from a part of the query.
+- `parseAdditionalData`: Populates additional data from the query.
+- `parseNewData`: Returns a string map with key-value pairs from the query.
+- `parseOption`: Not implemented yet.
 
-# FileEngine
+## File parsing
 
-The `FileEngine` is that is managing files, everything that need to read or write into files is here.
+TODO: Explain ZipponData and how it works.
 
-I am not goind into too much detail here as I think this will change in the future.
+## Engines
 
-# Multi-threading
+TODO: Explain
 
-How do I do multi-threading ? Basically all struct are saved in multiples `.zid` files. Each files have
-a size limit defined in the config and a new one is created when no previous one is found with space left.
+### DBEngine
 
-When I run a GRAB query and parse all files and evaluate each struct, I use a thread pool and give a file
-to each thread. Each thread have it's own buffered writer and once all finished, I concatenate all writer
-and send it.
+TODO: Explain
 
-The only atomic value share by all threads are the number of founded struct (to stop thread if enough are found when
-[10] is use). And the number of finished thread, so I know when I can concatenate and send stuffs.
+### FileEngine
 
-Like that this keep things simple and easy to implement. I dont have parallel thread that run different 
-that need to access the same file.
+The file engine is responsible for managing files, including reading and writing. This section is not detailed, as it is expected to change in the future.
+
+### SchemaEngine
+
+TODO: Explain
+
+### ThreadEngine
+
+TODO: Explain
+
+## Multi-threading
+
+ZipponDB uses multi-threading to improve performance. Each struct is saved in multiple `.zid` files, and a thread pool is used to process files concurrently. Each thread has its own buffered writer, and the results are concatenated and sent once all threads finish.
+
+The only shared atomic values between threads are the number of found structs and the number of finished threads. This approach keeps things simple and easy to implement, avoiding parallel threads accessing the same file.
+
+## Filters
+
+TODO: Explain the data strucutre and how it works.
+
+## AdditionalData
+
+TODO: Explain the data strucutre and how it works.
+
+## Condition
+
+TODO: Explain the data strucutre and how it works.
+
+## NewData
+
+TODO: Explain the data strucutre and how it works.
