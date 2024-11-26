@@ -76,11 +76,11 @@ pub fn myLog(
         writer.writeByte('\n') catch return;
         file.close();
     } else {
-        const writer = std.io.getStdErr().writer();
+        //const writer = std.io.getStdErr().writer();
 
-        writer.print("{s}{s}Time: {s} - ", .{ level_txt, prefix, date_format_buffer.items }) catch return;
-        writer.print(format, args) catch return;
-        writer.writeByte('\n') catch return;
+        //writer.print("{s}{s}Time: {s} - ", .{ level_txt, prefix, date_format_buffer.items }) catch return;
+        //writer.print(format, args) catch return;
+        //writer.writeByte('\n') catch return;
     }
 }
 
@@ -179,7 +179,6 @@ pub const DBEngine = struct {
     }
 };
 
-// TODO: If an argument is given when starting the binary, it is the db path
 pub fn main() !void {
     var db_engine = DBEngine.init(null, null);
     defer db_engine.deinit();
@@ -197,7 +196,6 @@ pub fn main() !void {
         };
 
         if (line) |line_str| {
-            const start_time = std.time.milliTimestamp();
             log.debug("Query received: {s}", .{line_str});
 
             const null_term_line_str = try std.fmt.bufPrintZ(&line_buffer, "{s}", .{line_str});
@@ -261,6 +259,10 @@ pub fn main() !void {
 
                         try db_engine.file_engine.writeDbMetrics(&buffer);
                         send("{s}", .{buffer.items});
+                        state = .end;
+                    },
+                    .keyword_state => {
+                        send("{any}", .{db_engine.state});
                         state = .end;
                     },
                     .keyword_help => {
@@ -344,8 +346,6 @@ pub fn main() !void {
                 log.info("Bye bye\n", .{});
                 break;
             }
-            const end_time = std.time.milliTimestamp();
-            std.debug.print("Finished in: {d}ms\n", .{end_time - start_time});
         }
     }
 }

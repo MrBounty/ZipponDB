@@ -17,6 +17,7 @@ pub const Token = struct {
         .{ "new", .keyword_new },
         .{ "metrics", .keyword_metrics },
         .{ "use", .keyword_use },
+        .{ "state", .keyword_state },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -37,6 +38,7 @@ pub const Token = struct {
         keyword_new,
         keyword_metrics,
         keyword_use,
+        keyword_state,
 
         string_literal,
         identifier,

@@ -8,10 +8,11 @@ var map_error_buffer: [1024 * 1024]u8 = undefined; // This is for map AND error,
 var value_buffer: [1024]u8 = undefined;
 var path_buffer: [1024 * 1024]u8 = undefined;
 
+var fa = std.heap.FixedBufferAllocator.init(&map_error_buffer);
+const allocator = fa.allocator();
+
 pub fn getEnvVariable(variable: []const u8) ?[]const u8 {
-    var fa = std.heap.FixedBufferAllocator.init(&map_error_buffer);
-    defer fa.reset();
-    const allocator = fa.allocator();
+    fa.reset();
 
     var env_map = std.process.getEnvMap(allocator) catch return null;
 
@@ -56,39 +57,35 @@ pub fn send(comptime format: []const u8, args: anytype) void {
 
 /// Print an error and send it to the user pointing to the token
 pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, start: ?usize, end: ?usize) ZipponError {
-    var fa = std.heap.FixedBufferAllocator.init(&map_error_buffer);
-    defer fa.reset();
-    const allocator = fa.allocator();
+    fa.reset();
 
     var buffer = std.ArrayList(u8).init(allocator);
     defer buffer.deinit();
     var writer = buffer.writer();
 
-    writer.print("{{\"error\": \"", .{}) catch {};
-    writer.print("\n", .{}) catch {}; // Maybe use write all, not sure if it affect performance in any considerable way
+    writer.writeAll("{\"error\": \"") catch {};
+    writer.writeAll("\n") catch {};
     writer.print("{s}\n", .{message}) catch {};
 
     if ((start != null) and (end != null) and (query != null)) {
-        const query_buffer = std.fmt.bufPrint(&map_error_buffer, "{s}", .{query.?}) catch return ZipponError.MemoryError;
+        const query_buffer = std.fmt.bufPrint(&path_buffer, "{s}", .{query.?}) catch return ZipponError.MemoryError;
         std.mem.replaceScalar(u8, query_buffer, '\n', ' ');
         writer.print("{s}\n", .{query.?}) catch {};
 
         // Calculate the number of spaces needed to reach the start position.
         var spaces: usize = 0;
         while (spaces < start.?) : (spaces += 1) {
-            writer.print(" ", .{}) catch {};
+            writer.writeByte(' ') catch {};
         }
 
         // Print the '^' characters for the error span.
         var i: usize = start.?;
         while (i < end.?) : (i += 1) {
-            writer.print("^", .{}) catch {};
+            writer.writeByte('^') catch {};
         }
-        writer.print("    \n", .{}) catch {}; // Align with the message
+        writer.writeAll("    \n") catch {}; // Align with the message
     }
-    writer.print("\"}}", .{}) catch {};
-
-    // log.debug("Parsing error: {s}", .{buffer.items});
+    writer.writeAll("\"}") catch {};
 
     send("{s}", .{buffer.items});
     return err;
@@ -102,40 +99,4 @@ pub fn printOpenDir(comptime format: []const u8, args: anytype, options: std.fs.
 pub fn printOpenFile(comptime format: []const u8, args: anytype, options: std.fs.File.OpenFlags) ZipponError!std.fs.File {
     const path = std.fmt.bufPrint(&path_buffer, format, args) catch return ZipponError.CantOpenDir;
     return std.fs.cwd().openFile(path, options) catch ZipponError.CantOpenFile;
-}
-
-pub fn printTable(writer: anytype, headers: []const []const u8, data: []const []const []const u8) !void {
-    // Calculate column widths
-    var col_widths = [_]usize{0} ** 10;
-
-    // Determine max width for each column
-    for (headers, 0..) |header, i| {
-        col_widths[i] = @max(col_widths[i], header.len);
-    }
-
-    for (data) |row| {
-        for (row, 0..) |cell, i| {
-            col_widths[i] = @max(col_widths[i], cell.len);
-        }
-    }
-
-    // Print headers
-    for (headers, 0..) |header, i| {
-        try writer.print("{s:<[*]}", .{ header, col_widths[i] + 2 });
-    }
-    try writer.print("\n", .{});
-
-    // Print separator
-    for (headers, 0..) |_, i| {
-        try writer.print("{s:-<[*]}", .{ "-", col_widths[i] + 2 });
-    }
-    try writer.print("\n", .{});
-
-    // Print data rows
-    for (data) |row| {
-        for (row, 0..) |cell, i| {
-            try writer.print("{s:<[*]}", .{ cell, col_widths[i] + 2 });
-        }
-        try writer.print("\n", .{});
-    }
 }
