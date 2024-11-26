@@ -2,8 +2,13 @@ site_name: ZipponDB Documentation
 site_url: https://MrBounty.github.io/ZipponDB/
 theme:
   name: readthedocs
-  logo: images/logo.jpeg
-  collapse_navigation: true
+  logo: images/banner.png
+  features:
+    - search.suggest
+    - navigation.tabs  # Makes navigation collapsible, but keeps sections open
+    - navigation.sections  # Enable collapsible sections within the sidebar
+    - navigation.expand
+    - navigation.top
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -21,8 +26,10 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - pymdownx.blocks.caption
+  - pymdownx.superfences  # Often needed with Material for code highlighting
 plugins:
   - glightbox
+  - search
 
 nav:
   - Home: index.md
