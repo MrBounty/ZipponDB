@@ -69,27 +69,109 @@ The ZiQL parser uses different methods for parsing:
 
 ## File parsing
 
-TODO: Explain ZipponData and how it works.
+File parsing is done through a small library that I did named [ZipponData](https://github.com/MrBounty/ZipponData). 
+
+It is minimal and fast, it can parse 1_000_000 entity in 0.3s on one thread 
+on a 7 7800X3D at around 4.5GHz with a Samsung SSD 980 PRO 2TB (up to 7,000/5,100MB/s for read/write speed).
+
+To read a file, you create an iterator for a single file and then you can iterate with `.next()`. It will return an array of `Data`. This make everything very easy to use.
+
+```zig
+const std = @import("std");
+
+pub fn main() !void {
+    const allocator = std.testing.allocator;
+
+    // 0. Make a temporary directory
+    try std.fs.cwd().makeDir("tmp");
+    const dir = try std.fs.cwd().openDir("tmp", .{});
+
+    // 1. Create a file
+    try createFile("test", dir);
+
+    // 2. Create some Data
+    const data = [_]Data{
+        Data.initInt(1),
+        Data.initFloat(3.14159),
+        Data.initInt(-5),
+        Data.initStr("Hello world"),
+        Data.initBool(true),
+        Data.initUnix(2021),
+    };
+
+    // 3. Create a DataWriter
+    var dwriter = try DataWriter.init("test", dir);
+    defer dwriter.deinit(); // This just close the file
+
+    // 4. Write some data
+    try dwriter.write(&data);
+    try dwriter.write(&data);
+    try dwriter.flush(); // Dont forget to flush !
+
+    // 5. Create a schema
+    // A schema is how  the iterator will parse the file. 
+    // If you are wrong here, it will return wrong/random data
+    // And most likely an error when iterating in the while loop
+    const schema = &[_]DType{
+        .Int,
+        .Float,
+        .Int,
+        .Str,
+        .Bool,
+        .Unix,
+    };
+
+    // 6. Create a DataIterator
+    var iter = try DataIterator.init(allocator, "test", dir, schema);
+    defer iter.deinit();
+
+    // 7. Iterate over data
+    while (try iter.next()) |row| {
+        std.debug.print("Row: {any}\n", .{ row });
+    }
+
+    // 8. Delete the file (Optional ofc)
+    try deleteFile("test", dir);
+    try std.fs.cwd().deleteDir("tmp");
+}
+```
 
 ## Engines
 
-TODO: Explain
+ZipponDB segregate responsability with Engines.
+
+For example the `FileEngine` is the only place where files used, for both writting and reading. This simplify refactoring, testing, etc.
 
 ### DBEngine
 
-TODO: Explain
+This is just a wrapper around all other Engines to keep them at the same place. This doesnt do anything except storing other Engines.
+
+This can be find in `main.zig`, in the `main` function.
 
 ### FileEngine
 
-The file engine is responsible for managing files, including reading and writing. This section is not detailed, as it is expected to change in the future.
+The `FileEngine` is responsible for managing files, including reading and writing.
+
+Most methods will parse all files of a struct and evaluate them with a filter and do stuff if `true`. For example `parseEntities` will parse all entities and if the filter return `true`, 
+will write using the writer argument a JSON object with the entity's data.
+
+Those methods are usually sperated into 2 methods. The main one and a `OneFile` version, e.g. `parseEntitiesOneFile`. The main one will call a thread for each file using multiple `OneFile` version.
+This is how multi-threading is done.
 
 ### SchemaEngine
 
-TODO: Explain
+The `SchemaEngine` manage everything related to schemas. 
+
+This is mostly used to store a list of `SchemaStruct`, with is just one struct as defined in the schema. With all member names, data types, links, etc.
+
+This is also here that I store the `UUIDFileIndex`, that is a map of UUID to file index. So I can quickly check if a UUID exist and in which file it is store.
+This work well but use a bit too much memory for me, around 220MB for 1_000_000 entities. I tried doing a Radix Trie but it doesn't use that much less memory, maybe I did a mistake somewhere.
 
 ### ThreadEngine
 
-TODO: Explain
+The `ThreadEngine` manage the thread pool of the database.
+
+This is also where is stored the `ThreadSyncContext` that is use for each `OneFile` version of parsing methods in the `FileEngine`. This is the only atomix value currently used in the database.
 
 ## Multi-threading
 
@@ -97,11 +179,11 @@ ZipponDB uses multi-threading to improve performance. Each struct is saved in mu
 
 The only shared atomic values between threads are the number of found structs and the number of finished threads. This approach keeps things simple and easy to implement, avoiding parallel threads accessing the same file.
 
-## Filters
+## AdditionalData
 
 TODO: Explain the data strucutre and how it works.
 
-## AdditionalData
+## Filters
 
 TODO: Explain the data strucutre and how it works.
 

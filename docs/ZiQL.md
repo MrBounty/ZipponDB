@@ -1,5 +1,7 @@
 # ZipponQL
 
+TODO: Cut this into multiple .md
+
 ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the key points to remember:
 
 - 4 actions available: `GRAB`, `ADD`, `UPDATE`, `DELETE`
