@@ -361,7 +361,10 @@ pub const FileEngine = struct {
         };
         defer iter.deinit();
 
-        while (iter.next() catch return) |row| {
+        while (iter.next() catch |err| {
+            sync_context.logError("Error in iter next", err);
+            return;
+        }) |row| {
             if (sync_context.checkStructLimit()) break;
             if (filter == null or filter.?.evaluate(row)) {
                 list.*.append(UUID{ .bytes = row[0].UUID }) catch |err| {
@@ -593,6 +596,8 @@ pub const FileEngine = struct {
 
         const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
         const data = try self.orderedNewData(allocator, struct_name, map);
+
+        std.debug.print("{any}", .{data});
 
         var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
         defer data_writer.deinit();
@@ -914,17 +919,22 @@ pub const FileEngine = struct {
             .str => |v| return zid.Data.initStr(v),
             .link => |v| {
                 var iter = v.keyIterator();
-                if (v.count() == 1) {
+                if (v.count() > 0) {
                     return zid.Data.initUUID(iter.next().?.bytes);
                 } else {
-                    var items = std.ArrayList([16]u8).init(allocator);
-                    defer items.deinit();
-
-                    while (iter.next()) |uuid| {
-                        items.append(uuid.bytes) catch return ZipponError.MemoryError;
-                    }
-                    return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, items.items) catch return FileEngineError.AllocEncodError);
+                    const uuid = UUID.parse("00000000-0000-0000-0000-000000000000") catch return ZipponError.InvalidUUID;
+                    return zid.Data.initUUID(uuid.bytes);
                 }
+            },
+            .link_array => |v| {
+                var iter = v.keyIterator();
+                var items = std.ArrayList([16]u8).init(allocator);
+                defer items.deinit();
+
+                while (iter.next()) |uuid| {
+                    items.append(uuid.bytes) catch return ZipponError.MemoryError;
+                }
+                return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, items.items) catch return FileEngineError.AllocEncodError);
             },
             .self => |v| return zid.Data.initUUID(v.bytes),
             .int_array => |v| return zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, v) catch return FileEngineError.AllocEncodError),
@@ -953,8 +963,6 @@ pub const FileEngine = struct {
             if (i == 0) continue; // Skip the id
             datas[i] = try string2Data(allocator, map.get(member).?);
         }
-
-        log.debug("New ordered data: {any}\n", .{datas});
 
         return datas;
     }

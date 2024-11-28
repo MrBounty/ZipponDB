@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
 
     // All tests
     const tests1 = b.addTest(.{
-        .root_source_file = b.path("src/stuffs/UUIDTree.zig"),
+        .root_source_file = b.path("src/stuffs/UUIDFileIndex.zig"),
         .target = target,
         .optimize = optimize,
         .name = "CLI tokenizer",

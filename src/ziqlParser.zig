@@ -373,7 +373,7 @@ pub const Parser = struct {
             token = if (keep_next) token else self.toker.next();
             keep_next = false;
             if (PRINT_STATE) std.debug.print("parseFilter: {any}\n", .{state});
-        }) {
+        })
             switch (state) {
                 .expect_condition => switch (token.tag) {
                     .r_brace => {
@@ -469,9 +469,10 @@ pub const Parser = struct {
                     ),
                 },
 
+                .end => {},
+
                 else => unreachable,
-            }
-        }
+            };
 
         return filter;
     }
@@ -799,6 +800,7 @@ pub const Parser = struct {
 
             .expect_new_value => {
                 const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZiQlParserError.StructNotFound;
+                std.debug.print("DATA TYPE: {any}\n", .{data_type});
                 map.put(member_name, try self.parseConditionValue(allocator, struct_name, data_type, &token)) catch return ZipponError.MemoryError;
                 if (data_type == .link or data_type == .link_array) {
                     token = self.toker.last_token;
@@ -925,7 +927,7 @@ pub const Parser = struct {
             .date_array => value = try ConditionValue.initArrayDate(allocator, self.toker.buffer[start_index..token.loc.end]),
             .time_array => value = try ConditionValue.initArrayTime(allocator, self.toker.buffer[start_index..token.loc.end]),
             .datetime_array => value = try ConditionValue.initArrayDateTime(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .link_array, .link => switch (token.tag) {
+            .link => switch (token.tag) {
                 .keyword_none => {
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
                     map.* = std.AutoHashMap(UUID, void).init(allocator);
@@ -960,7 +962,7 @@ pub const Parser = struct {
                         token.* = self.toker.next();
                     }
 
-                    if (data_type == .link) additional_data.entity_count_to_find = 1;
+                    additional_data.entity_count_to_find = 1;
 
                     if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
                         "Error: Expected filter",
@@ -979,8 +981,53 @@ pub const Parser = struct {
                         map,
                         &additional_data,
                     );
-                    log.debug("Found {d} entity when parsing for populateVoidUUID\n", .{map.count()});
                     value = ConditionValue.initLink(map);
+                },
+
+                else => return printError(
+                    "Error: Expected uuid or none",
+                    ZiQlParserError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
+            },
+            .link_array => switch (token.tag) {
+                .keyword_none => {
+                    const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
+                    map.* = std.AutoHashMap(UUID, void).init(allocator);
+                    value = ConditionValue.initArrayLink(map);
+                    _ = self.toker.next();
+                },
+                .l_brace, .l_bracket => {
+                    var filter: ?Filter = null;
+                    defer if (filter != null) filter.?.deinit();
+                    var additional_data = AdditionalData.init(allocator);
+                    defer additional_data.deinit();
+
+                    if (token.tag == .l_bracket) {
+                        try self.parseAdditionalData(allocator, &additional_data, struct_name);
+                        token.* = self.toker.next();
+                    }
+
+                    if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
+                        "Error: Expected filter",
+                        ZiQlParserError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+
+                    // Here I have the filter and additionalData
+                    const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
+                    map.* = std.AutoHashMap(UUID, void).init(allocator);
+                    try self.file_engine.populateVoidUUIDMap(
+                        struct_name,
+                        filter,
+                        map,
+                        &additional_data,
+                    );
+                    value = ConditionValue.initArrayLink(map);
                 },
                 else => return printError(
                     "Error: Expected uuid or none",
@@ -990,7 +1037,7 @@ pub const Parser = struct {
                     token.loc.end,
                 ),
             },
-            else => unreachable,
+            .self => unreachable,
         }
 
         return value;
@@ -1013,16 +1060,16 @@ pub const Parser = struct {
 };
 
 test "ADD" {
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, bday=2000/01/04, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, bday=2000/06/06, a_time=04:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, friends=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, friends=none, bday=2000/01/04, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, friends=none, bday=2000/06/06, a_time=04:04:54.8741, last_order=2000/01/01-12:45)");
 
     // This need to take the first User named Bob as it is a unique link
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name = 'Bob'}, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends={name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
 
-    try testParsing("GRAB User");
+    try testParsing("GRAB User {}");
 }
 
 test "GRAB filter with string" {
