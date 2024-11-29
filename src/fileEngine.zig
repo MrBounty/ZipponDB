@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
 const SchemaStruct = @import("schemaEngine.zig").SchemaStruct;
 const ThreadSyncContext = @import("threadEngine.zig").ThreadSyncContext;
+const EntityWriter = @import("entityWriter.zig").EntityWriter;
 
 const dtype = @import("dtype");
 const s2t = dtype.s2t;
@@ -160,7 +161,7 @@ pub const FileEngine = struct {
     /// TODO: Multi thread that too
     pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) ZipponError!usize {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        defer fa.reset();
+        fa.reset();
         const allocator = fa.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
@@ -283,7 +284,7 @@ pub const FileEngine = struct {
         additional_data: *AdditionalData,
     ) ZipponError!void {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        defer fa.reset();
+        fa.reset();
         const allocator = fa.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
@@ -478,7 +479,7 @@ pub const FileEngine = struct {
             if (sync_context.checkStructLimit()) break;
             if (filter) |f| if (!f.evaluate(row)) continue;
 
-            writeEntityTable(
+            EntityWriter.writeEntityTable(
                 writer,
                 row,
                 additional_data,
@@ -493,91 +494,6 @@ pub const FileEngine = struct {
         _ = sync_context.completeThread();
     }
 
-    fn writeEntityTable(
-        writer: anytype,
-        row: []zid.Data,
-        additional_data: *AdditionalData,
-        data_types: []const DataType,
-    ) !void {
-        try writer.writeAll("| ");
-        for (additional_data.member_to_find.items) |member| {
-            try writeValue(writer, row[member.index], data_types[member.index]);
-            try writer.writeAll(" \t| ");
-        }
-        try writer.writeByte('\n');
-    }
-
-    fn writeEntityJSON(
-        writer: anytype,
-        row: []zid.Data,
-        additional_data: *AdditionalData,
-        data_types: []const DataType,
-    ) !void {
-        try writer.writeByte('{');
-        for (additional_data.member_to_find.items) |member| {
-            try writer.print("{s}: ", .{member.name});
-            try writeValue(writer, row[member.index], data_types[member.index]);
-            try writer.writeAll(", ");
-        }
-        try writer.writeAll("}, ");
-    }
-
-    fn writeValue(writer: anytype, value: zid.Data, data_type: DataType) !void {
-        switch (value) {
-            .Float => |v| try writer.print("{d}", .{v}),
-            .Int => |v| try writer.print("{d}", .{v}),
-            .Str => |v| try writer.print("\"{s}\"", .{v}),
-            .UUID => |v| {
-                const uuid = try UUID.parse("00000000-0000-0000-0000-000000000000"); // Maybe pass that comptime to prevent parsing it everytime
-                if (!std.meta.eql(v, uuid.bytes)) {
-                    try writer.print("\"{s}\"", .{UUID.format_bytes(v)});
-                } else {
-                    try writer.print("{{}}", .{});
-                }
-            },
-            .Bool => |v| try writer.print("{any}", .{v}),
-            .Unix => |v| {
-                const datetime = DateTime.initUnix(v);
-                try writer.writeByte('"');
-                switch (data_type) {
-                    .date => try datetime.format("YYYY/MM/DD", writer),
-                    .time => try datetime.format("HH:mm:ss.SSSS", writer),
-                    .datetime => try datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer),
-                    else => unreachable,
-                }
-                try writer.writeByte('"');
-            },
-            .IntArray, .FloatArray, .StrArray, .UUIDArray, .BoolArray, .UnixArray => try writeArray(writer, value, data_type),
-        }
-    }
-
-    fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) ZipponError!void {
-        writer.writeByte('[') catch return FileEngineError.WriteError;
-        var iter = zid.ArrayIterator.init(data) catch return FileEngineError.ZipponDataError;
-        switch (data) {
-            .IntArray => while (iter.next()) |v| writer.print("{d}, ", .{v.Int}) catch return FileEngineError.WriteError,
-            .FloatArray => while (iter.next()) |v| writer.print("{d}", .{v.Float}) catch return FileEngineError.WriteError,
-            .StrArray => while (iter.next()) |v| writer.print("\"{s}\"", .{v.Str}) catch return FileEngineError.WriteError,
-            .UUIDArray => while (iter.next()) |v| writer.print("\"{s}\"", .{UUID.format_bytes(v.UUID)}) catch return FileEngineError.WriteError,
-            .BoolArray => while (iter.next()) |v| writer.print("{any}", .{v.Bool}) catch return FileEngineError.WriteError,
-            .UnixArray => {
-                while (iter.next()) |v| {
-                    const datetime = DateTime.initUnix(v.Unix);
-                    writer.writeByte('"') catch return FileEngineError.WriteError;
-                    switch (data_type) {
-                        .date => datetime.format("YYYY/MM/DD", writer) catch return FileEngineError.WriteError,
-                        .time => datetime.format("HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
-                        .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return FileEngineError.WriteError,
-                        else => unreachable,
-                    }
-                    writer.writeAll("\", ") catch return FileEngineError.WriteError;
-                }
-            },
-            else => unreachable,
-        }
-        writer.writeByte(']') catch return FileEngineError.WriteError;
-    }
-
     // --------------------Change existing files--------------------
 
     // TODO: Make it in batch too
@@ -589,7 +505,7 @@ pub const FileEngine = struct {
         n: usize,
     ) ZipponError!void {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        defer fa.reset();
+        fa.reset();
         const allocator = fa.allocator();
 
         const file_index = try self.getFirstUsableIndexFile(struct_name);
@@ -617,7 +533,7 @@ pub const FileEngine = struct {
         additional_data: *AdditionalData,
     ) ZipponError!void {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        defer fa.reset();
+        fa.reset();
         const allocator = fa.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
@@ -782,7 +698,7 @@ pub const FileEngine = struct {
         additional_data: *AdditionalData,
     ) ZipponError!void {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        defer fa.reset();
+        fa.reset();
         const allocator = fa.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
