@@ -14,6 +14,7 @@ pub fn parseArrayInt(allocator: std.mem.Allocator, array_str: []const u8) ![]con
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseInt(x));
     }
 
@@ -29,6 +30,7 @@ pub fn parseArrayFloat(allocator: std.mem.Allocator, array_str: []const u8) ![]c
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseFloat(x));
     }
 
@@ -52,6 +54,7 @@ pub fn parseArrayDate(allocator: std.mem.Allocator, array_str: []const u8) ![]co
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseDate(x));
     }
 
@@ -63,6 +66,7 @@ pub fn parseArrayDateUnix(allocator: std.mem.Allocator, array_str: []const u8) !
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseDate(x).toUnix());
     }
 
@@ -83,6 +87,7 @@ pub fn parseArrayTime(allocator: std.mem.Allocator, array_str: []const u8) ![]co
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseTime(x));
     }
 
@@ -94,6 +99,7 @@ pub fn parseArrayTimeUnix(allocator: std.mem.Allocator, array_str: []const u8) !
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseTime(x).toUnix());
     }
 
@@ -117,6 +123,7 @@ pub fn parseArrayDatetime(allocator: std.mem.Allocator, array_str: []const u8) !
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseDatetime(x));
     }
 
@@ -128,6 +135,7 @@ pub fn parseArrayDatetimeUnix(allocator: std.mem.Allocator, array_str: []const u
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseDatetime(x).toUnix());
     }
 
@@ -139,6 +147,7 @@ pub fn parseArrayBool(allocator: std.mem.Allocator, array_str: []const u8) ![]co
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(parseBool(x));
     }
 
@@ -150,6 +159,7 @@ pub fn parseArrayUUID(allocator: std.mem.Allocator, array_str: []const u8) ![]co
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         const uuid = try UUID.parse(x);
         try array.append(uuid);
     }
@@ -162,6 +172,7 @@ pub fn parseArrayUUIDBytes(allocator: std.mem.Allocator, array_str: []const u8) 
 
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], " ");
     while (it.next()) |x| {
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         const uuid = try UUID.parse(x);
         try array.append(uuid.bytes);
     }
@@ -176,7 +187,7 @@ pub fn parseArrayStr(allocator: std.mem.Allocator, array_str: []const u8) ![]con
     var it = std.mem.splitAny(u8, array_str[1 .. array_str.len - 1], "'");
     _ = it.next(); // SSkip first token that is empty
     while (it.next()) |x| {
-        if (std.mem.eql(u8, " ", x)) continue;
+        if (std.mem.eql(u8, " ", x) or std.mem.eql(u8, "", x)) continue;
         try array.append(x);
     }
 

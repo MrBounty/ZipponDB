@@ -1068,6 +1068,7 @@ test "ADD" {
     // This need to take the first User named Bob as it is a unique link
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends={name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'Bobibou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends=[1]{name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
 
     try testParsing("GRAB User {}");
 }
@@ -1111,7 +1112,8 @@ test "Specific query" {
 // TODO: next step is to make this work
 
 test "UPDATE relationship" {
-    try testParsing("UPDATE User [1] {} TO (best_friend = {name='Boba'} )");
+    try testParsing("UPDATE User [1] {name='Bob'} TO (best_friend = {name='Boba'} )");
+    try testParsing("GRAB User {}");
 }
 
 // Not yet working but dont trow an error
