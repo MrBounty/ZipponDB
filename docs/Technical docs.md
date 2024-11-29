@@ -179,18 +179,48 @@ ZipponDB uses multi-threading to improve performance. Each struct is saved in mu
 
 The only shared atomic values between threads are the number of found structs and the number of finished threads. This approach keeps things simple and easy to implement, avoiding parallel threads accessing the same file.
 
-## AdditionalData
+## Data Structures
+
+### AdditionalData
 
 TODO: Explain the data strucutre and how it works.
 
-## Filters
+### Filters
 
-TODO: Explain the data strucutre and how it works.
+A filter is a series of condition. It use a tree approach, by that I mean the filter have a root node that is either a condition or have 2 others nodes (left and right).
 
-## Condition
+For example the filter `{name = 'Bob'}` have one root node that is the condition. So when I evaluate the struct, I just check this condition.
 
-TODO: Explain the data strucutre and how it works.
+Now for like `{name = 'Bob' AND age > 0}`, the root node have as left node the condition `name = 'Bob'` and right node the condition `age > 0`.
 
-## NewData
+To look like that:
+```
+            AND
+         /      \
+        OR      OR
+       / \      / \
+    name name age age
+    ='A' ='B' >80 <20
+```
 
-TODO: Explain the data strucutre and how it works.
+### Condition
+
+A condition is part of filters. It is one 'unit of condition'. For example `name = 'Bob'` is one condition.
+`name = 'Bob' and age > 0` are 2 conditions and one filter. It is created inside `parseCondition` in the `ziqlParser`.
+
+A condition have those infos:
+
+- value: ConditionValue. E.g. `32`
+- operation: ComparisonOperator. E.g. `equal` or `in`
+- data_type: DataType. E.g. `int` or `str`
+- data_index: usize. This is the index in when parsing returned by zid `DataIterator`
+
+### NewData
+
+NewData is a map with member name as key and ConditionValue as value, it is created when parsing and is use to add data into a file.
+I transform ConditionValue into Zid Data. Maybe I can directly do a map member name -> zid Data ?
+
+## EntityWriter
+
+This is responsable to transform the raw Data into a JSON, Table or other output format to send send to end user.
+Basically the last step before sending.

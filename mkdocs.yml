@@ -40,11 +40,14 @@ plugins:
 
 nav:
   - Home: index.md
-  - Quickstart: Quickstart.md
-  - Schema: Schema.md
-  - ZipponQL: ZiQL.md
-  - Data types: Data type.md
-  - Command Line Interface: cli.md
-  - Benchmark: Benchmark.md
-  - Technical: Technical docs.md
-  - Roadmap: Roadmap.md
+  - Using ZipponDB:
+    - Quickstart: Quickstart.md
+    - Schema: Schema.md
+    - ZipponQL: ZiQL.md
+    - Data types: Data type.md
+    - Command Line Interface: cli.md
+  - Under the Hood:
+    - Benchmark: Benchmark.md
+    - Technical: Technical docs.md
+    - About: about.md
+    - Roadmap: Roadmap.md
