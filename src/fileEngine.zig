@@ -403,7 +403,7 @@ pub const FileEngine = struct {
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
         if (additional_data.member_to_find.items.len == 0) {
-            additional_data.populateWithEverything(allocator, sstruct.members) catch return FileEngineError.MemoryError;
+            additional_data.populateWithEverythingExceptLink(allocator, sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
         }
 
         // Open the dir that contain all files
@@ -479,7 +479,7 @@ pub const FileEngine = struct {
             if (sync_context.checkStructLimit()) break;
             if (filter) |f| if (!f.evaluate(row)) continue;
 
-            EntityWriter.writeEntityTable(
+            EntityWriter.writeEntityJSON(
                 writer,
                 row,
                 additional_data,

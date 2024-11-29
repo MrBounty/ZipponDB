@@ -1,5 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const dtype = @import("dtype");
+const DataType = dtype.DataType;
 
 /// This is the [] part
 /// TODO: Include the part ".friends.comments" in "GRAB User.firends.comments {age > 10}"
@@ -19,8 +21,9 @@ pub const AdditionalData = struct {
         self.member_to_find.deinit();
     }
 
-    pub fn populateWithEverything(self: *AdditionalData, allocator: Allocator, members: [][]const u8) !void {
-        for (members, 0..) |member, i| {
+    pub fn populateWithEverythingExceptLink(self: *AdditionalData, allocator: Allocator, members: [][]const u8, dtypes: []DataType) !void {
+        for (members, dtypes, 0..) |member, dt, i| {
+            if (dt == .link or dt == .link_array) continue;
             try self.member_to_find.append(AdditionalDataMember.init(allocator, member, i));
         }
     }
