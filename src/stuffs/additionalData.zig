@@ -3,29 +3,35 @@ const Allocator = std.mem.Allocator;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
 
+const ZipponError = @import("errors.zig").ZipponError;
+
 /// This is the [] part
-/// TODO: Include the part ".friends.comments" in "GRAB User.firends.comments {age > 10}"
 pub const AdditionalData = struct {
+    allocator: Allocator,
     limit: usize = 0,
     childrens: std.ArrayList(AdditionalDataMember),
 
     pub fn init(allocator: Allocator) AdditionalData {
-        return AdditionalData{ .childrens = std.ArrayList(AdditionalDataMember).init(allocator) };
+        return AdditionalData{
+            .allocator = allocator,
+            .childrens = std.ArrayList(AdditionalDataMember).init(allocator),
+        };
     }
 
-    pub fn deinit(self: *AdditionalData) void {
-        for (0..self.childrens.items.len) |i| {
-            self.childrens.items[i].additional_data.deinit();
-        }
-
-        self.childrens.deinit();
-    }
-
-    pub fn populateWithEverythingExceptLink(self: *AdditionalData, allocator: Allocator, members: [][]const u8, dtypes: []DataType) !void {
+    pub fn populateWithEverythingExceptLink(self: *AdditionalData, members: [][]const u8, dtypes: []DataType) !void {
         for (members, dtypes, 0..) |member, dt, i| {
             if (dt == .link or dt == .link_array) continue;
-            try self.childrens.append(AdditionalDataMember.init(allocator, member, i));
+            try self.childrens.append(AdditionalDataMember.init(member, i));
         }
+    }
+
+    pub fn addMember(self: *AdditionalData, name: []const u8, index: usize) ZipponError!void {
+        self.childrens.append(AdditionalDataMember.init(name, index)) catch return ZipponError.MemoryError;
+    }
+
+    pub fn initAdditionalDataOfLastChildren(self: *AdditionalData) *AdditionalData {
+        self.childrens.items[self.childrens.items.len - 1].additional_data = AdditionalData.init(self.allocator);
+        return &self.childrens.items[self.childrens.items.len - 1].additional_data.?;
     }
 };
 
@@ -34,10 +40,9 @@ pub const AdditionalData = struct {
 pub const AdditionalDataMember = struct {
     name: []const u8,
     index: usize, // Index place in the schema
-    additional_data: AdditionalData,
+    additional_data: ?AdditionalData = null,
 
-    pub fn init(allocator: Allocator, name: []const u8, index: usize) AdditionalDataMember {
-        const additional_data = AdditionalData.init(allocator);
-        return AdditionalDataMember{ .name = name, .additional_data = additional_data, .index = index };
+    pub fn init(name: []const u8, index: usize) AdditionalDataMember {
+        return AdditionalDataMember{ .name = name, .index = index };
     }
 };

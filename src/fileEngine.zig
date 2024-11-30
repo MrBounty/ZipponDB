@@ -403,7 +403,7 @@ pub const FileEngine = struct {
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
         if (additional_data.childrens.items.len == 0) {
-            additional_data.populateWithEverythingExceptLink(allocator, sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
+            additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
         }
 
         // Open the dir that contain all files

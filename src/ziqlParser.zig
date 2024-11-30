@@ -45,7 +45,7 @@ const State = enum {
     expect_right_arrow,
 
     // For the additional data parser
-    expect_count_of_entity_to_find,
+    expect_limit,
     expect_semicolon_OR_right_bracket,
     expect_member,
     expect_comma_OR_r_bracket_OR_l_bracket,
@@ -88,7 +88,6 @@ pub const Parser = struct {
 
         var state: State = .start;
         var additional_data = AdditionalData.init(allocator);
-        defer additional_data.deinit();
         var struct_name: []const u8 = undefined;
         var action: enum { GRAB, ADD, UPDATE, DELETE } = undefined;
 
@@ -636,25 +635,24 @@ pub const Parser = struct {
     fn parseAdditionalData(self: Parser, allocator: Allocator, additional_data: *AdditionalData, struct_name: []const u8) ZipponError!void {
         var token = self.toker.next();
         var keep_next = false;
-        var state: State = .expect_count_of_entity_to_find;
+        var state: State = .expect_limit;
 
         while (state != .end) : ({
             token = if ((!keep_next) and (state != .end)) self.toker.next() else token;
             keep_next = false;
             if (PRINT_STATE) std.debug.print("parseAdditionalData: {any}\n", .{state});
         }) switch (state) {
-            .expect_count_of_entity_to_find => switch (token.tag) {
+            .expect_limit => switch (token.tag) {
                 .int_literal => {
-                    const count = std.fmt.parseInt(usize, self.toker.getTokenSlice(token), 10) catch {
+                    additional_data.limit = std.fmt.parseInt(usize, self.toker.getTokenSlice(token), 10) catch {
                         return printError(
-                            "Error while transforming this into a integer.",
+                            "Error while transforming limit into a integer.",
                             ZiQlParserError.ParsingValueError,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
                         );
                     };
-                    additional_data.limit = count;
                     state = .expect_semicolon_OR_right_bracket;
                 },
                 else => {
@@ -694,13 +692,10 @@ pub const Parser = struct {
                             token.loc.end,
                         );
                     }
-                    additional_data.childrens.append(
-                        AdditionalDataMember.init(
-                            allocator,
-                            self.toker.getTokenSlice(token),
-                            try self.schema_engine.memberName2DataIndex(struct_name, self.toker.getTokenSlice(token)),
-                        ),
-                    ) catch return ZipponError.MemoryError;
+                    try additional_data.addMember(
+                        self.toker.getTokenSlice(token),
+                        try self.schema_engine.memberName2DataIndex(struct_name, self.toker.getTokenSlice(token)),
+                    );
 
                     state = .expect_comma_OR_r_bracket_OR_l_bracket;
                 },
@@ -717,9 +712,11 @@ pub const Parser = struct {
                 .comma => state = .expect_member,
                 .r_bracket => state = .end,
                 .l_bracket => {
+                    // Here now childrens is null, so I need to init it
+
                     try self.parseAdditionalData(
                         allocator,
-                        &additional_data.childrens.items[additional_data.childrens.items.len - 1].additional_data,
+                        additional_data.initAdditionalDataOfLastChildren(),
                         struct_name,
                     );
                     state = .expect_comma_OR_r_bracket;
@@ -954,8 +951,10 @@ pub const Parser = struct {
                 .l_brace, .l_bracket => {
                     var filter: ?Filter = null;
                     defer if (filter != null) filter.?.deinit();
-                    var additional_data = AdditionalData.init(allocator);
-                    defer additional_data.deinit();
+
+                    var additional_data_arena = std.heap.ArenaAllocator.init(allocator);
+                    defer additional_data_arena.deinit();
+                    var additional_data = AdditionalData.init(additional_data_arena.allocator());
 
                     if (token.tag == .l_bracket) {
                         try self.parseAdditionalData(allocator, &additional_data, struct_name);
@@ -1002,8 +1001,10 @@ pub const Parser = struct {
                 .l_brace, .l_bracket => {
                     var filter: ?Filter = null;
                     defer if (filter != null) filter.?.deinit();
-                    var additional_data = AdditionalData.init(allocator);
-                    defer additional_data.deinit();
+
+                    var additional_data_arena = std.heap.ArenaAllocator.init(allocator);
+                    defer additional_data_arena.deinit();
+                    var additional_data = AdditionalData.init(additional_data_arena.allocator());
 
                     if (token.tag == .l_bracket) {
                         try self.parseAdditionalData(allocator, &additional_data, struct_name);
