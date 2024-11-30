@@ -17,7 +17,7 @@ pub const EntityWriter = struct {
         data_types: []const DataType,
     ) !void {
         try writer.writeAll("| ");
-        for (additional_data.member_to_find.items) |member| {
+        for (additional_data.childrens.items) |member| {
             try writeValue(writer, row[member.index], data_types[member.index]);
             try writer.writeAll(" \t| ");
         }
@@ -31,7 +31,7 @@ pub const EntityWriter = struct {
         data_types: []const DataType,
     ) !void {
         try writer.writeByte('{');
-        for (additional_data.member_to_find.items) |member| {
+        for (additional_data.childrens.items) |member| {
             try writer.print("{s}: ", .{member.name});
             try writeValue(writer, row[member.index], data_types[member.index]);
             try writer.writeAll(", ");

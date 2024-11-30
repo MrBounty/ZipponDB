@@ -294,7 +294,7 @@ pub const FileEngine = struct {
 
         // Multi-threading setup
         var sync_context = ThreadSyncContext.init(
-            additional_data.entity_count_to_find,
+            additional_data.limit,
             max_file_index + 1,
         );
 
@@ -327,10 +327,10 @@ pub const FileEngine = struct {
             for (list.items) |uuid| _ = map.getOrPut(uuid) catch return ZipponError.MemoryError;
         }
 
-        if (additional_data.entity_count_to_find == 0) return;
+        if (additional_data.limit == 0) return;
 
-        if (map.count() > additional_data.entity_count_to_find) {
-            log.err("Found {d} entity in populateVoidUUIDMap but max is: {d}", .{ map.count(), additional_data.entity_count_to_find });
+        if (map.count() > additional_data.limit) {
+            log.err("Found {d} entity in populateVoidUUIDMap but max is: {d}", .{ map.count(), additional_data.limit });
             var iter = map.iterator();
             while (iter.next()) |entry| {
                 log.debug("{s}", .{UUID.format_bytes(entry.key_ptr.bytes)});
@@ -402,7 +402,7 @@ pub const FileEngine = struct {
         log.debug("Max file index {d}", .{max_file_index});
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
-        if (additional_data.member_to_find.items.len == 0) {
+        if (additional_data.childrens.items.len == 0) {
             additional_data.populateWithEverythingExceptLink(allocator, sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
         }
 
@@ -411,7 +411,7 @@ pub const FileEngine = struct {
 
         // Multi thread stuffs
         var sync_context = ThreadSyncContext.init(
-            additional_data.entity_count_to_find,
+            additional_data.limit,
             max_file_index + 1,
         );
 
@@ -543,7 +543,7 @@ pub const FileEngine = struct {
 
         // Multi-threading setup
         var sync_context = ThreadSyncContext.init(
-            additional_data.entity_count_to_find,
+            additional_data.limit,
             max_file_index + 1,
         );
 
@@ -708,7 +708,7 @@ pub const FileEngine = struct {
 
         // Multi-threading setup
         var sync_context = ThreadSyncContext.init(
-            additional_data.entity_count_to_find,
+            additional_data.limit,
             max_file_index + 1,
         );
 

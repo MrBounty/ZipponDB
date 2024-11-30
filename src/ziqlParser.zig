@@ -654,7 +654,7 @@ pub const Parser = struct {
                             token.loc.end,
                         );
                     };
-                    additional_data.entity_count_to_find = count;
+                    additional_data.limit = count;
                     state = .expect_semicolon_OR_right_bracket;
                 },
                 else => {
@@ -694,7 +694,7 @@ pub const Parser = struct {
                             token.loc.end,
                         );
                     }
-                    additional_data.member_to_find.append(
+                    additional_data.childrens.append(
                         AdditionalDataMember.init(
                             allocator,
                             self.toker.getTokenSlice(token),
@@ -719,7 +719,7 @@ pub const Parser = struct {
                 .l_bracket => {
                     try self.parseAdditionalData(
                         allocator,
-                        &additional_data.member_to_find.items[additional_data.member_to_find.items.len - 1].additional_data,
+                        &additional_data.childrens.items[additional_data.childrens.items.len - 1].additional_data,
                         struct_name,
                     );
                     state = .expect_comma_OR_r_bracket;
@@ -962,7 +962,7 @@ pub const Parser = struct {
                         token.* = self.toker.next();
                     }
 
-                    additional_data.entity_count_to_find = 1;
+                    additional_data.limit = 1;
 
                     if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
                         "Error: Expected filter",
