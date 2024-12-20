@@ -797,7 +797,6 @@ pub const Parser = struct {
 
             .expect_new_value => {
                 const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZiQlParserError.StructNotFound;
-                std.debug.print("DATA TYPE: {any}\n", .{data_type});
                 map.put(member_name, try self.parseConditionValue(allocator, struct_name, data_type, &token)) catch return ZipponError.MemoryError;
                 if (data_type == .link or data_type == .link_array) {
                     token = self.toker.last_token;
@@ -1060,6 +1059,8 @@ pub const Parser = struct {
     }
 };
 
+// TODO: Check if what is send is expected
+
 test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, friends=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
@@ -1110,17 +1111,27 @@ test "Specific query" {
     try testParsing("GRAB User [1]");
 }
 
-// TODO: next step is to make this work
-
+// FIXME: This make the following query return only 1 thing, to check
 test "UPDATE relationship" {
     try testParsing("UPDATE User [1] {name='Bob'} TO (best_friend = {name='Boba'} )");
     try testParsing("GRAB User {}");
 }
 
-// Not yet working but dont trow an error
-test "GRAB Relationship" {
+// WORKING!!!!
+test "GRAB Relationship Filter" {
     try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
     try testParsing("GRAB User {best_friend IN {name = 'Boba'}}");
+}
+
+// Make work
+test "GRAB Relationship AdditionalData" {
+    try testParsing("GRAB User [name, friends] {}");
+    try testParsing("GRAB User [name, best_friend] {}");
+    try testParsing("GRAB User [2; name, best_friend] {best_friend != none}");
+}
+
+test "GRAB Relationship dot" {
+    try testParsing("GRAB User.best_friend {}");
 }
 
 test "DELETE" {

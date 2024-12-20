@@ -456,7 +456,6 @@ pub const FileEngine = struct {
         data_types: []const DataType,
         sync_context: *ThreadSyncContext,
     ) void {
-        log.debug("{any}\n", .{@TypeOf(writer)});
         var data_buffer: [BUFFER_SIZE]u8 = undefined;
         var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
         defer fa.reset();
@@ -512,8 +511,6 @@ pub const FileEngine = struct {
 
         const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
         const data = try self.orderedNewData(allocator, struct_name, map);
-
-        std.debug.print("{any}", .{data});
 
         var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
         defer data_writer.deinit();

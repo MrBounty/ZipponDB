@@ -332,7 +332,64 @@ pub const allocEncodArray = struct {
 pub const DataIterator = struct {
     allocator: std.mem.Allocator,
     file: std.fs.File,
-    reader: std.io.BufferedReader(4096, std.fs.File.Reader), // Use ArrayList reader maybe ?
+    reader: std.io.BufferedReader(4096, std.fs.File.Reader),
+
+    schema: []const DType,
+    data: []Data,
+
+    index: usize = 0,
+    file_len: usize,
+    str_index: usize = 0,
+    array_index: usize = 0,
+
+    pub fn init(allocator: std.mem.Allocator, name: []const u8, dir: ?std.fs.Dir, schema: []const DType) !DataIterator {
+        const d_ = dir orelse std.fs.cwd();
+        const file = try d_.openFile(name, .{ .mode = .read_only });
+
+        return DataIterator{
+            .allocator = allocator,
+            .file = file,
+            .schema = schema,
+            .reader = std.io.bufferedReader(file.reader()),
+            .data = try allocator.alloc(Data, schema.len),
+            .file_len = try file.getEndPos(),
+        };
+    }
+
+    pub fn deinit(self: *DataIterator) void {
+        self.allocator.free(self.data);
+        self.file.close();
+    }
+
+    pub fn next(self: *DataIterator) !?[]Data {
+        self.str_index = 0;
+        self.array_index = 0;
+        if (self.index >= self.file_len) return null;
+
+        var i: usize = 0;
+        while (i < self.schema.len) : (i += 1) {
+            self.data[i] = switch (self.schema[i]) {
+                .Str => try self.schema[i].readStr(self.reader.reader(), &self.str_index),
+                .IntArray,
+                .FloatArray,
+                .BoolArray,
+                .StrArray,
+                .UUIDArray,
+                .UnixArray,
+                => try self.schema[i].readArray(self.reader.reader(), &self.array_index),
+                else => try self.schema[i].read(self.reader.reader()),
+            };
+            self.index += self.data[i].size();
+        }
+
+        return self.data;
+    }
+};
+
+pub const DataIteratorFullBuffer = struct {
+    allocator: std.mem.Allocator,
+    file: std.fs.File,
+    reader: std.io.BufferedReader(4096, std.fs.File.Reader),
 
     schema: []const DType,
     data: []Data,

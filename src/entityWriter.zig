@@ -9,6 +9,8 @@ const UUID = dtype.UUID;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
+// TODO: Try std.json
+
 pub const EntityWriter = struct {
     pub fn writeEntityTable(
         writer: anytype,
@@ -47,7 +49,7 @@ pub const EntityWriter = struct {
             .UUID => |v| {
                 const uuid = try UUID.parse("00000000-0000-0000-0000-000000000000"); // Maybe pass that comptime to prevent parsing it everytime
                 if (!std.meta.eql(v, uuid.bytes)) {
-                    try writer.print("\"{s}\"", .{UUID.format_bytes(v)});
+                    try writer.print("\"{{|<{s}>|}}\"", .{v});
                 } else {
                     try writer.print("{{}}", .{});
                 }
