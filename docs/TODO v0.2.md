@@ -1,14 +1,15 @@
 - [ ] Delete the .new file if an error happend
-- [ ] Create a struct that manage the schema
+- [ ] Array manipulation
+- [ ] Some time keyword like NOW
 
 Relationships
 - [X] Update the schema Parser and Tokenizer
 - [X] Include the name of the link struct with the schema_struct
 - [X] New ConditionValue that is an array of UUID
-- [ ] When relationship found in filter, check if the type is right and exist
-- [ ] When parseFilter, get list of UUID as value for relationship
-- [ ] Add new operation in Filter evalue: IN and !IN
-- [ ] parseNewData can use filter like in "Add User (friends = [10] {age > 20})" to return UUID
+- [X] When relationship found in filter, check if the type is right and exist
+- [X] When parseFilter, get list of UUID as value for relationship
+- [X] Add new operation in Filter evalue: IN and !IN
+- [~] parseNewData can use filter like in "Add User (friends = [10] {age > 20})" to return UUID
 - [ ] parseFilter can use sub filter. "GRAB User {friends IN {age > 20}}" At least one friend in a list of UUID
 - [ ] When send, send the entities in link specify between []
 
@@ -38,23 +39,22 @@ So I need a Radix tree to be able to find all file to parse.
     For example if I do "GRAB User [mom] {name = 'Bob'}". I parse one time the file to get all UUID of User that represent mom; the parse that is already done and need to be done. So if I found 3 Bob's mom UUID
 2. Then I create a map of Bob's UUID as keys and a Str as value. The Str is the JSON string of the mom. For that I need to parse the file again and write using additional_data
 
-### Radix tree
+## Run in WASM for a demo
 
-Ok so new problem. Given a list of UUID, I need a way to find all file index to parse.
-And even better if I can get the number of UUID per files, so I can stop parsing them early.
+This could be fun, make a small demo where you get a wasm that run the database locally in the browser.
 
-Happy to annonce the v0.2 of my database. New feature include:
-- Relationship
-- Huge performance increase with multi threading
-- Date, time and datetime type
-- Compressed binary files
-- Logs
+## How do I return relationship
 
-All core features of the query language, exept linked queries, is working, v0.3 will focus on adding things around it, including:
-- Schema migration
-- Dump/Bump data
-- Recovery
-- Better CLI
+So lets say I have a query that get 100 comments. And I return Comment.User. That mean once I parsed all Comments and got all UUID of User in ConditionValue in a map.
+I need to get all UUID, meaning concatenating all UUID of all ConditionValue into one map. Then I can parse `User` and create a new map with UUID as key and the JSON string as value.
+Like that I can iterate as much as I want inside.
 
-Query optimization for later:
-- If a filter use id to find something, to stop after find it, as I know there is no other struct with the same id
+That mean:
+
+- If I have a link in AdditionalData to
+  - Get all UUID that I need the data (concatenate all maps)
+  - Create a new map UUID/JSON object
+  - Parse files and populate the new maps
+
+Which also mean that I need to do all of them at the same time at the beguinning. So using AdditionalData, I iterate over all Nodes, find all Links and do what I said above.
+I can then save those map into a map with as key the path like `Comment.friends` and value the map that contain UUID/JSON

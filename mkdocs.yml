@@ -14,6 +14,7 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: lime
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
@@ -21,6 +22,7 @@ theme:
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: lime
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -31,6 +33,7 @@ markdown_extensions:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
+      use_pygments: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
@@ -49,5 +52,6 @@ nav:
   - Under the Hood:
     - Benchmark: Benchmark.md
     - Technical: Technical docs.md
+    - ZipponData: ZipponData.md
     - About: about.md
     - Roadmap: Roadmap.md

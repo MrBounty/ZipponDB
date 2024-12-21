@@ -68,7 +68,6 @@ The main action is `GRAB`, this will parse files and return data.
 
 #### Basic
 
-
 Here's how to return all `User` entities without any filtering:
 ```python
 GRAB User

@@ -184,19 +184,13 @@ pub const Parser = struct {
                     var filter = try self.parseFilter(allocator, struct_name, false);
                     defer filter.deinit();
 
-                    var buff = std.ArrayList(u8).init(allocator);
-                    defer buff.deinit();
-
-                    try self.file_engine.parseEntities(struct_name, filter, &additional_data, &buff.writer());
-                    send("{s}", .{buff.items});
+                    const json_string = try self.file_engine.parseEntities(struct_name, filter, &additional_data, allocator);
+                    send("{s}", .{json_string});
                     state = .end;
                 },
                 .eof => {
-                    var buff = std.ArrayList(u8).init(allocator);
-                    defer buff.deinit();
-
-                    try self.file_engine.parseEntities(struct_name, null, &additional_data, &buff.writer());
-                    send("{s}", .{buff.items});
+                    const json_string = try self.file_engine.parseEntities(struct_name, null, &additional_data, allocator);
+                    send("{s}", .{json_string});
                     state = .end;
                 },
                 else => return printError(

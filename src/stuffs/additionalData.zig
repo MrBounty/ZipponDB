@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const RelationMap = @import("relationMap.zig").RelationMap;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
 
@@ -33,6 +34,15 @@ pub const AdditionalData = struct {
         self.childrens.items[self.childrens.items.len - 1].additional_data = AdditionalData.init(self.allocator);
         return &self.childrens.items[self.childrens.items.len - 1].additional_data.?;
     }
+
+    /// Create an array of empty RelationMap based on the additionalData
+    pub fn relationMapArrayInit(self: AdditionalData, allocator: Allocator) ZipponError!?[]RelationMap {
+    // So here I should have relationship if children are relations
+    var array = std.ArrayList(RelationMap).init(allocator);
+    for (self.childrens.items) |child| {
+        child.
+    }
+}
 };
 
 // This is name in: [name]

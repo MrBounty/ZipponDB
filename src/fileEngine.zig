@@ -17,6 +17,8 @@ const DataType = dtype.DataType;
 
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
 const Filter = @import("stuffs/filter.zig").Filter;
+const RelationMap = @import("stuffs/relationMap.zig").RelationMap;
+const JsonString = @import("stuffs/relationMap.zig").JsonString;
 const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
@@ -382,19 +384,20 @@ pub const FileEngine = struct {
 
     /// Take a filter, parse all file and if one struct if validate by the filter, write it in a JSON format to the writer
     /// filter can be null. This will return all of them
-    /// TODO: For relationship, if they are in additional_data and I need to return it with the other members, I will need to parse the file
-    /// This is difficult, because that mean I need to parse file while parsing files ? I dont like that because it may be the same struct
-    /// And because of multi thread, I can read the same file at the same time...
     pub fn parseEntities(
         self: *FileEngine,
         struct_name: []const u8,
         filter: ?Filter,
         additional_data: *AdditionalData,
-        writer: anytype,
-    ) ZipponError!void {
+        entry_allocator: Allocator,
+    ) ZipponError![]const u8 {
         var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
         fa.reset();
         const allocator = fa.allocator();
+
+        var buff = std.ArrayList(u8).init(entry_allocator);
+        defer buff.deinit();
+        const writer = buff.writer();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
@@ -402,9 +405,8 @@ pub const FileEngine = struct {
         log.debug("Max file index {d}", .{max_file_index});
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
-        if (additional_data.childrens.items.len == 0) {
+        if (additional_data.childrens.items.len == 0)
             additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
-        }
 
         // Open the dir that contain all files
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
@@ -441,9 +443,14 @@ pub const FileEngine = struct {
         }
 
         // Append all writer to each other
-        //writer.writeByte('[') catch return FileEngineError.WriteError;
+        writer.writeByte('[') catch return FileEngineError.WriteError;
         for (thread_writer_list) |list| writer.writeAll(list.items) catch return FileEngineError.WriteError;
-        //writer.writeByte(']') catch return FileEngineError.WriteError;
+        writer.writeByte(']') catch return FileEngineError.WriteError;
+
+        // Here now I need to already have a populated list of RelationMap
+        // I will then call parseEntitiesRelationMap on each
+
+        return buff.toOwnedSlice();
     }
 
     fn parseEntitiesOneFile(
@@ -487,6 +494,141 @@ pub const FileEngine = struct {
                 sync_context.logError("Error writing entity", err);
                 return;
             };
+            if (sync_context.incrementAndCheckStructLimit()) break;
+        }
+
+        _ = sync_context.completeThread();
+    }
+
+    // Receive a map of UUID -> null
+    // Will parse the files and update the value to the JSON string of the entity that represent the key
+    // Will then write the input with the JSON in the map looking for {|<>|}
+    // Once the new input received, call parseEntitiesRelationMap again the string still contain {|<>|} because of sub relationship
+    // The buffer contain the string with {|<>|} and need to be updated at the end
+    // TODO: Filter file that need to be parse to prevent parsing everything all the time
+    pub fn parseEntitiesRelationMap(
+        self: *FileEngine,
+        relation_map: *RelationMap,
+        buff: *std.ArrayList(u8),
+    ) ZipponError!void {
+        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
+        fa.reset();
+        const allocator = fa.allocator();
+
+        var new_buff = std.ArrayList(u8).init(allocator);
+        defer new_buff.deinit();
+        const writer = new_buff.writer();
+
+        const sstruct = try self.schema_engine.structName2SchemaStruct(relation_map.struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name);
+
+        log.debug("Max file index {d}", .{max_file_index});
+
+        // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
+        if (relation_map.additional_data.childrens.items.len == 0) {
+            relation_map.additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
+        }
+
+        // Open the dir that contain all files
+        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
+
+        // Multi thread stuffs
+        var sync_context = ThreadSyncContext.init(
+            relation_map.additional_data.limit,
+            max_file_index + 1,
+        );
+
+        // Do one writer for each thread otherwise it create error by writing at the same time
+        var thread_map_list = allocator.alloc(std.AutoHashMap([16]u8, JsonString), max_file_index + 1) catch return FileEngineError.MemoryError;
+
+        // Start parsing all file in multiple thread
+        for (0..(max_file_index + 1)) |file_index| {
+            thread_map_list[file_index] = relation_map.map.cloneWithAllocator(allocator);
+
+            self.thread_pool.spawn(parseEntitiesRelationMapOneFile, .{
+                &thread_map_list[file_index],
+                file_index,
+                dir,
+                sstruct.zid_schema,
+                relation_map.additional_data,
+                try self.schema_engine.structName2DataType(relation_map.struct_name),
+                &sync_context,
+            }) catch return FileEngineError.ThreadError;
+        }
+
+        // Wait for all thread to either finish or return an error
+        while (!sync_context.isComplete()) {
+            std.time.sleep(10_000_000); // Check every 10ms
+        }
+
+        // Now here I should have a list of copy of the map with all UUID a bit everywhere
+
+        // Put all in the same map
+        for (thread_map_list) |map| {
+            var iter = map.iterator();
+            while (iter.next()) |entry| {
+                if (entry.value_ptr.*) |json_string| relation_map.map.put(entry.key_ptr.*, json_string);
+            }
+        }
+
+        // Here I write the new string and update the buff to have the new version
+        EntityWriter.updateWithRelation(writer, buff.items, relation_map.map);
+        buff.clearRetainingCapacity();
+        buff.writer().writeAll(new_buff.items);
+
+        // Now here I need to iterate if buff.items still have {|<>|}
+    }
+
+    fn parseEntitiesRelationMapOneFile(
+        map: *std.AutoHashMap([16]u8, []const u8),
+        file_index: u64,
+        dir: std.fs.Dir,
+        zid_schema: []zid.DType,
+        additional_data: *AdditionalData,
+        data_types: []const DataType,
+        sync_context: *ThreadSyncContext,
+    ) void {
+        var data_buffer: [BUFFER_SIZE]u8 = undefined;
+        var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
+        defer fa.reset();
+        const allocator = fa.allocator();
+
+        const parent_alloc = map.allocator;
+        var string_list = std.ArrayList(u8).init(allocator);
+        const writer = string_list.writer();
+
+        const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
+            sync_context.logError("Error creating file path", err);
+            return;
+        };
+
+        var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch |err| {
+            sync_context.logError("Error initializing DataIterator", err);
+            return;
+        };
+
+        while (iter.next() catch |err| {
+            sync_context.logError("Error in iter next", err);
+            return;
+        }) |row| {
+            if (sync_context.checkStructLimit()) break;
+            if (!map.contains(row[0].UUID)) continue;
+            defer string_list.clearRetainingCapacity();
+
+            EntityWriter.writeEntityJSON(
+                writer,
+                row,
+                additional_data,
+                data_types,
+            ) catch |err| {
+                sync_context.logError("Error writing entity", err);
+                return;
+            };
+            map.put(row[0].UUID, parent_alloc.dupe(u8, string_list.items)) catch |err| {
+                sync_context.logError("Error writing entity", err);
+                return;
+            };
+
             if (sync_context.incrementAndCheckStructLimit()) break;
         }
 

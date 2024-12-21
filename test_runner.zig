@@ -22,8 +22,10 @@ pub fn myLog(
 ) void {
     _ = message_level;
     _ = scope;
-    _ = format;
-    _ = args;
+    if (true) {
+        std.debug.print(format, args);
+        std.debug.print("\n", .{});
+    }
 }
 
 // use in custom panic handler

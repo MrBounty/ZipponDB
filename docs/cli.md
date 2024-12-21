@@ -62,9 +62,9 @@ Name | Type | Description         | Default
 ---- | ---- | ------------------- | ----
 TODO | TODO | TODO | TODO
 
-### db state - WIP
+### db state
 
-Return the state of the database, either `MissingDatabase` if no database selected or `MissingSchema` if no schema was initialize.
+Return the state of the database, either `Ok` or `MissingDatabase` if no database selected or `MissingSchema` if no schema was initialize.
 
 **Usage:**
 

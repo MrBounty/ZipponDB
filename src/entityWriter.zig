@@ -77,23 +77,43 @@ pub const EntityWriter = struct {
             .IntArray => while (iter.next()) |v| writer.print("{d}, ", .{v.Int}) catch return ZipponError.WriteError,
             .FloatArray => while (iter.next()) |v| writer.print("{d}", .{v.Float}) catch return ZipponError.WriteError,
             .StrArray => while (iter.next()) |v| writer.print("\"{s}\"", .{v.Str}) catch return ZipponError.WriteError,
-            .UUIDArray => while (iter.next()) |v| writer.print("\"{s}\"", .{UUID.format_bytes(v.UUID)}) catch return ZipponError.WriteError,
+            .UUIDArray => while (iter.next()) |v| writer.print("\"{{|<{s}>|}}\"", .{UUID.format_bytes(v.UUID)}) catch return ZipponError.WriteError,
             .BoolArray => while (iter.next()) |v| writer.print("{any}", .{v.Bool}) catch return ZipponError.WriteError,
-            .UnixArray => {
-                while (iter.next()) |v| {
-                    const datetime = DateTime.initUnix(v.Unix);
-                    writer.writeByte('"') catch return ZipponError.WriteError;
-                    switch (data_type) {
-                        .date => datetime.format("YYYY/MM/DD", writer) catch return ZipponError.WriteError,
-                        .time => datetime.format("HH:mm:ss.SSSS", writer) catch return ZipponError.WriteError,
-                        .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return ZipponError.WriteError,
-                        else => unreachable,
-                    }
-                    writer.writeAll("\", ") catch return ZipponError.WriteError;
+            .UnixArray => while (iter.next()) |v| {
+                const datetime = DateTime.initUnix(v.Unix);
+                writer.writeByte('"') catch return ZipponError.WriteError;
+                switch (data_type) {
+                    .date => datetime.format("YYYY/MM/DD", writer) catch return ZipponError.WriteError,
+                    .time => datetime.format("HH:mm:ss.SSSS", writer) catch return ZipponError.WriteError,
+                    .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return ZipponError.WriteError,
+                    else => unreachable,
                 }
+                writer.writeAll("\", ") catch return ZipponError.WriteError;
             },
             else => unreachable,
         }
         writer.writeByte(']') catch return ZipponError.WriteError;
+    }
+
+    /// TODO:
+    /// Take a string in the JSON format and look for {|<[16]u8>|}, then will look into the map and check if it can find this UUID
+    /// If it find it, it ill replace the {|<[16]u8>|} will the value
+    pub fn updateWithRelation(writer: anytype, input: []const u8, to_add: std.AutoHashMap([16]u8, []const u8)) ZipponError!void {
+        var start: usize = 0;
+        while (std.mem.indexOf(u8, input[start..], "{|<[")) |pos| {
+            const pattern_start = start + pos;
+            const pattern_end = std.mem.indexOf(u8, input[pattern_start..], "]>|}") orelse break;
+            const full_pattern_end = pattern_start + pattern_end + 4;
+
+            // Write the text before the pattern
+            try writer.writeAll(input[start..pattern_start]);
+
+            const uuid_bytes = input[pattern_start + 3 .. full_pattern_end - 3];
+            writer.writeAll(to_add.get(uuid_bytes).?);
+            start = full_pattern_end;
+        }
+
+        // Write any remaining text
+        try writer.writeAll(input[start..]);
     }
 };
