@@ -6,22 +6,26 @@ const Tokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
+const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
+const RelationMap = @import("stuffs/relationMap.zig").RelationMap;
+const JsonString = @import("stuffs/relationMap.zig").JsonString;
 const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
 const UUID = dtype.UUID;
 const UUIDFileIndex = @import("stuffs/UUIDFileIndex.zig").UUIDIndexMap;
 const FileEngine = @import("fileEngine.zig").FileEngine;
+
+// TODO: Create a schemaEngine directory and add this as core and the parser with it
 
 const config = @import("config.zig");
 const BUFFER_SIZE = config.BUFFER_SIZE;
 
 var schema_buffer: [BUFFER_SIZE]u8 = undefined;
 
+// TODO: Stop keeping the allocator at the root of the file
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: Allocator = undefined;
 
 const log = std.log.scoped(.schemaEngine);
-
-// TODO: Make better memory management
 
 pub const SchemaStruct = struct {
     name: []const u8,
@@ -122,30 +126,24 @@ pub const SchemaEngine = struct {
 
     /// Get the type of the member
     pub fn memberName2DataType(self: *SchemaEngine, struct_name: []const u8, member_name: []const u8) ZipponError!DataType {
-        var i: usize = 0;
-
-        for (try self.structName2structMembers(struct_name)) |mn| {
+        for (try self.structName2structMembers(struct_name), 0..) |mn, i| {
             const dtypes = try self.structName2DataType(struct_name);
             if (std.mem.eql(u8, mn, member_name)) return dtypes[i];
-            i += 1;
         }
 
         return ZipponError.MemberNotFound;
     }
 
     pub fn memberName2DataIndex(self: *SchemaEngine, struct_name: []const u8, member_name: []const u8) ZipponError!usize {
-        var i: usize = 0;
-
-        for (try self.structName2structMembers(struct_name)) |mn| {
+        for (try self.structName2structMembers(struct_name), 0..) |mn, i| {
             if (std.mem.eql(u8, mn, member_name)) return i;
-            i += 1;
         }
 
         return ZipponError.MemberNotFound;
     }
 
     /// Get the list of all member name for a struct name
-    pub fn structName2structMembers(self: *SchemaEngine, struct_name: []const u8) ZipponError![][]const u8 {
+    pub fn structName2structMembers(self: SchemaEngine, struct_name: []const u8) ZipponError![][]const u8 {
         var i: usize = 0;
 
         while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
@@ -157,7 +155,7 @@ pub const SchemaEngine = struct {
         return self.struct_array[i].members;
     }
 
-    pub fn structName2SchemaStruct(self: *SchemaEngine, struct_name: []const u8) ZipponError!SchemaStruct {
+    pub fn structName2SchemaStruct(self: SchemaEngine, struct_name: []const u8) ZipponError!SchemaStruct {
         var i: usize = 0;
 
         while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
@@ -169,7 +167,7 @@ pub const SchemaEngine = struct {
         return self.struct_array[i];
     }
 
-    pub fn structName2DataType(self: *SchemaEngine, struct_name: []const u8) ZipponError![]const DataType {
+    pub fn structName2DataType(self: SchemaEngine, struct_name: []const u8) ZipponError![]const DataType {
         var i: u16 = 0;
 
         while (i < self.struct_array.len) : (i += 1) {
@@ -184,14 +182,14 @@ pub const SchemaEngine = struct {
     }
 
     /// Chech if the name of a struct is in the current schema
-    pub fn isStructNameExists(self: *SchemaEngine, struct_name: []const u8) bool {
+    pub fn isStructNameExists(self: SchemaEngine, struct_name: []const u8) bool {
         var i: u16 = 0;
         while (i < self.struct_array.len) : (i += 1) if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) return true;
         return false;
     }
 
     /// Check if a struct have the member name
-    pub fn isMemberNameInStruct(self: *SchemaEngine, struct_name: []const u8, member_name: []const u8) ZipponError!bool {
+    pub fn isMemberNameInStruct(self: SchemaEngine, struct_name: []const u8, member_name: []const u8) ZipponError!bool {
         for (try self.structName2structMembers(struct_name)) |mn| {
             if (std.mem.eql(u8, mn, member_name)) return true;
         }
@@ -200,7 +198,7 @@ pub const SchemaEngine = struct {
 
     // Return true if the map have all the member name as key and not more
     pub fn checkIfAllMemberInMap(
-        self: *SchemaEngine,
+        self: SchemaEngine,
         struct_name: []const u8,
         map: *std.StringHashMap(ConditionValue),
         error_message_buffer: *std.ArrayList(u8),
@@ -218,8 +216,57 @@ pub const SchemaEngine = struct {
         return ((count == all_struct_member.len - 1) and (count == map.count()));
     }
 
-    pub fn isUUIDExist(self: *SchemaEngine, struct_name: []const u8, uuid: UUID) bool {
+    pub fn isUUIDExist(self: SchemaEngine, struct_name: []const u8, uuid: UUID) bool {
         const sstruct = self.structName2SchemaStruct(struct_name) catch return false;
         return sstruct.uuid_file_index.contains(uuid);
+    }
+
+    /// Create an array of empty RelationMap based on the additionalData
+    pub fn relationMapArrayInit(
+        self: SchemaEngine,
+        alloc: Allocator,
+        struct_name: []const u8,
+        additional_data: AdditionalData,
+    ) ZipponError![]RelationMap {
+        // So here I should have relationship if children are relations
+        var array = std.ArrayList(RelationMap).init(alloc);
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        for (additional_data.childrens.items) |child| if (sstruct.links.contains(child.name)) {
+            const map = alloc.create(std.AutoHashMap([16]u8, JsonString)) catch return ZipponError.MemoryError;
+            map.* = std.AutoHashMap([16]u8, JsonString).init(alloc);
+            array.append(RelationMap{
+                .member_name = child.name,
+                .additional_data = child.additional_data, // Maybe I need to check if it exist, im not sure it always exist
+                .map = map,
+            }) catch return ZipponError.MemoryError;
+        };
+        return array.toOwnedSlice() catch return ZipponError.MemoryError;
+    }
+
+    pub fn fileListToParse(
+        self: SchemaEngine,
+        alloc: Allocator,
+        struct_name: []const u8,
+        map: std.AutoHashMap([16]u8, JsonString),
+    ) ![]usize {
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        var unique_indices = std.AutoHashMap(usize, void).init(alloc);
+
+        var iter = map.keyIterator();
+        while (iter.next()) |uuid| {
+            if (sstruct.uuid_file_index.get(uuid.*)) |file_index| {
+                try unique_indices.put(file_index, {});
+            }
+        }
+
+        var result = try alloc.alloc(usize, unique_indices.count());
+        var i: usize = 0;
+        var index_iter = unique_indices.keyIterator();
+        while (index_iter.next()) |index| {
+            result[i] = index.*;
+            i += 1;
+        }
+
+        return result;
     }
 };

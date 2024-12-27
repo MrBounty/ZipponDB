@@ -710,7 +710,7 @@ pub const Parser = struct {
 
                     try self.parseAdditionalData(
                         allocator,
-                        additional_data.initAdditionalDataOfLastChildren(),
+                        &additional_data.childrens.items[additional_data.childrens.items.len - 1].additional_data,
                         struct_name,
                     );
                     state = .expect_comma_OR_r_bracket;
@@ -1081,7 +1081,8 @@ test "GRAB with additional data" {
 }
 
 test "UPDATE" {
-    try testParsing("UPDATE User {name = 'Bob'} TO (email='new@gmail.com')");
+    try testParsing("UPDATE User [1] {name = 'Bob'} TO (email='new@gmail.com')");
+    try testParsing("GRAB User {}");
 }
 
 test "GRAB filter with int" {

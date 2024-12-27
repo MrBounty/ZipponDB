@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("stuffs/utils.zig");
 const zid = @import("ZipponData");
 const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
+const JsonString = @import("stuffs/relationMap.zig").JsonString;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
 const DateTime = dtype.DateTime;
@@ -15,7 +16,7 @@ pub const EntityWriter = struct {
     pub fn writeEntityTable(
         writer: anytype,
         row: []zid.Data,
-        additional_data: *AdditionalData,
+        additional_data: AdditionalData,
         data_types: []const DataType,
     ) !void {
         try writer.writeAll("| ");
@@ -29,7 +30,7 @@ pub const EntityWriter = struct {
     pub fn writeEntityJSON(
         writer: anytype,
         row: []zid.Data,
-        additional_data: *AdditionalData,
+        additional_data: AdditionalData,
         data_types: []const DataType,
     ) !void {
         try writer.writeByte('{');
@@ -47,6 +48,10 @@ pub const EntityWriter = struct {
             .Int => |v| try writer.print("{d}", .{v}),
             .Str => |v| try writer.print("\"{s}\"", .{v}),
             .UUID => |v| {
+                if (data_type == .self) {
+                    try writer.print("\"{s}\"", .{UUID.format_bytes(v)});
+                    return;
+                }
                 const uuid = try UUID.parse("00000000-0000-0000-0000-000000000000"); // Maybe pass that comptime to prevent parsing it everytime
                 if (!std.meta.eql(v, uuid.bytes)) {
                     try writer.print("\"{{|<{s}>|}}\"", .{v});
@@ -95,10 +100,10 @@ pub const EntityWriter = struct {
         writer.writeByte(']') catch return ZipponError.WriteError;
     }
 
-    /// TODO:
     /// Take a string in the JSON format and look for {|<[16]u8>|}, then will look into the map and check if it can find this UUID
     /// If it find it, it ill replace the {|<[16]u8>|} will the value
-    pub fn updateWithRelation(writer: anytype, input: []const u8, to_add: std.AutoHashMap([16]u8, []const u8)) ZipponError!void {
+    pub fn updateWithRelation(writer: anytype, input: []const u8, to_add: std.AutoHashMap([16]u8, JsonString)) ZipponError!void {
+        var uuid_bytes: [16]u8 = undefined;
         var start: usize = 0;
         while (std.mem.indexOf(u8, input[start..], "{|<[")) |pos| {
             const pattern_start = start + pos;
@@ -106,14 +111,18 @@ pub const EntityWriter = struct {
             const full_pattern_end = pattern_start + pattern_end + 4;
 
             // Write the text before the pattern
-            try writer.writeAll(input[start..pattern_start]);
+            writer.writeAll(input[start..pattern_start]) catch return ZipponError.WriteError;
 
-            const uuid_bytes = input[pattern_start + 3 .. full_pattern_end - 3];
-            writer.writeAll(to_add.get(uuid_bytes).?);
+            for (pattern_start + 3..pattern_end - 3, 0..) |i, j| uuid_bytes[j] = input[i];
+            if (to_add.get(uuid_bytes)) |json_string| {
+                writer.writeAll(json_string.slice) catch return ZipponError.WriteError;
+            } else {
+                writer.writeAll(input[pattern_start..pattern_end]) catch return ZipponError.WriteError;
+            }
             start = full_pattern_end;
         }
 
         // Write any remaining text
-        try writer.writeAll(input[start..]);
+        writer.writeAll(input[start..]) catch return ZipponError.WriteError;
     }
 };

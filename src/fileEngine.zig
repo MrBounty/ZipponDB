@@ -31,9 +31,10 @@ const MAX_FILE_SIZE = config.MAX_FILE_SIZE;
 const RESET_LOG_AT_RESTART = config.RESET_LOG_AT_RESTART;
 const CPU_CORE = config.CPU_CORE;
 
+// TODO: Cute this into smaller modules: core, file_management, data_operation, utils
+
 const log = std.log.scoped(.fileEngine);
 
-var parsing_buffer: [OUT_BUFFER_SIZE]u8 = undefined; // Maybe use an arena but this is faster
 var path_buffer: [1024]u8 = undefined;
 var path_to_ZipponDB_dir_buffer: [1024]u8 = undefined;
 
@@ -162,9 +163,9 @@ pub const FileEngine = struct {
     /// Use a struct name to populate a list with all UUID of this struct
     /// TODO: Multi thread that too
     pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) ZipponError!usize {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
@@ -193,9 +194,9 @@ pub const FileEngine = struct {
         sstruct: SchemaStruct,
         map: *UUIDFileIndex,
     ) ZipponError!void {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         const max_file_index = try self.maxFileIndex(sstruct.name);
 
@@ -285,9 +286,9 @@ pub const FileEngine = struct {
         map: *std.AutoHashMap(UUID, void),
         additional_data: *AdditionalData,
     ) ZipponError!void {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
@@ -391,9 +392,9 @@ pub const FileEngine = struct {
         additional_data: *AdditionalData,
         entry_allocator: Allocator,
     ) ZipponError![]const u8 {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         var buff = std.ArrayList(u8).init(entry_allocator);
         defer buff.deinit();
@@ -408,6 +409,10 @@ pub const FileEngine = struct {
         if (additional_data.childrens.items.len == 0)
             additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
 
+        // Do I populate the relationMap directly in the thread or do I do it on the string at the end ?
+        // I think it is better at the end, like that I dont need to create a deplicate of each map for the number of file
+        const relation_maps = try self.schema_engine.relationMapArrayInit(allocator, struct_name, additional_data.*);
+
         // Open the dir that contain all files
         const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
 
@@ -417,8 +422,10 @@ pub const FileEngine = struct {
             max_file_index + 1,
         );
 
-        // Do one array and writer for each thread otherwise then create error by writing at the same time
-        // Maybe use fixed lenght buffer for speed here
+        // Do an array of writer for each thread
+        // Could I create just the number of max cpu ? Because if I have 1000 files, I do 1000 list
+        // But at the end, only the number of use CPU/Thread will use list simultanously
+        // So I could pass list from a thread to another technicly
         var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
 
         // Start parsing all file in multiple thread
@@ -431,7 +438,7 @@ pub const FileEngine = struct {
                 dir,
                 sstruct.zid_schema,
                 filter,
-                additional_data,
+                additional_data.*,
                 try self.schema_engine.structName2DataType(struct_name),
                 &sync_context,
             }) catch return FileEngineError.ThreadError;
@@ -439,7 +446,7 @@ pub const FileEngine = struct {
 
         // Wait for all thread to either finish or return an error
         while (!sync_context.isComplete()) {
-            std.time.sleep(10_000_000); // Check every 10ms
+            std.time.sleep(100_000); // Check every 0.1ms
         }
 
         // Append all writer to each other
@@ -447,10 +454,17 @@ pub const FileEngine = struct {
         for (thread_writer_list) |list| writer.writeAll(list.items) catch return FileEngineError.WriteError;
         writer.writeByte(']') catch return FileEngineError.WriteError;
 
-        // Here now I need to already have a populated list of RelationMap
-        // I will then call parseEntitiesRelationMap on each
+        // Now I need to do the relation stuff, meaning parsing new files to get the relationship value
+        // Without relationship to return, this function is basically finish here
 
-        return buff.toOwnedSlice();
+        // Here I take the JSON string and I parse it to find all {|<>|} and add them to the relation map with an empty JsonString
+        for (relation_maps) |*relation_map| try relation_map.populate(buff.items);
+
+        // I then call parseEntitiesRelationMap on each
+        // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
+        for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(struct_name, relation_map, &buff);
+
+        return buff.toOwnedSlice() catch return ZipponError.MemoryError;
     }
 
     fn parseEntitiesOneFile(
@@ -459,7 +473,7 @@ pub const FileEngine = struct {
         dir: std.fs.Dir,
         zid_schema: []zid.DType,
         filter: ?Filter,
-        additional_data: *AdditionalData,
+        additional_data: AdditionalData,
         data_types: []const DataType,
         sync_context: *ThreadSyncContext,
     ) void {
@@ -500,37 +514,52 @@ pub const FileEngine = struct {
         _ = sync_context.completeThread();
     }
 
-    // Receive a map of UUID -> null
+    // Receive a map of UUID -> empty JsonString
     // Will parse the files and update the value to the JSON string of the entity that represent the key
     // Will then write the input with the JSON in the map looking for {|<>|}
     // Once the new input received, call parseEntitiesRelationMap again the string still contain {|<>|} because of sub relationship
     // The buffer contain the string with {|<>|} and need to be updated at the end
-    // TODO: Filter file that need to be parse to prevent parsing everything all the time
+    // TODO: Use the new function in SchemaEngine to reduce the number of files to parse
+    // TODO: Add recursion taking example on parseEntities
     pub fn parseEntitiesRelationMap(
         self: *FileEngine,
+        struct_name: []const u8,
         relation_map: *RelationMap,
         buff: *std.ArrayList(u8),
     ) ZipponError!void {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         var new_buff = std.ArrayList(u8).init(allocator);
         defer new_buff.deinit();
         const writer = new_buff.writer();
 
-        const sstruct = try self.schema_engine.structName2SchemaStruct(relation_map.struct_name);
-        const max_file_index = try self.maxFileIndex(sstruct.name);
+        const relation_maps = try self.schema_engine.relationMapArrayInit(
+            allocator,
+            struct_name,
+            relation_map.additional_data,
+        );
+
+        const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
+        const max_file_index = try self.maxFileIndex(sstruct.name); // Chqnge to use a list of file index
 
         log.debug("Max file index {d}", .{max_file_index});
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
         if (relation_map.additional_data.childrens.items.len == 0) {
-            relation_map.additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
+            relation_map.additional_data.populateWithEverythingExceptLink(
+                sstruct.members,
+                sstruct.types,
+            ) catch return FileEngineError.MemoryError;
         }
 
         // Open the dir that contain all files
-        const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
+        const dir = try utils.printOpenDir(
+            "{s}/DATA/{s}",
+            .{ self.path_to_ZipponDB_dir, sstruct.name },
+            .{ .access_sub_paths = false },
+        );
 
         // Multi thread stuffs
         var sync_context = ThreadSyncContext.init(
@@ -539,11 +568,14 @@ pub const FileEngine = struct {
         );
 
         // Do one writer for each thread otherwise it create error by writing at the same time
-        var thread_map_list = allocator.alloc(std.AutoHashMap([16]u8, JsonString), max_file_index + 1) catch return FileEngineError.MemoryError;
+        var thread_map_list = allocator.alloc(
+            std.AutoHashMap([16]u8, JsonString),
+            max_file_index + 1,
+        ) catch return FileEngineError.MemoryError;
 
         // Start parsing all file in multiple thread
         for (0..(max_file_index + 1)) |file_index| {
-            thread_map_list[file_index] = relation_map.map.cloneWithAllocator(allocator);
+            thread_map_list[file_index] = relation_map.map.cloneWithAllocator(allocator) catch return ZipponError.MemoryError;
 
             self.thread_pool.spawn(parseEntitiesRelationMapOneFile, .{
                 &thread_map_list[file_index],
@@ -551,14 +583,14 @@ pub const FileEngine = struct {
                 dir,
                 sstruct.zid_schema,
                 relation_map.additional_data,
-                try self.schema_engine.structName2DataType(relation_map.struct_name),
+                try self.schema_engine.structName2DataType(struct_name),
                 &sync_context,
             }) catch return FileEngineError.ThreadError;
         }
 
         // Wait for all thread to either finish or return an error
         while (!sync_context.isComplete()) {
-            std.time.sleep(10_000_000); // Check every 10ms
+            std.time.sleep(100_000); // Check every 0.1ms
         }
 
         // Now here I should have a list of copy of the map with all UUID a bit everywhere
@@ -567,24 +599,31 @@ pub const FileEngine = struct {
         for (thread_map_list) |map| {
             var iter = map.iterator();
             while (iter.next()) |entry| {
-                if (entry.value_ptr.*) |json_string| relation_map.map.put(entry.key_ptr.*, json_string);
+                if (entry.value_ptr.init) relation_map.map.put(entry.key_ptr.*, entry.value_ptr.*) catch return ZipponError.MemoryError;
             }
         }
 
         // Here I write the new string and update the buff to have the new version
-        EntityWriter.updateWithRelation(writer, buff.items, relation_map.map);
+        try EntityWriter.updateWithRelation(writer, buff.items, relation_map.map.*);
         buff.clearRetainingCapacity();
-        buff.writer().writeAll(new_buff.items);
+        buff.writer().writeAll(new_buff.items) catch return ZipponError.WriteError;
 
         // Now here I need to iterate if buff.items still have {|<>|}
+
+        // Here I take the JSON string and I parse it to find all {|<>|} and add them to the relation map with an empty JsonString
+        for (relation_maps) |*sub_relation_map| try sub_relation_map.populate(buff.items);
+
+        // I then call parseEntitiesRelationMap on each
+        // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
+        for (relation_maps) |*sub_relation_map| try self.parseEntitiesRelationMap(struct_name, sub_relation_map, buff);
     }
 
     fn parseEntitiesRelationMapOneFile(
-        map: *std.AutoHashMap([16]u8, []const u8),
+        map: *std.AutoHashMap([16]u8, JsonString),
         file_index: u64,
         dir: std.fs.Dir,
         zid_schema: []zid.DType,
-        additional_data: *AdditionalData,
+        additional_data: AdditionalData,
         data_types: []const DataType,
         sync_context: *ThreadSyncContext,
     ) void {
@@ -624,7 +663,13 @@ pub const FileEngine = struct {
                 sync_context.logError("Error writing entity", err);
                 return;
             };
-            map.put(row[0].UUID, parent_alloc.dupe(u8, string_list.items)) catch |err| {
+            map.put(row[0].UUID, JsonString{
+                .slice = parent_alloc.dupe(u8, string_list.items) catch |err| {
+                    sync_context.logError("Error duping data", err);
+                    return;
+                },
+                .init = true,
+            }) catch |err| {
                 sync_context.logError("Error writing entity", err);
                 return;
             };
@@ -645,9 +690,9 @@ pub const FileEngine = struct {
         writer: anytype,
         n: usize,
     ) ZipponError!void {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         const file_index = try self.getFirstUsableIndexFile(struct_name);
 
@@ -671,9 +716,9 @@ pub const FileEngine = struct {
         writer: anytype,
         additional_data: *AdditionalData,
     ) ZipponError!void {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
@@ -716,7 +761,7 @@ pub const FileEngine = struct {
 
         // Wait for all threads to complete
         while (!sync_context.isComplete()) {
-            std.time.sleep(10_000_000); // Check every 10ms
+            std.time.sleep(100_000); // Check every 0.1ms
         }
 
         // Combine results
@@ -836,9 +881,9 @@ pub const FileEngine = struct {
         writer: anytype,
         additional_data: *AdditionalData,
     ) ZipponError!void {
-        var fa = std.heap.FixedBufferAllocator.init(&parsing_buffer);
-        fa.reset();
-        const allocator = fa.allocator();
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
         const max_file_index = try self.maxFileIndex(sstruct.name);
@@ -871,7 +916,7 @@ pub const FileEngine = struct {
 
         // Wait for all threads to complete
         while (!sync_context.isComplete()) {
-            std.time.sleep(10_000_000); // Check every 10ms
+            std.time.sleep(100_000); // Check every 0.1ms
         }
 
         // Combine results

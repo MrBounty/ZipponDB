@@ -1,5 +1,4 @@
 pub const BUFFER_SIZE = 1024 * 10; // Used a bit everywhere. The size for the schema for example. 10kB
-pub const OUT_BUFFER_SIZE = 1024 * 1024 * 16; // Mostly use in the fileEngine for the parsing, limit of what can be write to be send basically. 16MB
 pub const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 pub const CPU_CORE = 16;
 
@@ -14,7 +13,7 @@ pub const RESET_LOG_AT_RESTART = false; // If true, will reset the log file at t
 // Help message
 pub const HELP_MESSAGE = struct {
     pub const main: []const u8 =
-        \\Welcome to ZipponDB v0.1.1!
+        \\Welcome to ZipponDB v0.2!
         \\
         \\Available commands:
         \\run       To run a query.
@@ -22,24 +21,24 @@ pub const HELP_MESSAGE = struct {
         \\schema    Initialize the database schema.
         \\quit      Stop the CLI with memory safety.
         \\
-        \\For more informations: https://github.com/MrBounty/ZipponDB
+        \\For more informations: https://mrbounty.github.io/ZipponDB/cli
         \\
     ;
     pub const db: []const u8 =
         \\Available commands:
         \\new       Create a new database using a path to a sub folder.
-        \\use       Select another ZipponDB folder to use as database.
+        \\use       Select an existing folder to use as database.
         \\metrics   Print some metrics of the current database.
         \\
-        \\For more informations: https://github.com/MrBounty/ZipponDB
+        \\For more informations: https://mrbounty.github.io/ZipponDB/cli
         \\    
     ;
     pub const schema: []const u8 =
         \\Available commands:
-        \\describe  Print the schema use by the currently selected database.
+        \\describe  Print the schema use by the currently database.
         \\init      Take the path to a schema file and initialize the database.
         \\
-        \\For more informations: https://github.com/MrBounty/ZipponDB
+        \\For more informations: https://mrbounty.github.io/ZipponDB/cli
         \\
     ;
     pub const no_engine: []const u8 =
@@ -50,17 +49,17 @@ pub const HELP_MESSAGE = struct {
         \\
         \\You can also set the environment variable ZIPPONDB_PATH to the desire path.
         \\
-        \\For more informations: https://github.com/MrBounty/ZipponDB
+        \\For more informations: https://mrbounty.github.io/ZipponDB/cli
         \\
     ;
     pub const no_schema: []const u8 =
-        \\A database was found here {s} but no schema find inside. 
-        \\To start yousing the database, you need to attach it a schema using a schema file.
+        \\A database was found here `{s}` but no schema find inside. 
+        \\To start a database, you need to attach it a schema using a schema file.
         \\By using 'schema init path/to/schema'. For more informations on how to create a schema: TODO add link
         \\
         \\You can also set the environment variable ZIPPONDB_SCHEMA to the path to a schema file.
         \\
-        \\For more informations: https://github.com/MrBounty/ZipponDB
+        \\For more informations: https://mrbounty.github.io/ZipponDB/Schema
         \\
     ;
 };

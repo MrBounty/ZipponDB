@@ -18,7 +18,8 @@
 // So I need an option in parseEntity to either write the first JSON or update the existing one
 
 const std = @import("std");
-const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
+const AdditionalData = @import("additionalData.zig").AdditionalData;
+const ZipponError = @import("errors.zig").ZipponError;
 
 pub const JsonString = struct {
     slice: []const u8 = "",
@@ -26,7 +27,30 @@ pub const JsonString = struct {
 };
 
 pub const RelationMap = struct {
-    struct_name: []const u8,
+    member_name: []const u8,
     additional_data: AdditionalData,
     map: *std.AutoHashMap([16]u8, JsonString),
+
+    /// Will use a string in the JSON format and look for {|<[16]u8>|}
+    /// It will then check if it is for the right member name and if so, add an empty JSON string at the key
+    pub fn populate(self: *RelationMap, input: []const u8) ZipponError!void {
+        var uuid_bytes: [16]u8 = undefined;
+        var start: usize = 0;
+        while (std.mem.indexOf(u8, input[start..], "{|<")) |pos| {
+            const pattern_start = start + pos;
+            const pattern_end = std.mem.indexOf(u8, input[pattern_start..], ">|}") orelse break;
+            const full_pattern_end = pattern_start + pattern_end + 3;
+
+            const member_end = pattern_start - 3; // This should be " = "
+            var member_start = member_end - 1;
+            while (input[member_start] != ' ') : (member_start -= 1) {}
+
+            if (!std.mem.eql(u8, input[member_start..member_end], self.member_name)) continue;
+
+            for (pattern_start + 3..pattern_end - 3, 0..) |i, j| uuid_bytes[j] = input[i];
+
+            self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
+            start = full_pattern_end;
+        }
+    }
 };
