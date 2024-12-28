@@ -460,6 +460,8 @@ pub const FileEngine = struct {
         // Here I take the JSON string and I parse it to find all {|<>|} and add them to the relation map with an empty JsonString
         for (relation_maps) |*relation_map| try relation_map.populate(buff.items);
 
+        if (relation_maps.len > 0) std.debug.print("{d} {d}\n", .{ relation_maps.len, relation_maps[0].map.count() });
+
         // I then call parseEntitiesRelationMap on each
         // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
         for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(struct_name, relation_map, &buff);
@@ -520,7 +522,6 @@ pub const FileEngine = struct {
     // Once the new input received, call parseEntitiesRelationMap again the string still contain {|<>|} because of sub relationship
     // The buffer contain the string with {|<>|} and need to be updated at the end
     // TODO: Use the new function in SchemaEngine to reduce the number of files to parse
-    // TODO: Add recursion taking example on parseEntities
     pub fn parseEntitiesRelationMap(
         self: *FileEngine,
         struct_name: []const u8,
@@ -599,7 +600,7 @@ pub const FileEngine = struct {
         for (thread_map_list) |map| {
             var iter = map.iterator();
             while (iter.next()) |entry| {
-                if (entry.value_ptr.init) relation_map.map.put(entry.key_ptr.*, entry.value_ptr.*) catch return ZipponError.MemoryError;
+                if (entry.value_ptr.init) relation_map.*.map.put(entry.key_ptr.*, entry.value_ptr.*) catch return ZipponError.MemoryError;
             }
         }
 
@@ -817,12 +818,12 @@ pub const FileEngine = struct {
         };
         defer new_writer.deinit();
 
+        var finish_writing = false;
         while (iter.next() catch |err| {
             sync_context.logError("Parsing files", err);
             return;
         }) |row| {
-            if (sync_context.checkStructLimit()) break;
-            if (filter == null or filter.?.evaluate(row)) {
+            if (!finish_writing and (filter == null or filter.?.evaluate(row))) {
                 // Add the unchanged Data in the new_data_buff
                 new_data_buff[0] = row[0];
                 for (sstruct.members, 0..) |member, i| {
@@ -838,13 +839,13 @@ pub const FileEngine = struct {
                     return;
                 };
 
-                writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
+                writer.print("\"{s}\",", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
                     sync_context.logError("Error initializing DataWriter", err);
                     zid.deleteFile(new_path, dir) catch {};
                     return;
                 };
 
-                if (sync_context.incrementAndCheckStructLimit()) break;
+                finish_writing = sync_context.incrementAndCheckStructLimit();
             } else {
                 new_writer.write(row) catch |err| {
                     sync_context.logError("Error initializing DataWriter", err);

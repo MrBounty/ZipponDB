@@ -16,6 +16,8 @@
 // Then for each RelationMap, I parse the files again this time to update the first JSON that now have {|<>|}
 // With a sub additionalData. If there is an additional data relation, I recurcive.
 // So I need an option in parseEntity to either write the first JSON or update the existing one
+//
+// FIXME: I think if 2 different struct have the same member name it can cause issue but maybe not tho
 
 const std = @import("std");
 const AdditionalData = @import("additionalData.zig").AdditionalData;
@@ -37,20 +39,38 @@ pub const RelationMap = struct {
         var uuid_bytes: [16]u8 = undefined;
         var start: usize = 0;
         while (std.mem.indexOf(u8, input[start..], "{|<")) |pos| {
-            const pattern_start = start + pos;
-            const pattern_end = std.mem.indexOf(u8, input[pattern_start..], ">|}") orelse break;
-            const full_pattern_end = pattern_start + pattern_end + 3;
+            const pattern_start = start + pos + 3;
+            const pattern_end = pattern_start + 16;
 
-            const member_end = pattern_start - 3; // This should be " = "
+            const member_end = if (input[pattern_start - 4] == '[') pattern_start - 6 else pattern_start - 5; // This should be ": {|<"
             var member_start = member_end - 1;
             while (input[member_start] != ' ') : (member_start -= 1) {}
+            member_start += 1;
+
+            std.debug.print("MEMBER: {c} - {s}\n", .{ input[pattern_start - 4], input[member_start..member_end] });
 
             if (!std.mem.eql(u8, input[member_start..member_end], self.member_name)) continue;
 
-            for (pattern_start + 3..pattern_end - 3, 0..) |i, j| uuid_bytes[j] = input[i];
+            if (input[pattern_start - 4] == '[') {
+                start = try self.populateArray(input, pattern_start - 3);
+                continue;
+            }
+
+            @memcpy(uuid_bytes[0..], input[pattern_start..pattern_end]);
 
             self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
-            start = full_pattern_end;
+            start = pattern_end + 3;
         }
+    }
+
+    // Array are pack in format {|<[16]u8>|},{|<[16]u8>|},{|<[16]u8>|},{|<[16]u8>|},
+    fn populateArray(self: *RelationMap, input: []const u8, origin: usize) ZipponError!usize {
+        var uuid_bytes: [16]u8 = undefined;
+        var start = origin;
+        while (input.len > start + 23 and std.mem.eql(u8, input[start .. start + 3], "{|<") and std.mem.eql(u8, input[start + 19 .. start + 23], ">|},")) : (start += 23) {
+            for (start + 3..start + 19, 0..) |i, j| uuid_bytes[j] = input[i];
+            self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
+        }
+        return start;
     }
 };

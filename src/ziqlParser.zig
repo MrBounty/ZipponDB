@@ -129,7 +129,7 @@ pub const Parser = struct {
                 // Check if the struct name is in the schema
                 struct_name = self.toker.getTokenSlice(token);
                 if (token.tag != .identifier) return printError(
-                    "Error: Missing struct name",
+                    "Error: Missing struct name.",
                     ZiQlParserError.StructNotFound,
                     self.toker.buffer,
                     token.loc.start,
@@ -152,13 +152,12 @@ pub const Parser = struct {
                 keep_next = true;
                 switch (token.tag) {
                     .l_bracket => state = .parse_additional_data,
-                    .l_brace => state = switch (action) {
+                    .l_brace, .eof => state = switch (action) {
                         .GRAB => .filter_and_send,
                         .UPDATE => .filter_and_update,
                         .DELETE => .filter_and_delete,
                         else => unreachable,
                     },
-                    .eof => state = .filter_and_send,
                     else => return printError(
                         "Error: Expect [ for additional data or { for a filter",
                         ZiQlParserError.SynthaxError,
@@ -1053,7 +1052,20 @@ pub const Parser = struct {
     }
 };
 
-// TODO: Check if what is send is expected
+test "Synthax error" {
+    try expectParsingError("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=7db1f06d-a5a7-4917-8cc6-4d490191c9c1, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)", ZiQlParserError.SynthaxError);
+    try expectParsingError("GRAB {}", ZiQlParserError.StructNotFound);
+    try expectParsingError("GRAB User {qwe = 'qwe'}", ZiQlParserError.MemberNotFound);
+    try expectParsingError("ADD User (name='Bob')", ZiQlParserError.MemberMissing);
+    try expectParsingError("GRAB User {name='Bob'", ZiQlParserError.SynthaxError);
+    try expectParsingError("GRAB User {age = 50 name='Bob'}", ZiQlParserError.SynthaxError);
+    try expectParsingError("GRAB User {age <14 AND (age>55}", ZiQlParserError.SynthaxError);
+    try expectParsingError("GRAB User {name < 'Hello'}", ZiQlParserError.ConditionError);
+}
+
+test "Clear" {
+    try testParsing("DELETE User {}");
+}
 
 test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
@@ -1061,7 +1073,6 @@ test "ADD" {
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, friends=none, bday=2000/01/04, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, friends=none, bday=2000/06/06, a_time=04:04:54.8741, last_order=2000/01/01-12:45)");
 
-    // This need to take the first User named Bob as it is a unique link
     try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends={name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bobibou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends=[1]{name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
@@ -1077,7 +1088,7 @@ test "GRAB filter with string" {
 test "GRAB with additional data" {
     try testParsing("GRAB User [1] {age < 18}");
     try testParsing("GRAB User [id, name] {age < 18}");
-    try testParsing("GRAB User [100; name] {age < 18}");
+    try testParsing("GRAB User [100; name, age] {age < 18}");
 }
 
 test "UPDATE" {
@@ -1106,7 +1117,6 @@ test "Specific query" {
     try testParsing("GRAB User [1]");
 }
 
-// FIXME: This make the following query return only 1 thing, to check
 test "UPDATE relationship" {
     try testParsing("UPDATE User [1] {name='Bob'} TO (best_friend = {name='Boba'} )");
     try testParsing("GRAB User {}");
@@ -1122,7 +1132,16 @@ test "GRAB Relationship Filter" {
 test "GRAB Relationship AdditionalData" {
     try testParsing("GRAB User [name, friends] {}");
     try testParsing("GRAB User [name, best_friend] {}");
+}
+
+test "GRAB Relationship AdditionalData Filtered" {
     try testParsing("GRAB User [2; name, best_friend] {best_friend != none}");
+    try testParsing("GRAB User [2; name, best_friend] {name = 'Bob'}");
+}
+
+test "GRAB Relationship Sub AdditionalData" {
+    try testParsing("GRAB User [name, friends [name]] {}");
+    try testParsing("GRAB User [name, best_friend [name, friends [age]]] {}");
 }
 
 test "GRAB Relationship dot" {
@@ -1131,17 +1150,6 @@ test "GRAB Relationship dot" {
 
 test "DELETE" {
     try testParsing("DELETE User {}");
-}
-
-test "Synthax error" {
-    try expectParsingError("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=7db1f06d-a5a7-4917-8cc6-4d490191c9c1, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB {}", ZiQlParserError.StructNotFound);
-    try expectParsingError("GRAB User {qwe = 'qwe'}", ZiQlParserError.MemberNotFound);
-    try expectParsingError("ADD User (name='Bob')", ZiQlParserError.MemberMissing);
-    try expectParsingError("GRAB User {name='Bob'", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {age = 50 name='Bob'}", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {age <14 AND (age>55}", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {name < 'Hello'}", ZiQlParserError.ConditionError);
 }
 
 const DBEngine = @import("main.zig").DBEngine;
