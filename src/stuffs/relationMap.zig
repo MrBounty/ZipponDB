@@ -47,8 +47,6 @@ pub const RelationMap = struct {
             while (input[member_start] != ' ') : (member_start -= 1) {}
             member_start += 1;
 
-            std.debug.print("MEMBER: {c} - {s}\n", .{ input[pattern_start - 4], input[member_start..member_end] });
-
             if (!std.mem.eql(u8, input[member_start..member_end], self.member_name)) continue;
 
             if (input[pattern_start - 4] == '[') {

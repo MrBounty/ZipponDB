@@ -123,7 +123,7 @@ pub const EntityWriter = struct {
             } else {
                 writer.writeAll(input[pattern_start - 3 .. pattern_end + 3]) catch return ZipponError.WriteError;
             }
-            start = pattern_end;
+            start = pattern_end + 5;
         }
 
         // Write any remaining text

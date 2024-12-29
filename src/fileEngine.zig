@@ -460,8 +460,6 @@ pub const FileEngine = struct {
         // Here I take the JSON string and I parse it to find all {|<>|} and add them to the relation map with an empty JsonString
         for (relation_maps) |*relation_map| try relation_map.populate(buff.items);
 
-        if (relation_maps.len > 0) std.debug.print("{d} {d}\n", .{ relation_maps.len, relation_maps[0].map.count() });
-
         // I then call parseEntitiesRelationMap on each
         // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
         for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(struct_name, relation_map, &buff);
