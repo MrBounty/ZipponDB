@@ -56,6 +56,8 @@ pub fn myLog(
     comptime format: []const u8,
     args: anytype,
 ) void {
+    if (true) return;
+
     const level_txt = comptime message_level.asText();
     const prefix = if (scope == .default) " - " else "(" ++ @tagName(scope) ++ ") - ";
 

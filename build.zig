@@ -25,7 +25,8 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    // All tests
+    // Test
+    // -----------------------------------------------
     const tests1 = b.addTest(.{
         .root_source_file = b.path("src/stuffs/UUIDFileIndex.zig"),
         .target = target,
@@ -93,4 +94,22 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests4.step);
     test_step.dependOn(&run_tests5.step);
     test_step.dependOn(&run_tests6.step);
+
+    // Benchmark
+    // -----------------------------------------------
+    const benchmark = b.addExecutable(.{
+        .name = "benchmark",
+        .root_source_file = b.path("src/benchmark.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    benchmark.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
+    benchmark.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
+    b.installArtifact(benchmark);
+
+    const run_benchmark = b.addRunArtifact(benchmark);
+    run_benchmark.step.dependOn(b.getInstallStep());
+
+    const benchmark_step = b.step("benchmark", "Run benchmarks");
+    benchmark_step.dependOn(&run_benchmark.step);
 }
