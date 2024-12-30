@@ -693,7 +693,7 @@ pub const FileEngine = struct {
         defer arena.deinit();
         const allocator = arena.allocator();
 
-        const file_index = try self.getFirstUsableIndexFile(struct_name);
+        const file_index = try self.getFirstUsableIndexFile(struct_name); // TODO: Speed up this
 
         const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
         const data = try self.orderedNewData(allocator, struct_name, map);
@@ -704,7 +704,7 @@ pub const FileEngine = struct {
         for (0..n) |_| data_writer.write(data) catch return FileEngineError.ZipponDataError;
         data_writer.flush() catch return FileEngineError.ZipponDataError;
 
-        writer.print("[\"{s}\"]", .{UUID.format_bytes(data[0].UUID)}) catch return FileEngineError.WriteError;
+        writer.print("\"{s}\", ", .{UUID.format_bytes(data[0].UUID)}) catch return FileEngineError.WriteError;
     }
 
     pub fn updateEntities(

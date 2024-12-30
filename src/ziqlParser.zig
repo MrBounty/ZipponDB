@@ -59,6 +59,7 @@ const State = enum {
     expect_right_uuid_array,
 
     // For the new data
+    expect_member_OR_value,
     expect_equal,
     expect_new_value,
     expect_comma_OR_end,
@@ -228,7 +229,7 @@ pub const Parser = struct {
 
                     var data_map = std.StringHashMap(ConditionValue).init(allocator);
                     defer data_map.deinit();
-                    try self.parseNewData(allocator, &data_map, struct_name);
+                    try self.parseNewData(allocator, &data_map, struct_name, null, null);
 
                     var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
@@ -249,7 +250,7 @@ pub const Parser = struct {
 
                     var data_map = std.StringHashMap(ConditionValue).init(allocator);
                     defer data_map.deinit();
-                    try self.parseNewData(allocator, &data_map, struct_name);
+                    try self.parseNewData(allocator, &data_map, struct_name, null, null);
 
                     var buff = std.ArrayList(u8).init(allocator);
                     defer buff.deinit();
@@ -310,39 +311,49 @@ pub const Parser = struct {
                 ),
             },
 
+            // TODO: Be able to do it in batch
             .parse_new_data_and_add_data => {
-                var data_map = std.StringHashMap(ConditionValue).init(allocator);
-                defer data_map.deinit();
-                try self.parseNewData(allocator, &data_map, struct_name);
+                var order = std.ArrayList([]const u8).init(allocator);
+                defer order.deinit();
+                var ordered = false;
 
-                var error_message_buffer = std.ArrayList(u8).init(allocator);
-                defer error_message_buffer.deinit();
-
-                const error_message_buffer_writer = error_message_buffer.writer();
-                error_message_buffer_writer.writeAll("Error missing: ") catch return ZipponError.WriteError;
-
-                if (!(self.schema_engine.checkIfAllMemberInMap(struct_name, &data_map, &error_message_buffer) catch {
-                    return ZiQlParserError.StructNotFound;
-                })) {
-                    _ = error_message_buffer.pop();
-                    _ = error_message_buffer.pop();
-                    return printError(
-                        error_message_buffer.items,
-                        ZiQlParserError.MemberMissing,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                }
                 var buff = std.ArrayList(u8).init(allocator);
                 defer buff.deinit();
+                buff.writer().writeAll("[") catch return ZipponError.WriteError;
 
-                token = self.toker.last_token;
-                if (token.tag == .identifier and std.mem.eql(u8, self.toker.getTokenSlice(token), "TESTDATASET")) {
-                    for (0..100) |_| self.file_engine.addEntity(struct_name, data_map, &buff.writer(), 10_000) catch return ZipponError.CantWriteEntity;
-                } else {
+                while (true) {
+                    var data_map = std.StringHashMap(ConditionValue).init(allocator);
+                    defer data_map.deinit();
+                    try self.parseNewData(allocator, &data_map, struct_name, &order, ordered);
+                    ordered = true;
+
+                    var error_message_buffer = std.ArrayList(u8).init(allocator);
+                    defer error_message_buffer.deinit();
+
+                    const error_message_buffer_writer = error_message_buffer.writer();
+                    error_message_buffer_writer.writeAll("Error missing: ") catch return ZipponError.WriteError;
+
+                    if (!(self.schema_engine.checkIfAllMemberInMap(struct_name, &data_map, &error_message_buffer) catch {
+                        return ZiQlParserError.StructNotFound;
+                    })) {
+                        _ = error_message_buffer.pop();
+                        _ = error_message_buffer.pop();
+                        return printError(
+                            error_message_buffer.items,
+                            ZiQlParserError.MemberMissing,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
+
+                    token = self.toker.last_token;
                     self.file_engine.addEntity(struct_name, data_map, &buff.writer(), 1) catch return ZipponError.CantWriteEntity;
+
+                    if (token.tag == .l_paren) continue;
+                    break;
                 }
+                buff.writer().writeAll("]") catch return ZipponError.WriteError;
                 send("{s}", .{buff.items});
                 state = .end;
             },
@@ -540,7 +551,11 @@ pub const Parser = struct {
     }
 
     /// Will check if what is compared is ok, like comparing if a string is superior to another string is not for example.
-    fn checkConditionValidity(self: Parser, condition: Condition, token: Token) ZipponError!void {
+    fn checkConditionValidity(
+        self: Parser,
+        condition: Condition,
+        token: Token,
+    ) ZipponError!void {
         switch (condition.operation) {
             .equal => switch (condition.data_type) {
                 .int, .float, .str, .bool, .date, .time, .datetime => {},
@@ -634,7 +649,12 @@ pub const Parser = struct {
 
     /// When this function is call, next token should be [
     /// Check if an int is here -> check if ; is here -> check if member is here -> check if [ is here -> loop
-    fn parseAdditionalData(self: Parser, allocator: Allocator, additional_data: *AdditionalData, struct_name: []const u8) ZipponError!void {
+    fn parseAdditionalData(
+        self: Parser,
+        allocator: Allocator,
+        additional_data: *AdditionalData,
+        struct_name: []const u8,
+    ) ZipponError!void {
         var token = self.toker.next();
         var keep_next = false;
         var state: State = .expect_limit;
@@ -751,18 +771,26 @@ pub const Parser = struct {
     /// Take the tokenizer and return a map of the ADD action.
     /// Keys are the member name and value are the string of the value in the query. E.g. 'Adrien' or '10'
     /// Entry token need to be (
-    fn parseNewData(self: Parser, allocator: Allocator, map: *std.StringHashMap(ConditionValue), struct_name: []const u8) !void {
+    fn parseNewData(
+        self: Parser,
+        allocator: Allocator,
+        map: *std.StringHashMap(ConditionValue),
+        struct_name: []const u8,
+        order: ?*std.ArrayList([]const u8),
+        order_full: ?bool,
+    ) !void {
         var token = self.toker.next();
         var keep_next = false;
         var member_name: []const u8 = undefined; // Maybe use allocator.alloc
-        var state: State = .expect_member;
+        var state: State = .expect_member_OR_value;
+        var i: usize = 0;
 
         while (state != .end) : ({
             token = if (!keep_next) self.toker.next() else token;
             keep_next = false;
             if (PRINT_STATE) std.debug.print("parseNewData: {any}\n", .{state});
         }) switch (state) {
-            .expect_member => switch (token.tag) {
+            .expect_member_OR_value => switch (token.tag) {
                 .identifier => {
                     member_name = self.toker.getTokenSlice(token);
                     if (!(self.schema_engine.isMemberNameInStruct(struct_name, member_name) catch {
@@ -774,7 +802,42 @@ pub const Parser = struct {
                         token.loc.start,
                         token.loc.end,
                     );
+                    if (order_full) |o| if (!o) order.?.*.append(allocator.dupe(u8, member_name) catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
                     state = .expect_equal;
+                },
+                .string_literal,
+                .int_literal,
+                .float_literal,
+                .date_literal,
+                .time_literal,
+                .datetime_literal,
+                .bool_literal_true,
+                .bool_literal_false,
+                .uuid_literal,
+                .l_bracket,
+                .l_brace,
+                .keyword_none,
+                => if (order_full) |o| {
+                    if (!o) return printError(
+                        "Expected member name.",
+                        ZiQlParserError.MemberMissing,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+
+                    member_name = order.?.items[i];
+                    i += 1;
+                    keep_next = true;
+                    state = .expect_new_value;
+                } else {
+                    return printError(
+                        "Expected member name.",
+                        ZiQlParserError.MemberMissing,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
                 },
                 else => return printError(
                     "Error: Expected member name.",
@@ -809,7 +872,7 @@ pub const Parser = struct {
 
             .expect_comma_OR_end => switch (token.tag) {
                 .r_paren => state = .end,
-                .comma => state = .expect_member,
+                .comma => state = .expect_member_OR_value,
                 else => return printError(
                     "Error: Expect , or )",
                     ZiQlParserError.SynthaxError,
@@ -1084,6 +1147,14 @@ test "ADD" {
     try testParsing("ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends={name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
     try testParsing("ADD User (name = 'Bobibou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends=[1]{name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
 
+    try testParsing("GRAB User {}");
+}
+
+test "ADD batch" {
+    try testParsing("ADD User (name = 'ewq', email='ewq@email.com', age=22, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) (name = 'Roger', email='roger@email.com', age=10, scores=[ 1 11 111 123 562345 123451234 34623465234 12341234 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
+    try testParsing("ADD User (name = 'qwe', email='qwe@email.com', age=57, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) ('Rodrigo', 'bob@email.com', 55, [ 1 ], {name = 'qwe'}, none, 2000/01/01, 12:04, 2000/01/01-12:45)");
+
+    try testParsing("GRAB User [name, best_friend] {name = 'Rodrigo'}");
     try testParsing("GRAB User {}");
 }
 
