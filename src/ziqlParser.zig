@@ -543,9 +543,9 @@ pub const Parser = struct {
     fn checkConditionValidity(self: Parser, condition: Condition, token: Token) ZipponError!void {
         switch (condition.operation) {
             .equal => switch (condition.data_type) {
-                .int, .float, .str, .bool, .link, .date, .time, .datetime => {},
+                .int, .float, .str, .bool, .date, .time, .datetime => {},
                 else => return printError(
-                    "Error: Only int, float, str, bool, date, time, datetime can be compare with =.",
+                    "Error: Only int, float, str, bool, date, time, datetime can be compare with =",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -554,9 +554,9 @@ pub const Parser = struct {
             },
 
             .different => switch (condition.data_type) {
-                .int, .float, .str, .bool, .link, .date, .time, .datetime => {},
+                .int, .float, .str, .bool, .date, .time, .datetime => {},
                 else => return printError(
-                    "Error: Only int, float, str, bool, date, time, datetime can be compare with !=.",
+                    "Error: Only int, float, str, bool, date, time, datetime can be compare with !=",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -567,7 +567,7 @@ pub const Parser = struct {
             .superior_or_equal => switch (condition.data_type) {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
-                    "Error: Only int, float, date, time, datetime can be compare with >=.",
+                    "Error: Only int, float, date, time, datetime can be compare with >=",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -578,7 +578,7 @@ pub const Parser = struct {
             .superior => switch (condition.data_type) {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
-                    "Error: Only int, float, date, time, datetime can be compare with >.",
+                    "Error: Only int, float, date, time, datetime can be compare with >",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -589,7 +589,7 @@ pub const Parser = struct {
             .inferior_or_equal => switch (condition.data_type) {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
-                    "Error: Only int, float, date, time, datetime can be compare with <=.",
+                    "Error: Only int, float, date, time, datetime can be compare with <=",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -600,7 +600,7 @@ pub const Parser = struct {
             .inferior => switch (condition.data_type) {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
-                    "Error: Only int, float, date, time, datetime can be compare with <.",
+                    "Error: Only int, float, date, time, datetime can be compare with <",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -611,7 +611,7 @@ pub const Parser = struct {
             .in => switch (condition.data_type) {
                 .link => {},
                 else => return printError(
-                    "Error: Only link can be compare with in for now.",
+                    "Error: Only link can be compare with IN.",
                     ZiQlParserError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
@@ -619,7 +619,16 @@ pub const Parser = struct {
                 ),
             },
 
-            else => unreachable,
+            .not_in => switch (condition.data_type) {
+                .link => {},
+                else => return printError(
+                    "Error: Only link can be compare with !IN.",
+                    ZiQlParserError.ConditionError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
+            },
         }
     }
 
@@ -953,8 +962,6 @@ pub const Parser = struct {
                         token.* = self.toker.next();
                     }
 
-                    additional_data.limit = 1;
-
                     if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
                         "Error: Expected filter",
                         ZiQlParserError.SynthaxError,
@@ -1132,14 +1139,15 @@ test "GRAB Relationship AdditionalData" {
     try testParsing("GRAB User [name, best_friend] {}");
 }
 
-test "GRAB Relationship AdditionalData Filtered" {
-    try testParsing("GRAB User [2; name, best_friend] {best_friend != none}");
-    try testParsing("GRAB User [2; name, best_friend] {name = 'Bob'}");
-}
-
 test "GRAB Relationship Sub AdditionalData" {
     try testParsing("GRAB User [name, friends [name]] {}");
     try testParsing("GRAB User [name, best_friend [name, friends [age]]] {}");
+}
+
+test "GRAB Relationship AdditionalData Filtered" {
+    try testParsing("GRAB User [2; name, best_friend] {name = 'Bob'}");
+    try testParsing("GRAB User [2; name, best_friend] {best_friend IN {}}");
+    try testParsing("GRAB User [2; name, best_friend] {best_friend !IN {}}");
 }
 
 test "GRAB Relationship dot" {
