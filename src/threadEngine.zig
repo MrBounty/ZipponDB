@@ -6,8 +6,8 @@ const Pool = std.Thread.Pool;
 const Allocator = std.mem.Allocator;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
-const CPU_CORE = @import("config.zig").CPU_CORE;
-const OUT_BUFFER_SIZE = @import("config.zig").OUT_BUFFER_SIZE;
+const CPU_CORE = @import("config").CPU_CORE;
+const OUT_BUFFER_SIZE = @import("config").OUT_BUFFER_SIZE;
 const log = std.log.scoped(.thread);
 
 const allocator = std.heap.page_allocator;

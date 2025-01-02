@@ -16,7 +16,7 @@ const FileEngine = @import("fileEngine.zig").FileEngine;
 
 // TODO: Create a schemaEngine directory and add this as core and the parser with it
 
-const config = @import("config.zig");
+const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;
 
 var schema_buffer: [BUFFER_SIZE]u8 = undefined;

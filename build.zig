@@ -1,7 +1,8 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    // Build part
+    // Exe
+    // -----------------------------------------------
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
@@ -15,13 +16,14 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
-    // Import the dtype lib
+    // Libs
+    // -----------------------------------------------
     exe.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
-
-    // Import ZipponData package
+    exe.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     exe.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
 
-    // Run step
+    // Run
+    // -----------------------------------------------
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
@@ -62,6 +64,7 @@ pub fn build(b: *std.Build) void {
         .name = "Schema tokenizer",
         .test_runner = b.path("test_runner.zig"),
     });
+    tests4.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     tests4.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
     const run_tests4 = b.addRunArtifact(tests4);
 
@@ -73,6 +76,7 @@ pub fn build(b: *std.Build) void {
         .test_runner = b.path("test_runner.zig"),
     });
     tests5.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
+    tests5.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     tests5.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
     const run_tests5 = b.addRunArtifact(tests5);
 
@@ -84,6 +88,7 @@ pub fn build(b: *std.Build) void {
         .test_runner = b.path("test_runner.zig"),
     });
     tests6.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
+    tests6.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     tests6.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
     const run_tests6 = b.addRunArtifact(tests6);
 
@@ -104,6 +109,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     benchmark.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
+    benchmark.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     benchmark.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
     b.installArtifact(benchmark);
 

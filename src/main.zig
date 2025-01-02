@@ -17,7 +17,7 @@ const ziqlParser = @import("ziqlParser.zig").Parser;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
-const config = @import("config.zig");
+const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;
 const CPU_CORE = config.CPU_CORE;
 const HELP_MESSAGE = config.HELP_MESSAGE;

@@ -21,7 +21,7 @@ const printError = @import("stuffs/utils.zig").printError;
 const ZiQlParserError = @import("stuffs/errors.zig").ZiQlParserError;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
-const PRINT_STATE = @import("config.zig").PRINT_STATE;
+const PRINT_STATE = @import("config").PRINT_STATE;
 
 const log = std.log.scoped(.ziqlParser);
 
@@ -1232,7 +1232,7 @@ test "DELETE" {
 const DBEngine = @import("main.zig").DBEngine;
 
 fn testParsing(source: [:0]const u8) !void {
-    const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
+    const TEST_DATA_DIR = @import("config").TEST_DATA_DIR;
 
     var db_engine = DBEngine.init(TEST_DATA_DIR, null);
     defer db_engine.deinit();
@@ -1248,7 +1248,7 @@ fn testParsing(source: [:0]const u8) !void {
 }
 
 fn expectParsingError(source: [:0]const u8, err: ZiQlParserError) !void {
-    const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
+    const TEST_DATA_DIR = @import("config").TEST_DATA_DIR;
 
     var db_engine = DBEngine.init(TEST_DATA_DIR, null);
     defer db_engine.deinit();
@@ -1273,7 +1273,7 @@ test "Parse filter" {
 }
 
 fn testParseFilter(source: [:0]const u8) !void {
-    const TEST_DATA_DIR = @import("config.zig").TEST_DATA_DIR;
+    const TEST_DATA_DIR = @import("config").TEST_DATA_DIR;
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

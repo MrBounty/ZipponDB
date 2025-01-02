@@ -31,7 +31,7 @@
 #### v0.4 - Usability  
 - [ ] Server  
 - [ ] Docker  
-- [ ] Config file
+- [ ] YAML config file
 - [ ] Python interface  
 - [ ] Go interface  
 

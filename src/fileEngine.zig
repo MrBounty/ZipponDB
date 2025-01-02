@@ -24,7 +24,7 @@ const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
-const config = @import("config.zig");
+const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;
 const OUT_BUFFER_SIZE = config.OUT_BUFFER_SIZE;
 const MAX_FILE_SIZE = config.MAX_FILE_SIZE;

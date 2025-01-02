@@ -3,7 +3,7 @@ pub const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 pub const CPU_CORE = 16;
 
 // Testing
-pub const TEST_DATA_DIR = "data"; // Maybe put that directly in the build
+pub const TEST_DATA_DIR = "data";
 
 // Debug
 pub const PRINT_STATE = false;

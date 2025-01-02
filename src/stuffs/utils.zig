@@ -1,5 +1,6 @@
 const std = @import("std");
 const ZipponError = @import("errors.zig").ZipponError;
+const config = @import("config");
 
 const log = std.log.scoped(.utils);
 
@@ -45,7 +46,7 @@ const stdout = std.io.getStdOut().writer();
 
 // Maybe create a struct for that
 pub fn send(comptime format: []const u8, args: anytype) void {
-    if (true) return;
+    if (config.DONT_SEND) return;
 
     stdout.print(format, args) catch |err| {
         log.err("Can't send: {any}", .{err});
@@ -57,6 +58,7 @@ pub fn send(comptime format: []const u8, args: anytype) void {
 
 /// Print an error and send it to the user pointing to the token
 pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, start: ?usize, end: ?usize) ZipponError {
+    if (config.DONT_SEND) return err;
     fa.reset();
 
     var buffer = std.ArrayList(u8).init(allocator);
