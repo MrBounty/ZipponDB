@@ -104,7 +104,7 @@ pub fn build(b: *std.Build) void {
     // -----------------------------------------------
     const benchmark = b.addExecutable(.{
         .name = "benchmark",
-        .root_source_file = b.path("src/benchmark.zig"),
+        .root_source_file = b.path("benchmark.zig"),
         .target = target,
         .optimize = optimize,
     });

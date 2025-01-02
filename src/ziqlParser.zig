@@ -18,9 +18,7 @@ const AdditionalDataMember = @import("stuffs/additionalData.zig").AdditionalData
 const send = @import("stuffs/utils.zig").send;
 const printError = @import("stuffs/utils.zig").printError;
 
-const ZiQlParserError = @import("stuffs/errors.zig").ZiQlParserError;
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
-
 const PRINT_STATE = @import("config").PRINT_STATE;
 
 const log = std.log.scoped(.ziqlParser);
@@ -119,7 +117,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected action keyword. Available: GRAB ADD DELETE UPDATE",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -131,14 +129,14 @@ pub const Parser = struct {
                 struct_name = self.toker.getTokenSlice(token);
                 if (token.tag != .identifier) return printError(
                     "Error: Missing struct name.",
-                    ZiQlParserError.StructNotFound,
+                    ZipponError.StructNotFound,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
                 if (!self.schema_engine.isStructNameExists(struct_name)) return printError(
                     "Error: struct name not found in schema.",
-                    ZiQlParserError.StructNotFound,
+                    ZipponError.StructNotFound,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -161,7 +159,7 @@ pub const Parser = struct {
                     },
                     else => return printError(
                         "Error: Expect [ for additional data or { for a filter",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -195,7 +193,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected filter.",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -212,7 +210,7 @@ pub const Parser = struct {
 
                     if (token.tag != .keyword_to) return printError(
                         "Error: Expected TO",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -221,7 +219,7 @@ pub const Parser = struct {
                     token = self.toker.next();
                     if (token.tag != .l_paren) return printError(
                         "Error: Expected (",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -242,7 +240,7 @@ pub const Parser = struct {
                     token = self.toker.next();
                     if (token.tag != .l_paren) return printError(
                         "Error: Expected (",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -261,7 +259,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected filter or TO.",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -290,7 +288,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected filter.",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -304,7 +302,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected new data starting with (",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -334,13 +332,13 @@ pub const Parser = struct {
                     error_message_buffer_writer.writeAll("Error missing: ") catch return ZipponError.WriteError;
 
                     if (!(self.schema_engine.checkIfAllMemberInMap(struct_name, &data_map, &error_message_buffer) catch {
-                        return ZiQlParserError.StructNotFound;
+                        return ZipponError.StructNotFound;
                     })) {
                         _ = error_message_buffer.pop();
                         _ = error_message_buffer.pop();
                         return printError(
                             error_message_buffer.items,
-                            ZiQlParserError.MemberMissing,
+                            ZipponError.MemberMissing,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
@@ -421,7 +419,7 @@ pub const Parser = struct {
                     },
                     else => return printError(
                         "Error: Expected ( or condition.",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -465,7 +463,7 @@ pub const Parser = struct {
                     },
                     else => return printError(
                         "Error: Expected AND, OR, or }",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -499,7 +497,7 @@ pub const Parser = struct {
                     if (!(self.schema_engine.isMemberNameInStruct(struct_name, self.toker.getTokenSlice(token)) catch {
                         return printError(
                             "Error: Struct not found.",
-                            ZiQlParserError.StructNotFound,
+                            ZipponError.StructNotFound,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
@@ -507,7 +505,7 @@ pub const Parser = struct {
                     })) {
                         return printError(
                             "Error: Member not part of struct.",
-                            ZiQlParserError.MemberNotFound,
+                            ZipponError.MemberNotFound,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
@@ -516,16 +514,16 @@ pub const Parser = struct {
                     condition.data_type = self.schema_engine.memberName2DataType(
                         struct_name,
                         self.toker.getTokenSlice(token),
-                    ) catch return ZiQlParserError.MemberNotFound;
+                    ) catch return ZipponError.MemberNotFound;
                     condition.data_index = self.schema_engine.memberName2DataIndex(
                         struct_name,
                         self.toker.getTokenSlice(token),
-                    ) catch return ZiQlParserError.MemberNotFound;
+                    ) catch return ZipponError.MemberNotFound;
                     state = .expect_operation;
                 },
                 else => return printError(
                     "Error: Expected member name.",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -561,7 +559,7 @@ pub const Parser = struct {
                 .int, .float, .str, .bool, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, str, bool, date, time, datetime can be compare with =",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -572,7 +570,7 @@ pub const Parser = struct {
                 .int, .float, .str, .bool, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, str, bool, date, time, datetime can be compare with !=",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -583,7 +581,7 @@ pub const Parser = struct {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, date, time, datetime can be compare with >=",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -594,7 +592,7 @@ pub const Parser = struct {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, date, time, datetime can be compare with >",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -605,7 +603,7 @@ pub const Parser = struct {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, date, time, datetime can be compare with <=",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -616,7 +614,7 @@ pub const Parser = struct {
                 .int, .float, .date, .time, .datetime => {},
                 else => return printError(
                     "Error: Only int, float, date, time, datetime can be compare with <",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -627,7 +625,7 @@ pub const Parser = struct {
                 .link => {},
                 else => return printError(
                     "Error: Only link can be compare with IN.",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -638,7 +636,7 @@ pub const Parser = struct {
                 .link => {},
                 else => return printError(
                     "Error: Only link can be compare with !IN.",
-                    ZiQlParserError.ConditionError,
+                    ZipponError.ConditionError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -669,7 +667,7 @@ pub const Parser = struct {
                     additional_data.limit = std.fmt.parseInt(usize, self.toker.getTokenSlice(token), 10) catch {
                         return printError(
                             "Error while transforming limit into a integer.",
-                            ZiQlParserError.ParsingValueError,
+                            ZipponError.ParsingValueError,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
@@ -688,7 +686,7 @@ pub const Parser = struct {
                 .r_bracket => state = .end,
                 else => return printError(
                     "Error: Expect ';' or ']'.",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -700,7 +698,7 @@ pub const Parser = struct {
                     if (!(self.schema_engine.isMemberNameInStruct(struct_name, self.toker.getTokenSlice(token)) catch {
                         return printError(
                             "Struct not found.",
-                            ZiQlParserError.StructNotFound,
+                            ZipponError.StructNotFound,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
@@ -708,7 +706,7 @@ pub const Parser = struct {
                     })) {
                         return printError(
                             "Member not found in struct.",
-                            ZiQlParserError.MemberNotFound,
+                            ZipponError.MemberNotFound,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
@@ -723,7 +721,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected a member name.",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -745,7 +743,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected , or ] or [",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -757,7 +755,7 @@ pub const Parser = struct {
                 .r_bracket => state = .end,
                 else => return printError(
                     "Error: Expected , or ]",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -794,10 +792,10 @@ pub const Parser = struct {
                 .identifier => {
                     member_name = self.toker.getTokenSlice(token);
                     if (!(self.schema_engine.isMemberNameInStruct(struct_name, member_name) catch {
-                        return ZiQlParserError.StructNotFound;
+                        return ZipponError.StructNotFound;
                     })) return printError(
                         "Member not found in struct.",
-                        ZiQlParserError.MemberNotFound,
+                        ZipponError.MemberNotFound,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -820,7 +818,7 @@ pub const Parser = struct {
                 => if (order_full) |o| {
                     if (!o) return printError(
                         "Expected member name.",
-                        ZiQlParserError.MemberMissing,
+                        ZipponError.MemberMissing,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -833,7 +831,7 @@ pub const Parser = struct {
                 } else {
                     return printError(
                         "Expected member name.",
-                        ZiQlParserError.MemberMissing,
+                        ZipponError.MemberMissing,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -841,7 +839,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected member name.",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -853,7 +851,7 @@ pub const Parser = struct {
                 .equal => state = .expect_new_value,
                 else => return printError(
                     "Error: Expected =",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -861,7 +859,7 @@ pub const Parser = struct {
             },
 
             .expect_new_value => {
-                const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZiQlParserError.StructNotFound;
+                const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZipponError.StructNotFound;
                 map.put(member_name, try self.parseConditionValue(allocator, struct_name, data_type, &token)) catch return ZipponError.MemoryError;
                 if (data_type == .link or data_type == .link_array) {
                     token = self.toker.last_token;
@@ -875,7 +873,7 @@ pub const Parser = struct {
                 .comma => state = .expect_member_OR_value,
                 else => return printError(
                     "Error: Expect , or )",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -898,7 +896,7 @@ pub const Parser = struct {
             .keyword_not_in => .not_in,
             else => return printError(
                 "Error: Expected condition. Including < > <= >= = !=",
-                ZiQlParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
@@ -934,7 +932,7 @@ pub const Parser = struct {
                 if (token.tag != tag) {
                     return printError(
                         "Error: Wrong type", // TODO: Print the expected type
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -946,7 +944,7 @@ pub const Parser = struct {
                 if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
                     return printError(
                         "Error: Expected bool",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -959,7 +957,7 @@ pub const Parser = struct {
                     if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
                         return printError(
                             "Error: Expected bool or ]",
-                            ZiQlParserError.SynthaxError,
+                            ZipponError.SynthaxError,
                             self.toker.buffer,
                             token.loc.start,
                             token.loc.end,
@@ -1000,7 +998,7 @@ pub const Parser = struct {
                     const uuid = UUID.parse(self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.InvalidUUID;
                     if (!self.schema_engine.isUUIDExist(struct_name, uuid)) return printError(
                         "Error: UUID do not exist in database.",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -1027,7 +1025,7 @@ pub const Parser = struct {
 
                     if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
                         "Error: Expected filter",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -1047,7 +1045,7 @@ pub const Parser = struct {
 
                 else => return printError(
                     "Error: Expected uuid or none",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -1075,7 +1073,7 @@ pub const Parser = struct {
 
                     if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
                         "Error: Expected filter",
-                        ZiQlParserError.SynthaxError,
+                        ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
@@ -1094,7 +1092,7 @@ pub const Parser = struct {
                 },
                 else => return printError(
                     "Error: Expected uuid or none",
-                    ZiQlParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -1112,7 +1110,7 @@ pub const Parser = struct {
         while (token.tag != .r_bracket) : (token = self.toker.next()) {
             if (token.tag != tag) return printError(
                 "Error: Wrong type.",
-                ZiQlParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
@@ -1123,14 +1121,14 @@ pub const Parser = struct {
 };
 
 test "Synthax error" {
-    try expectParsingError("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=7db1f06d-a5a7-4917-8cc6-4d490191c9c1, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB {}", ZiQlParserError.StructNotFound);
-    try expectParsingError("GRAB User {qwe = 'qwe'}", ZiQlParserError.MemberNotFound);
-    try expectParsingError("ADD User (name='Bob')", ZiQlParserError.MemberMissing);
-    try expectParsingError("GRAB User {name='Bob'", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {age = 50 name='Bob'}", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {age <14 AND (age>55}", ZiQlParserError.SynthaxError);
-    try expectParsingError("GRAB User {name < 'Hello'}", ZiQlParserError.ConditionError);
+    try expectParsingError("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=7db1f06d-a5a7-4917-8cc6-4d490191c9c1, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)", ZipponError.SynthaxError);
+    try expectParsingError("GRAB {}", ZipponError.StructNotFound);
+    try expectParsingError("GRAB User {qwe = 'qwe'}", ZipponError.MemberNotFound);
+    try expectParsingError("ADD User (name='Bob')", ZipponError.MemberMissing);
+    try expectParsingError("GRAB User {name='Bob'", ZipponError.SynthaxError);
+    try expectParsingError("GRAB User {age = 50 name='Bob'}", ZipponError.SynthaxError);
+    try expectParsingError("GRAB User {age <14 AND (age>55}", ZipponError.SynthaxError);
+    try expectParsingError("GRAB User {name < 'Hello'}", ZipponError.ConditionError);
 }
 
 test "Clear" {
@@ -1247,7 +1245,7 @@ fn testParsing(source: [:0]const u8) !void {
     try parser.parse();
 }
 
-fn expectParsingError(source: [:0]const u8, err: ZiQlParserError) !void {
+fn expectParsingError(source: [:0]const u8, err: ZipponError) !void {
     const TEST_DATA_DIR = @import("config").TEST_DATA_DIR;
 
     var db_engine = DBEngine.init(TEST_DATA_DIR, null);
