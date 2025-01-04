@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="/ZipponDB"><img src="images/banner.png" alt="ZipponDB"></a>
+  <a href="/ZipponDB"><img src="https://mrbounty.github.io/ZipponDB/images/banner.png" alt="ZipponDB"></a>
 </p>
 <p align="center">
     <em>Minimalist Lightweight General Purpose Database written in Zig</em>
