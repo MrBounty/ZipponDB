@@ -1,26 +1,32 @@
-![alt text](https://github.com/MrBounty/ZipponDB/blob/main/docs/images/banner.png)
+<p align="center">
+  <a href="/ZipponDB"><img src="images/banner.png" alt="ZipponDB"></a>
+</p>
+<p align="center">
+    <em>Minimalist Lightweight General Purpose Database written in Zig</em>
+</p>
+
+---
+
+**Documentation**: <a href="/ZipponDB" target="_blank">https://mrbounty.github.io/ZipponDB</a>
+
+**Source Code**: <a href="https://github.com/MrBounty/ZipponDB" target="_blank">https://github.com/MrBounty/ZipponDB</a>
+
+---
 
 ZipponDB is a database built from the ground up in Zig, with zero external dependencies. Designed for simplicity, 
 performance, and portability, it's almost usable for small to 
 medium applications that want a quick and simple database.
 
-Key Features:
+## Key Features
 
 * **Small Binary:** ~300kb.
-* **Fast:** Parse millions of entities in milliseconds.
+* **Fast:** Parse millions of entities in milliseconds.*
 * **Relationship:** Build with focus on easy relationship.
-* **Query Language:** Use it's own simple query language.
+* **Query Language:** Use it's own stupid query language.
 * **No dependencies:** Depend on nothing, every line of code running is in the codebase and written for ZipponDB.
 * **Open-source:** Open-source under MIT licence.
-* **Portable:** Easily compiled and deployed across various platforms.*
-* **Low memory and safe:** Low memory footprint. (~8Mb / 100k entities)**.
 
-For more informations visit the docs: https://mrbounty.github.io/ZipponDB/
-
-<small>* Plan for more platforms like arm, 32 bit system.</small>
-<small>** Plan for optimizations.</small>
-
-***Note: ZipponDB is still in Alpha v0.2, see roadmap.***
+<small>* Check <a href="/Benchmark">benchmark</a>.</small>
 
 # Declare a schema
 
