@@ -58,7 +58,7 @@ pub fn send(comptime format: []const u8, args: anytype) void {
 
 /// Print an error and send it to the user pointing to the token
 pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, start: ?usize, end: ?usize) ZipponError {
-    if (config.DONT_SEND) return err;
+    if (config.DONT_SEND_ERROR) return err;
     fa.reset();
 
     var buffer = std.ArrayList(u8).init(allocator);

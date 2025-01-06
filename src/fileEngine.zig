@@ -872,7 +872,7 @@ pub const FileEngine = struct {
         _ = sync_context.completeThread();
     }
 
-    /// Will delete all entity based on the filter. Will also write a JSON format list of all UUID deleted into the buffer
+    /// Delete all entity based on the filter. Will also write a JSON format list of all UUID deleted into the buffer
     pub fn deleteEntities(
         self: *FileEngine,
         struct_name: []const u8,
@@ -927,6 +927,7 @@ pub const FileEngine = struct {
         writer.writeByte(']') catch return FileEngineError.WriteError;
     }
 
+    /// TODO: Delete the file if it is not 0 and is empty at the end
     fn deleteEntitiesOneFile(
         sstruct: SchemaStruct,
         filter: ?Filter,
@@ -940,7 +941,7 @@ pub const FileEngine = struct {
         defer fa.reset();
         const allocator = fa.allocator();
 
-        const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
+        const path = std.fmt.allocPrint(allocator, "{d}.zid", .{file_index}) catch |err| {
             sync_context.logError("Error creating file path", err);
             return;
         };
@@ -951,8 +952,7 @@ pub const FileEngine = struct {
         };
         defer iter.deinit();
 
-        var new_path_buffer: [128]u8 = undefined;
-        const new_path = std.fmt.bufPrint(&new_path_buffer, "{d}.zid.new", .{file_index}) catch |err| {
+        const new_path = std.fmt.allocPrint(allocator, "{d}.zid.new", .{file_index}) catch |err| {
             sync_context.logError("Error creating file path", err);
             return;
         };
@@ -968,19 +968,20 @@ pub const FileEngine = struct {
         };
         defer new_writer.deinit();
 
+        var finish_writing = false;
         while (iter.next() catch |err| {
             sync_context.logError("Error during iter", err);
             return;
         }) |row| {
-            if (sync_context.checkStructLimit()) break;
-            if (filter == null or filter.?.evaluate(row)) {
+            if (!finish_writing and (filter == null or filter.?.evaluate(row))) {
                 writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
                     sync_context.logError("Error writting", err);
                     return;
                 };
 
-                if (sync_context.incrementAndCheckStructLimit()) break;
+                finish_writing = sync_context.incrementAndCheckStructLimit();
             } else {
+                std.debug.print("Oups", .{});
                 new_writer.write(row) catch |err| {
                     sync_context.logError("Error writing unchanged data", err);
                     return;
