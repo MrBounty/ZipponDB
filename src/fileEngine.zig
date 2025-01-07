@@ -976,7 +976,7 @@ pub const FileEngine = struct {
             sync_context.logError("Error initializing DataWriter", err);
             return;
         };
-        defer new_writer.deinit();
+        errdefer new_writer.deinit();
 
         var finish_writing = false;
         while (iter.next() catch |err| {
@@ -1009,12 +1009,22 @@ pub const FileEngine = struct {
             return;
         };
 
-        dir.rename(new_path, path) catch |err| {
-            sync_context.logError("Error renaming new file", err);
+        const file_stat = new_writer.fileStat() catch |err| {
+            sync_context.logError("Error getting new file stat", err);
             return;
         };
+        new_writer.deinit();
+        if (file_index != 0 and file_stat.size == 0) dir.deleteFile(new_path) catch |err| {
+            sync_context.logError("Error deleting empty new file", err);
+            return;
+        } else {
+            dir.rename(new_path, path) catch |err| {
+                sync_context.logError("Error renaming new file", err);
+                return;
+            };
+        }
 
-        _ = sync_context.completeThread();
+        sync_context.completeThread();
     }
 
     // --------------------ZipponData utils--------------------
