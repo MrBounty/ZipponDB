@@ -685,26 +685,36 @@ pub const FileEngine = struct {
     pub fn addEntity(
         self: *FileEngine,
         struct_name: []const u8,
-        map: std.StringHashMap(ConditionValue),
+        maps: []std.StringHashMap(ConditionValue),
         writer: anytype,
-        n: usize,
     ) ZipponError!void {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const allocator = arena.allocator();
 
-        const file_index = try self.getFirstUsableIndexFile(struct_name); // TODO: Speed up this
-
-        const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
-        const data = try self.orderedNewData(allocator, struct_name, map);
+        var file_index = try self.getFirstUsableIndexFile(struct_name); // TODO: Speed up this
+        var path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
 
         var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
         defer data_writer.deinit();
 
-        for (0..n) |_| data_writer.write(data) catch return FileEngineError.ZipponDataError;
-        data_writer.flush() catch return FileEngineError.ZipponDataError;
+        for (maps) |map| {
+            const data = try self.orderedNewData(allocator, struct_name, map);
+            data_writer.write(data) catch return FileEngineError.ZipponDataError;
+            writer.print("\"{s}\", ", .{UUID.format_bytes(data[0].UUID)}) catch return FileEngineError.WriteError;
 
-        writer.print("\"{s}\", ", .{UUID.format_bytes(data[0].UUID)}) catch return FileEngineError.WriteError;
+            const file_stat = data_writer.fileStat() catch return ZipponError.ZipponDataError;
+            if (file_stat.size > MAX_FILE_SIZE) {
+                file_index = try self.getFirstUsableIndexFile(struct_name);
+                data_writer.flush() catch return FileEngineError.ZipponDataError;
+                data_writer.deinit();
+
+                path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
+                data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
+            }
+        }
+
+        data_writer.flush() catch return FileEngineError.ZipponDataError;
     }
 
     pub fn updateEntities(

@@ -509,7 +509,7 @@ pub const ArrayIterator = struct {
 /// Performance concern once again.
 pub const DataWriter = struct {
     file: std.fs.File,
-    writer: std.io.BufferedWriter(4096, std.fs.File.Writer),
+    writer: std.io.BufferedWriter(4096, std.fs.File.Writer), // TODO: Increase buffer size, this should speed up a bit
 
     pub fn init(name: []const u8, dir: ?std.fs.Dir) !DataWriter {
         const d_ = dir orelse std.fs.cwd();
@@ -532,6 +532,10 @@ pub const DataWriter = struct {
 
     pub fn flush(self: *DataWriter) !void {
         try self.writer.flush();
+    }
+
+    pub fn fileStat(self: DataWriter) !std.fs.File.Stat {
+        return self.file.stat();
     }
 };
 
@@ -557,7 +561,7 @@ pub fn statFile(name: []const u8, dir: ?std.fs.Dir) !std.fs.File.Stat {
 // I have almost more lines of test than the real stuff x)
 // But I think everything is tested to be fair, so good stuff
 // It also write benchmark so you can benchmark on your own hardware
-// The data write and read is not really representative of real worl tho
+// The data write and read is not really representative of real world tho
 
 test "Array Iterators" {
     const allocator = std.testing.allocator;

@@ -309,7 +309,7 @@ pub const Parser = struct {
                 ),
             },
 
-            // TODO: Be able to do it in batch
+            // TODO: Speed up batch by flushing one time and speed up how to find which file to use
             .parse_new_data_and_add_data => {
                 var order = std.ArrayList([]const u8).init(allocator);
                 defer order.deinit();
@@ -319,9 +319,14 @@ pub const Parser = struct {
                 defer buff.deinit();
                 buff.writer().writeAll("[") catch return ZipponError.WriteError;
 
-                while (true) {
-                    var data_map = std.StringHashMap(ConditionValue).init(allocator);
-                    defer data_map.deinit();
+                var maps = std.ArrayList(std.StringHashMap(ConditionValue)).init(allocator);
+                defer maps.deinit();
+
+                var data_map = std.StringHashMap(ConditionValue).init(allocator);
+                defer data_map.deinit();
+
+                while (true) { // I could multithread that as it do take a long time for big benchmark
+                    data_map.clearRetainingCapacity();
                     try self.parseNewData(allocator, &data_map, struct_name, &order, ordered);
                     ordered = true;
 
@@ -345,12 +350,15 @@ pub const Parser = struct {
                         );
                     }
 
-                    token = self.toker.last_token;
-                    self.file_engine.addEntity(struct_name, data_map, &buff.writer(), 1) catch return ZipponError.CantWriteEntity;
+                    maps.append(data_map.clone() catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
 
+                    token = self.toker.last_token;
                     if (token.tag == .l_paren) continue;
                     break;
                 }
+
+                self.file_engine.addEntity(struct_name, maps.items, &buff.writer()) catch return ZipponError.CantWriteEntity;
+
                 buff.writer().writeAll("]") catch return ZipponError.WriteError;
                 send("{s}", .{buff.items});
                 state = .end;
@@ -779,7 +787,7 @@ pub const Parser = struct {
     ) !void {
         var token = self.toker.next();
         var keep_next = false;
-        var member_name: []const u8 = undefined; // Maybe use allocator.alloc
+        var member_name: []const u8 = undefined;
         var state: State = .expect_member_OR_value;
         var i: usize = 0;
 
@@ -970,29 +978,30 @@ pub const Parser = struct {
         }
 
         // And finally create the ConditionValue
-        var value: ConditionValue = undefined;
+        // FIXME: This take the majority of time when ADD in big batch. Need serious speed up. I aim to be able to load a simple 10MB query in less then 0.1s
+        // Rn for 100_000 users for around 10Mb, it take 30s... I mean come on, 30s ? For 10MB ? That suck...
         switch (data_type) {
-            .int => value = ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
-            .float => value = ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
-            .str => value = ConditionValue.initStr(self.toker.buffer[start_index + 1 .. token.loc.end - 1]),
-            .date => value = ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]),
-            .time => value = ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
-            .datetime => value = ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
-            .bool => value = ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
-            .int_array => value = try ConditionValue.initArrayInt(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .str_array => value = try ConditionValue.initArrayStr(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .bool_array => value = try ConditionValue.initArrayBool(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .float_array => value = try ConditionValue.initArrayFloat(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .date_array => value = try ConditionValue.initArrayDate(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .time_array => value = try ConditionValue.initArrayTime(allocator, self.toker.buffer[start_index..token.loc.end]),
-            .datetime_array => value = try ConditionValue.initArrayDateTime(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .int => return ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
+            .float => return ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
+            .str => return ConditionValue.initStr(self.toker.buffer[start_index + 1 .. token.loc.end - 1]),
+            .date => return ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]),
+            .time => return ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
+            .datetime => return ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
+            .bool => return ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
+            .int_array => return try ConditionValue.initArrayInt(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .str_array => return try ConditionValue.initArrayStr(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .bool_array => return try ConditionValue.initArrayBool(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .float_array => return try ConditionValue.initArrayFloat(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .date_array => return try ConditionValue.initArrayDate(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .time_array => return try ConditionValue.initArrayTime(allocator, self.toker.buffer[start_index..token.loc.end]),
+            .datetime_array => return try ConditionValue.initArrayDateTime(allocator, self.toker.buffer[start_index..token.loc.end]),
             .link => switch (token.tag) {
-                .keyword_none => {
+                .keyword_none => { // TODO: Stop creating a map if empty, can be null or something. Or maybe just keep one map link that in memory, so I dont create it everytime
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
                     map.* = std.AutoHashMap(UUID, void).init(allocator);
-                    _ = map.getOrPut(UUID.parse("00000000-0000-0000-0000-000000000000") catch @panic("Sorry wot ?")) catch return ZipponError.MemoryError;
-                    value = ConditionValue.initLink(map);
+                    map.put(dtype.Zero, {}) catch return ZipponError.MemoryError;
                     _ = self.toker.next();
+                    return ConditionValue.initLink(map);
                 },
                 .uuid_literal => {
                     const uuid = UUID.parse(self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.InvalidUUID;
@@ -1006,9 +1015,9 @@ pub const Parser = struct {
 
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
                     map.* = std.AutoHashMap(UUID, void).init(allocator);
-                    _ = map.getOrPut(uuid) catch return ZipponError.MemoryError;
-                    value = ConditionValue.initLink(map);
+                    map.put(uuid, {}) catch return ZipponError.MemoryError;
                     _ = self.toker.next();
+                    return ConditionValue.initLink(map);
                 },
                 .l_brace, .l_bracket => {
                     var filter: ?Filter = null;
@@ -1040,7 +1049,7 @@ pub const Parser = struct {
                         map,
                         &additional_data,
                     );
-                    value = ConditionValue.initLink(map);
+                    return ConditionValue.initLink(map);
                 },
 
                 else => return printError(
@@ -1055,8 +1064,8 @@ pub const Parser = struct {
                 .keyword_none => {
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
                     map.* = std.AutoHashMap(UUID, void).init(allocator);
-                    value = ConditionValue.initArrayLink(map);
                     _ = self.toker.next();
+                    return ConditionValue.initArrayLink(map);
                 },
                 .l_brace, .l_bracket => {
                     var filter: ?Filter = null;
@@ -1088,7 +1097,7 @@ pub const Parser = struct {
                         map,
                         &additional_data,
                     );
-                    value = ConditionValue.initArrayLink(map);
+                    return ConditionValue.initArrayLink(map);
                 },
                 else => return printError(
                     "Error: Expected uuid or none",
@@ -1100,8 +1109,6 @@ pub const Parser = struct {
             },
             .self => unreachable,
         }
-
-        return value;
     }
 
     /// Check if all token in an array is of one specific type
