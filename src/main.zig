@@ -161,6 +161,12 @@ pub const DBEngine = struct {
                 return self;
             };
             self.file_engine.schema_engine = self.schema_engine;
+            self.file_engine.writeSchemaFile(self.schema_engine.null_terminated) catch |err| {
+                log.err("Error saving schema file: {any}", .{err});
+                self.state = .MissingSchemaEngine;
+                return self;
+            };
+
             self.state = .Ok;
         } else {
             log.info(HELP_MESSAGE.no_schema, .{self.file_engine.path_to_ZipponDB_dir});
