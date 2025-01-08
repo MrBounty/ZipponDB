@@ -16,6 +16,11 @@ pub const Token = struct {
         .{ "OR", .keyword_or },
         .{ "TO", .keyword_to },
         .{ "NONE", .keyword_none },
+        .{ "NOW", .keyword_now },
+        .{ "APPEND", .keyword_append },
+        .{ "POP", .keyword_pop },
+        .{ "REMOVE", .keyword_remove },
+        .{ "REMOVEAT", .keyword_remove_at },
         .{ "grab", .keyword_grab },
         .{ "update", .keyword_update },
         .{ "delete", .keyword_delete },
@@ -27,6 +32,7 @@ pub const Token = struct {
         .{ "none", .keyword_none },
         .{ "true", .bool_literal_true },
         .{ "false", .bool_literal_false },
+        .{ "now", .keyword_now },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -47,6 +53,11 @@ pub const Token = struct {
         keyword_or,
         keyword_to,
         keyword_none,
+        keyword_now,
+        keyword_append,
+        keyword_pop,
+        keyword_remove,
+        keyword_remove_at,
 
         string_literal,
         int_literal,

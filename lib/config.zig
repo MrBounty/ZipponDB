@@ -2,12 +2,9 @@ pub const BUFFER_SIZE = 1024 * 10; // Used a bit everywhere. The size for the sc
 pub const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 pub const CPU_CORE = 16;
 
-// Testing
-pub const TEST_DATA_DIR = "data";
-
 // Debug
 pub const PRINT_STATE = false;
-pub const DONT_SEND = true;
+pub const DONT_SEND = false;
 pub const DONT_SEND_ERROR = false;
 pub const RESET_LOG_AT_RESTART = false; // If true, will reset the log file at the start of the db, otherwise just keep adding to it
 

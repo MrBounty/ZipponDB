@@ -1,0 +1,23 @@
+User (
+  name: str,
+  age: int,
+  email: str,
+  bday: date,
+  friends: []User,
+  posts: []Post,
+  comments: []Comment,
+)
+
+Post (
+  text: str,
+  at: datetime,
+  from: User,
+  comments: []Comment,
+)
+
+Comment (
+  text: str,
+  at: datetime,
+  from: User,
+  of: Post,
+)

@@ -937,7 +937,6 @@ pub const FileEngine = struct {
         writer.writeByte(']') catch return FileEngineError.WriteError;
     }
 
-    /// TODO: Delete the file if it is not 0 and is empty at the end
     fn deleteEntitiesOneFile(
         sstruct: SchemaStruct,
         filter: ?Filter,
@@ -1027,6 +1026,9 @@ pub const FileEngine = struct {
         sync_context.completeThread();
     }
 
+    // TODO: Make a function that take a list of UUID and remove all instance in relationship
+    // It is to remove when they are deleted
+
     // --------------------ZipponData utils--------------------
 
     //TODO: Update to make it use ConditionValue
@@ -1038,8 +1040,8 @@ pub const FileEngine = struct {
             .unix => |v| return zid.Data.initUnix(v),
             .str => |v| return zid.Data.initStr(v),
             .link => |v| {
-                var iter = v.keyIterator();
                 if (v.count() > 0) {
+                    var iter = v.keyIterator();
                     return zid.Data.initUUID(iter.next().?.bytes);
                 } else {
                     const uuid = UUID.parse("00000000-0000-0000-0000-000000000000") catch return ZipponError.InvalidUUID;
@@ -1066,7 +1068,7 @@ pub const FileEngine = struct {
     }
 
     /// Take a map from the parseNewData and return an ordered array of Data to be use in a DataWriter
-    /// TODO: Optimize
+    /// TODO: Optimize and maybe put it somewhere else than fileEngine
     fn orderedNewData(
         self: *FileEngine,
         allocator: Allocator,
@@ -1134,17 +1136,17 @@ pub const FileEngine = struct {
         return true;
     }
 
-    pub fn writeSchemaFile(self: *FileEngine, null_terminated_schema_buff: [:0]const u8) FileEngineError!void {
+    pub fn writeSchemaFile(self: *FileEngine, null_terminated_schema_buff: [:0]const u8) ZipponError!void {
         var zippon_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{}) catch return FileEngineError.MemoryError;
         defer zippon_dir.close();
 
         zippon_dir.deleteFile("schema") catch |err| switch (err) {
             error.FileNotFound => {},
-            else => return FileEngineError.DeleteFileError,
+            else => return ZipponError.DeleteFileError,
         };
 
-        var file = zippon_dir.createFile("schema", .{}) catch return FileEngineError.CantMakeFile;
+        var file = zippon_dir.createFile("schema", .{}) catch return ZipponError.CantMakeFile;
         defer file.close();
-        file.writeAll(null_terminated_schema_buff) catch return FileEngineError.WriteError;
+        file.writeAll(null_terminated_schema_buff) catch return ZipponError.WriteError;
     }
 };

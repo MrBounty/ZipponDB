@@ -69,7 +69,7 @@ pub fn build(b: *std.Build) void {
     const run_tests4 = b.addRunArtifact(tests4);
 
     const tests5 = b.addTest(.{
-        .root_source_file = b.path("src/ziqlParser.zig"),
+        .root_source_file = b.path("test.zig"),
         .target = target,
         .optimize = optimize,
         .name = "ZiQL parser",

@@ -42,6 +42,8 @@ pub fn parseBool(value_str: []const u8) bool {
 }
 
 pub fn parseDate(value_str: []const u8) DateTime {
+    if (std.mem.eql(u8, value_str, "NOW")) return DateTime.now();
+
     const year: u16 = std.fmt.parseInt(u16, value_str[0..4], 10) catch 0;
     const month: u16 = std.fmt.parseInt(u16, value_str[5..7], 10) catch 0;
     const day: u16 = std.fmt.parseInt(u16, value_str[8..10], 10) catch 0;
@@ -74,6 +76,8 @@ pub fn parseArrayDateUnix(allocator: std.mem.Allocator, array_str: []const u8) !
 }
 
 pub fn parseTime(value_str: []const u8) DateTime {
+    if (std.mem.eql(u8, value_str, "NOW")) return DateTime.now();
+
     const hours: u16 = std.fmt.parseInt(u16, value_str[0..2], 10) catch 0;
     const minutes: u16 = std.fmt.parseInt(u16, value_str[3..5], 10) catch 0;
     const seconds: u16 = if (value_str.len > 6) std.fmt.parseInt(u16, value_str[6..8], 10) catch 0 else 0;
@@ -107,6 +111,8 @@ pub fn parseArrayTimeUnix(allocator: std.mem.Allocator, array_str: []const u8) !
 }
 
 pub fn parseDatetime(value_str: []const u8) DateTime {
+    if (std.mem.eql(u8, value_str, "NOW")) return DateTime.now();
+
     const year: u16 = std.fmt.parseInt(u16, value_str[0..4], 10) catch 0;
     const month: u16 = std.fmt.parseInt(u16, value_str[5..7], 10) catch 0;
     const day: u16 = std.fmt.parseInt(u16, value_str[8..10], 10) catch 0;

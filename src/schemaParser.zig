@@ -66,13 +66,16 @@ pub const Parser = struct {
                     type_list.append(.self) catch return SchemaParserError.MemoryError;
                 },
                 .eof => state = .end,
-                else => return printError(
-                    "Error parsing schema: Expected a struct name",
-                    SchemaParserError.SynthaxError,
-                    self.toker.buffer,
-                    token.loc.start,
-                    token.loc.end,
-                ),
+                else => {
+                    std.debug.print("{s}\n", .{self.toker.getTokenSlice(token)});
+                    return printError(
+                        "Error parsing schema: Expected a struct name",
+                        SchemaParserError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                },
             },
 
             .expect_l_paren => switch (token.tag) {
@@ -116,6 +119,7 @@ pub const Parser = struct {
                 type_list = std.ArrayList(DataType).init(self.allocator);
 
                 state = .expect_struct_name_OR_end;
+                keep_next = true;
             },
 
             .expect_member_name => {

@@ -12,12 +12,12 @@
 - [X] File engine  
 
 #### v0.2 - Usable  
-- [~] Relationships  
-- [ ] Arrays
+- [X] Relationships  
 - [X] Custom data file
 - [X] Date
 - [X] Logs
 - [X] Query multi threading
+- [ ] Arrays manipulation
 
 #### v0.3 - QoL 
 - [X] Docs website

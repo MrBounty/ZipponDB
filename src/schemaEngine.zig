@@ -196,6 +196,15 @@ pub const SchemaEngine = struct {
         return false;
     }
 
+    /// Return the SchemaStruct of the struct that the member is linked. So if it is not a link, it is itself, if it is a link, it the the sstruct of the link
+    pub fn linkedStructName(self: SchemaEngine, struct_name: []const u8, member_name: []const u8) ZipponError!SchemaStruct {
+        const sstruct = try self.structName2SchemaStruct(struct_name);
+        if (sstruct.links.get(member_name)) |struct_link_name| {
+            return try self.structName2SchemaStruct(struct_link_name);
+        }
+        return sstruct;
+    }
+
     // Return true if the map have all the member name as key and not more
     pub fn checkIfAllMemberInMap(
         self: SchemaEngine,

@@ -90,6 +90,7 @@ pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, sta
     writer.writeAll("\"}") catch {};
 
     send("{s}", .{buffer.items});
+    if (config.DONT_SEND and !config.DONT_SEND_ERROR) std.debug.print("{s}", .{buffer.items});
     return err;
 }
 

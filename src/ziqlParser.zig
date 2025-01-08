@@ -370,7 +370,7 @@ pub const Parser = struct {
 
     /// Take an array of UUID and populate it with what match what is between {}
     /// Main is to know if between {} or (), main is true if between {}, otherwise between () inside {}
-    fn parseFilter(self: Parser, allocator: Allocator, struct_name: []const u8, is_sub: bool) ZipponError!Filter {
+    pub fn parseFilter(self: Parser, allocator: Allocator, struct_name: []const u8, is_sub: bool) ZipponError!Filter {
         var filter = try Filter.init(allocator);
         errdefer filter.deinit();
 
@@ -492,6 +492,7 @@ pub const Parser = struct {
         var keep_next = false;
         var state: State = .expect_member;
         var token = token_ptr.*;
+        var member_name: []const u8 = undefined;
 
         var condition = Condition{};
 
@@ -527,6 +528,7 @@ pub const Parser = struct {
                         struct_name,
                         self.toker.getTokenSlice(token),
                     ) catch return ZipponError.MemberNotFound;
+                    member_name = self.toker.getTokenSlice(token);
                     state = .expect_operation;
                 },
                 else => return printError(
@@ -544,7 +546,8 @@ pub const Parser = struct {
             },
 
             .expect_value => {
-                condition.value = try self.parseConditionValue(allocator, struct_name, condition.data_type, &token);
+                log.debug("Parse condition value of member {s}", .{member_name});
+                condition.value = try self.parseConditionValue(allocator, struct_name, member_name, condition.data_type, &token);
                 state = .end;
             },
 
@@ -664,6 +667,7 @@ pub const Parser = struct {
         var token = self.toker.next();
         var keep_next = false;
         var state: State = .expect_limit;
+        var last_member: []const u8 = undefined;
 
         while (state != .end) : ({
             token = if ((!keep_next) and (state != .end)) self.toker.next() else token;
@@ -724,6 +728,7 @@ pub const Parser = struct {
                         self.toker.getTokenSlice(token),
                         try self.schema_engine.memberName2DataIndex(struct_name, self.toker.getTokenSlice(token)),
                     );
+                    last_member = self.toker.getTokenSlice(token);
 
                     state = .expect_comma_OR_r_bracket_OR_l_bracket;
                 },
@@ -740,12 +745,11 @@ pub const Parser = struct {
                 .comma => state = .expect_member,
                 .r_bracket => state = .end,
                 .l_bracket => {
-                    // Here now childrens is null, so I need to init it
-
+                    const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
                     try self.parseAdditionalData(
                         allocator,
                         &additional_data.childrens.items[additional_data.childrens.items.len - 1].additional_data,
-                        struct_name,
+                        sstruct.links.get(last_member).?,
                     );
                     state = .expect_comma_OR_r_bracket;
                 },
@@ -823,6 +827,7 @@ pub const Parser = struct {
                 .l_bracket,
                 .l_brace,
                 .keyword_none,
+                .keyword_now,
                 => if (order_full) |o| {
                     if (!o) return printError(
                         "Expected member name.",
@@ -868,7 +873,7 @@ pub const Parser = struct {
 
             .expect_new_value => {
                 const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZipponError.StructNotFound;
-                map.put(member_name, try self.parseConditionValue(allocator, struct_name, data_type, &token)) catch return ZipponError.MemoryError;
+                map.put(member_name, try self.parseConditionValue(allocator, struct_name, member_name, data_type, &token)) catch return ZipponError.MemoryError;
                 if (data_type == .link or data_type == .link_array) {
                     token = self.toker.last_token;
                     keep_next = true;
@@ -913,23 +918,17 @@ pub const Parser = struct {
     }
 
     /// To run just after a condition like = or > or >= to get the corresponding ConditionValue that you need to compare
-    fn parseConditionValue(self: Parser, allocator: Allocator, struct_name: []const u8, data_type: dtype.DataType, token: *Token) ZipponError!ConditionValue {
+    fn parseConditionValue(self: Parser, allocator: Allocator, struct_name: []const u8, member_name: []const u8, data_type: dtype.DataType, token: *Token) ZipponError!ConditionValue {
         const start_index = token.loc.start;
         const expected_tag: ?Token.Tag = switch (data_type) {
             .int => .int_literal,
             .float => .float_literal,
             .str => .string_literal,
             .self => .uuid_literal,
-            .date => .date_literal,
-            .time => .time_literal,
-            .datetime => .datetime_literal,
             .int_array => .int_literal,
             .float_array => .float_literal,
             .str_array => .string_literal,
-            .date_array => .date_literal,
-            .time_array => .time_literal,
-            .datetime_array => .datetime_literal,
-            .bool, .bool_array, .link, .link_array => null, // handle separately
+            .bool, .bool_array, .link, .link_array, .date, .time, .datetime, .date_array, .time_array, .datetime_array => null, // handle separately
         };
 
         // Check if the all next tokens are the right one
@@ -948,16 +947,14 @@ pub const Parser = struct {
                 }
             }
         } else switch (data_type) {
-            .bool => {
-                if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
-                    return printError(
-                        "Error: Expected bool",
-                        ZipponError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                }
+            .bool => if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
+                return printError(
+                    "Error: Expected bool",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
             },
             .bool_array => {
                 token.* = self.toker.next();
@@ -965,6 +962,75 @@ pub const Parser = struct {
                     if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
                         return printError(
                             "Error: Expected bool or ]",
+                            ZipponError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
+                }
+            },
+            .date => if (token.tag != .date_literal and token.tag != .keyword_now) {
+                return printError(
+                    "Error: Expected date",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+            },
+            .date_array => {
+                token.* = self.toker.next();
+                while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                    if (token.tag != .date_literal and token.tag != .keyword_now) {
+                        return printError(
+                            "Error: Expected date",
+                            ZipponError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
+                }
+            },
+            .time => if (token.tag != .time_literal and token.tag != .keyword_now) {
+                return printError(
+                    "Error: Expected time",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+            },
+            .time_array => {
+                token.* = self.toker.next();
+                while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                    if (token.tag != .time_literal and token.tag != .keyword_now) {
+                        return printError(
+                            "Error: Expected time",
+                            ZipponError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
+                }
+            },
+            .datetime => if (token.tag != .datetime_literal and token.tag != .keyword_now) {
+                return printError(
+                    "Error: Expected datetime",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+            },
+            .datetime_array => {
+                token.* = self.toker.next();
+                while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                    if (token.tag != .datetime_literal and token.tag != .keyword_now) {
+                        return printError(
+                            "Error: Expected datetime",
                             ZipponError.SynthaxError,
                             self.toker.buffer,
                             token.loc.start,
@@ -1032,7 +1098,13 @@ pub const Parser = struct {
                         token.* = self.toker.next();
                     }
 
-                    if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
+                    const link_sstruct = try self.schema_engine.linkedStructName(struct_name, member_name);
+                    std.debug.print("Link SchemaStruct: {s}\n", .{link_sstruct.name});
+                    if (token.tag == .l_brace) filter = try self.parseFilter( // FIXME: Look like the filter is empty after that (root node is Empty)
+                        allocator,
+                        link_sstruct.name,
+                        false,
+                    ) else return printError(
                         "Error: Expected filter",
                         ZipponError.SynthaxError,
                         self.toker.buffer,
@@ -1040,11 +1112,13 @@ pub const Parser = struct {
                         token.loc.end,
                     );
 
+                    filter.?.debugPrint();
+
                     // Here I have the filter and additionalData
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
                     map.* = std.AutoHashMap(UUID, void).init(allocator);
                     try self.file_engine.populateVoidUUIDMap(
-                        struct_name,
+                        link_sstruct.name,
                         filter,
                         map,
                         &additional_data,
@@ -1080,7 +1154,8 @@ pub const Parser = struct {
                         token.* = self.toker.next();
                     }
 
-                    if (token.tag == .l_brace) filter = try self.parseFilter(allocator, struct_name, false) else return printError(
+                    const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
+                    if (token.tag == .l_brace) filter = try self.parseFilter(allocator, sstruct.links.get(member_name).?, false) else return printError(
                         "Error: Expected filter",
                         ZipponError.SynthaxError,
                         self.toker.buffer,
@@ -1126,176 +1201,3 @@ pub const Parser = struct {
         return token;
     }
 };
-
-test "Synthax error" {
-    try expectParsingError("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend=7db1f06d-a5a7-4917-8cc6-4d490191c9c1, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)", ZipponError.SynthaxError);
-    try expectParsingError("GRAB {}", ZipponError.StructNotFound);
-    try expectParsingError("GRAB User {qwe = 'qwe'}", ZipponError.MemberNotFound);
-    try expectParsingError("ADD User (name='Bob')", ZipponError.MemberMissing);
-    try expectParsingError("GRAB User {name='Bob'", ZipponError.SynthaxError);
-    try expectParsingError("GRAB User {age = 50 name='Bob'}", ZipponError.SynthaxError);
-    try expectParsingError("GRAB User {age <14 AND (age>55}", ZipponError.SynthaxError);
-    try expectParsingError("GRAB User {name < 'Hello'}", ZipponError.ConditionError);
-}
-
-test "Clear" {
-    try testParsing("DELETE User {}");
-}
-
-test "ADD" {
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, friends=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, friends=none, bday=2000/01/04, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, friends=none, bday=2000/06/06, a_time=04:04:54.8741, last_order=2000/01/01-12:45)");
-
-    try testParsing("ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name='Bob'}, friends=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends={name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'Bobibou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends=[1]{name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
-
-    try testParsing("GRAB User {}");
-}
-
-test "ADD batch" {
-    try testParsing("ADD User (name = 'ewq', email='ewq@email.com', age=22, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) (name = 'Roger', email='roger@email.com', age=10, scores=[ 1 11 111 123 562345 123451234 34623465234 12341234 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing("ADD User (name = 'qwe', email='qwe@email.com', age=57, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) ('Rodrigo', 'bob@email.com', 55, [ 1 ], {name = 'qwe'}, none, 2000/01/01, 12:04, 2000/01/01-12:45)");
-
-    try testParsing("GRAB User [name, best_friend] {name = 'Rodrigo'}");
-    try testParsing("GRAB User {}");
-}
-
-test "GRAB filter with string" {
-    try testParsing("GRAB User {name = 'Bob'}");
-    try testParsing("GRAB User {name != 'Brittany Rogers'}");
-}
-
-test "GRAB with additional data" {
-    try testParsing("GRAB User [1] {age < 18}");
-    try testParsing("GRAB User [id, name] {age < 18}");
-    try testParsing("GRAB User [100; name, age] {age < 18}");
-}
-
-test "UPDATE" {
-    try testParsing("UPDATE User [1] {name = 'Bob'} TO (email='new@gmail.com')");
-    try testParsing("GRAB User {}");
-}
-
-test "GRAB filter with int" {
-    try testParsing("GRAB User {age = 18}");
-    try testParsing("GRAB User {age > -18}");
-    try testParsing("GRAB User {age < 18}");
-    try testParsing("GRAB User {age <= 18}");
-    try testParsing("GRAB User {age >= 18}");
-    try testParsing("GRAB User {age != 18}");
-}
-
-test "GRAB filter with date" {
-    try testParsing("GRAB User {bday > 2000/01/01}");
-    try testParsing("GRAB User {a_time < 08:00}");
-    try testParsing("GRAB User {last_order > 2000/01/01-12:45}");
-}
-
-test "Specific query" {
-    try testParsing("GRAB User");
-    try testParsing("GRAB User {}");
-    try testParsing("GRAB User [1]");
-}
-
-test "UPDATE relationship" {
-    try testParsing("UPDATE User [1] {name='Bob'} TO (best_friend = {name='Boba'} )");
-    try testParsing("GRAB User {}");
-}
-
-test "GRAB Relationship Filter" {
-    try testParsing("GRAB User {best_friend IN {name = 'Bob'}}");
-    try testParsing("GRAB User {best_friend IN {name = 'Boba'}}");
-}
-
-test "GRAB Relationship AdditionalData" {
-    try testParsing("GRAB User [name, friends] {}");
-    try testParsing("GRAB User [name, best_friend] {}");
-}
-
-test "GRAB Relationship Sub AdditionalData" {
-    try testParsing("GRAB User [name, friends [name]] {}");
-    try testParsing("GRAB User [name, best_friend [name, friends [age]]] {}");
-}
-
-test "GRAB Relationship AdditionalData Filtered" {
-    try testParsing("GRAB User [2; name, best_friend] {name = 'Bob'}");
-    try testParsing("GRAB User [2; name, best_friend] {best_friend IN {}}");
-    try testParsing("GRAB User [2; name, best_friend] {best_friend !IN {}}");
-}
-
-test "GRAB Relationship dot" {
-    try testParsing("GRAB User.best_friend {}");
-}
-
-test "DELETE" {
-    try testParsing("DELETE User {}");
-}
-
-const DBEngine = @import("main.zig").DBEngine;
-
-fn testParsing(source: [:0]const u8) !void {
-    const TEST_DATA_DIR = @import("config").TEST_DATA_DIR;
-
-    var db_engine = DBEngine.init(TEST_DATA_DIR, null);
-    defer db_engine.deinit();
-
-    var toker = Tokenizer.init(source);
-    var parser = Parser.init(
-        &toker,
-        &db_engine.file_engine,
-        &db_engine.schema_engine,
-    );
-
-    try parser.parse();
-}
-
-fn expectParsingError(source: [:0]const u8, err: ZipponError) !void {
-    const TEST_DATA_DIR = @import("config").TEST_DATA_DIR;
-
-    var db_engine = DBEngine.init(TEST_DATA_DIR, null);
-    defer db_engine.deinit();
-
-    var toker = Tokenizer.init(source);
-    var parser = Parser.init(
-        &toker,
-        &db_engine.file_engine,
-        &db_engine.schema_engine,
-    );
-
-    try std.testing.expectError(err, parser.parse());
-}
-
-test "Parse filter" {
-    try testParseFilter("name = 'Adrien'}");
-    try testParseFilter("name = 'Adrien' AND age > 11}");
-    try testParseFilter("name = 'Adrien' AND (age < 11 OR age > 40)}");
-    try testParseFilter("(name = 'Adrien') AND (age < 11 OR age > 40)}");
-    try testParseFilter("(name = 'Adrien' OR name = 'Bob') AND (age < 11 OR age > 40)}");
-    try testParseFilter("(name = 'Adrien' OR name = 'Bob') AND (age < 11 OR age > 40 AND (age != 20))}");
-}
-
-fn testParseFilter(source: [:0]const u8) !void {
-    const TEST_DATA_DIR = @import("config").TEST_DATA_DIR;
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var db_engine = DBEngine.init(TEST_DATA_DIR, null);
-    defer db_engine.deinit();
-
-    var toker = Tokenizer.init(source);
-    var parser = Parser.init(
-        &toker,
-        &db_engine.file_engine,
-        &db_engine.schema_engine,
-    );
-
-    var filter = try parser.parseFilter(allocator, "User", false);
-    defer filter.deinit();
-    std.debug.print("{s}\n", .{source});
-    filter.debugPrint();
-}
