@@ -52,9 +52,14 @@ The main action is `GRAB`, this will parse files and return data.
 GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
 ```
 
+Can use [] before the filter to tell what to return.  
+```js
+GRAB User [id, email] {name = 'Bob' AND (age > 30 OR age < 10)}
+```
+
 Here a preview to how to use relationship.
 ```js
-GRAB User {best_friend = {name = 'Bob'}}
+GRAB User {best_friend IN {name = 'Bob'}}
 ```
 
 GRAB queries return a list of JSON objects with the data inside, e.g:
