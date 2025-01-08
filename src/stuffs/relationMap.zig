@@ -29,6 +29,7 @@ pub const JsonString = struct {
 };
 
 pub const RelationMap = struct {
+    struct_name: []const u8,
     member_name: []const u8,
     additional_data: AdditionalData,
     map: *std.AutoHashMap([16]u8, JsonString),

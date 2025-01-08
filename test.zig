@@ -139,7 +139,7 @@ test "3 struct ADD" {
     try testParsing(db, "DELETE User {}");
     try testParsing(db, "DELETE Post {}");
     try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, friends=none, posts=none, comments=none, bday=2000/01/01)");
-    try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={}, comments=none)");
+    try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from=none, comments=none)");
     try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={}, comments=none)");
     try testParsing(db, "GRAB Post [id, text, at, from [id, name]] {}");
     try testParsing(db, "GRAB User [id, name] {}");

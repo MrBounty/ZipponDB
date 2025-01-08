@@ -382,106 +382,105 @@ pub const Parser = struct {
             token = if (keep_next) token else self.toker.next();
             keep_next = false;
             if (PRINT_STATE) std.debug.print("parseFilter: {any}\n", .{state});
-        })
-            switch (state) {
-                .expect_condition => switch (token.tag) {
-                    .r_brace => {
-                        if (!is_sub) {
-                            state = .end;
-                        } else {
-                            return printError(
-                                "Error: Expected ) not }",
-                                ZipponError.SynthaxError,
-                                self.toker.buffer,
-                                token.loc.start,
-                                token.loc.end,
-                            );
-                        }
-                    },
-                    .r_paren => {
-                        if (is_sub) {
-                            state = .end;
-                        } else {
-                            return printError(
-                                "Error: Expected } not )",
-                                ZipponError.SynthaxError,
-                                self.toker.buffer,
-                                token.loc.start,
-                                token.loc.end,
-                            );
-                        }
-                    },
-                    .l_paren => {
-                        var sub_filter = try self.parseFilter(allocator, struct_name, true);
-                        filter.addSubFilter(&sub_filter);
-                        token = self.toker.last();
-                        keep_next = true;
-                        state = .expect_ANDOR_OR_end;
-                    },
-                    .identifier => {
-                        const condition = try self.parseCondition(allocator, &token, struct_name);
-                        try filter.addCondition(condition);
-                        token = self.toker.last();
-                        keep_next = true;
-                        state = .expect_ANDOR_OR_end;
-                    },
-                    else => return printError(
-                        "Error: Expected ( or condition.",
-                        ZipponError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    ),
+        }) switch (state) {
+            .expect_condition => switch (token.tag) {
+                .r_brace => {
+                    if (!is_sub) {
+                        state = .end;
+                    } else {
+                        return printError(
+                            "Error: Expected ) not }",
+                            ZipponError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
                 },
-
-                .expect_ANDOR_OR_end => switch (token.tag) {
-                    .r_brace => {
-                        if (!is_sub) {
-                            state = .end;
-                        } else {
-                            return printError(
-                                "Error: Expected ) not }",
-                                ZipponError.SynthaxError,
-                                self.toker.buffer,
-                                token.loc.start,
-                                token.loc.end,
-                            );
-                        }
-                    },
-                    .r_paren => {
-                        if (is_sub) {
-                            state = .end;
-                        } else {
-                            return printError(
-                                "Error: Expected } not )",
-                                ZipponError.SynthaxError,
-                                self.toker.buffer,
-                                token.loc.start,
-                                token.loc.end,
-                            );
-                        }
-                    },
-                    .keyword_and => {
-                        try filter.addLogicalOperator(.AND);
-                        state = .expect_condition;
-                    },
-                    .keyword_or => {
-                        try filter.addLogicalOperator(.OR);
-                        state = .expect_condition;
-                    },
-                    else => return printError(
-                        "Error: Expected AND, OR, or }",
-                        ZipponError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    ),
+                .r_paren => {
+                    if (is_sub) {
+                        state = .end;
+                    } else {
+                        return printError(
+                            "Error: Expected } not )",
+                            ZipponError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
                 },
+                .l_paren => {
+                    var sub_filter = try self.parseFilter(allocator, struct_name, true);
+                    filter.addSubFilter(&sub_filter);
+                    token = self.toker.last();
+                    keep_next = true;
+                    state = .expect_ANDOR_OR_end;
+                },
+                .identifier => {
+                    const condition = try self.parseCondition(allocator, &token, struct_name);
+                    try filter.addCondition(condition);
+                    token = self.toker.last();
+                    keep_next = true;
+                    state = .expect_ANDOR_OR_end;
+                },
+                else => return printError(
+                    "Error: Expected ( or condition.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
+            },
 
-                .end => {},
+            .expect_ANDOR_OR_end => switch (token.tag) {
+                .r_brace => {
+                    if (!is_sub) {
+                        state = .end;
+                    } else {
+                        return printError(
+                            "Error: Expected ) not }",
+                            ZipponError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
+                },
+                .r_paren => {
+                    if (is_sub) {
+                        state = .end;
+                    } else {
+                        return printError(
+                            "Error: Expected } not )",
+                            ZipponError.SynthaxError,
+                            self.toker.buffer,
+                            token.loc.start,
+                            token.loc.end,
+                        );
+                    }
+                },
+                .keyword_and => {
+                    try filter.addLogicalOperator(.AND);
+                    state = .expect_condition;
+                },
+                .keyword_or => {
+                    try filter.addLogicalOperator(.OR);
+                    state = .expect_condition;
+                },
+                else => return printError(
+                    "Error: Expected AND, OR, or }",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
+            },
 
-                else => unreachable,
-            };
+            .end => {},
+
+            else => unreachable,
+        };
 
         return filter;
     }
@@ -1098,8 +1097,9 @@ pub const Parser = struct {
                         token.* = self.toker.next();
                     }
 
+                    additional_data.limit = 1;
+
                     const link_sstruct = try self.schema_engine.linkedStructName(struct_name, member_name);
-                    std.debug.print("Link SchemaStruct: {s}\n", .{link_sstruct.name});
                     if (token.tag == .l_brace) filter = try self.parseFilter( // FIXME: Look like the filter is empty after that (root node is Empty)
                         allocator,
                         link_sstruct.name,
@@ -1112,7 +1112,11 @@ pub const Parser = struct {
                         token.loc.end,
                     );
 
-                    filter.?.debugPrint();
+                    filter = switch (filter.?.root.*) {
+                        .empty => null,
+                        else => filter,
+                    };
+                    std.debug.print("Filter: {any}\n", .{filter});
 
                     // Here I have the filter and additionalData
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
@@ -1154,14 +1158,19 @@ pub const Parser = struct {
                         token.* = self.toker.next();
                     }
 
-                    const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-                    if (token.tag == .l_brace) filter = try self.parseFilter(allocator, sstruct.links.get(member_name).?, false) else return printError(
+                    const link_sstruct = try self.schema_engine.linkedStructName(struct_name, member_name);
+                    if (token.tag == .l_brace) filter = try self.parseFilter(allocator, link_sstruct.name, false) else return printError(
                         "Error: Expected filter",
                         ZipponError.SynthaxError,
                         self.toker.buffer,
                         token.loc.start,
                         token.loc.end,
                     );
+
+                    filter = switch (filter.?.root.*) {
+                        .empty => null,
+                        else => filter,
+                    };
 
                     // Here I have the filter and additionalData
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;

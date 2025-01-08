@@ -244,6 +244,7 @@ pub const SchemaEngine = struct {
             const map = alloc.create(std.AutoHashMap([16]u8, JsonString)) catch return ZipponError.MemoryError;
             map.* = std.AutoHashMap([16]u8, JsonString).init(alloc);
             array.append(RelationMap{
+                .struct_name = sstruct.links.get(child.name).?,
                 .member_name = child.name,
                 .additional_data = child.additional_data, // Maybe I need to check if it exist, im not sure it always exist
                 .map = map,

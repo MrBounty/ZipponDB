@@ -462,7 +462,7 @@ pub const FileEngine = struct {
 
         // I then call parseEntitiesRelationMap on each
         // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
-        for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(struct_name, relation_map, &buff);
+        for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(relation_map.struct_name, relation_map, &buff);
 
         return buff.toOwnedSlice() catch return ZipponError.MemoryError;
     }
@@ -614,7 +614,7 @@ pub const FileEngine = struct {
 
         // I then call parseEntitiesRelationMap on each
         // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
-        for (relation_maps) |*sub_relation_map| try self.parseEntitiesRelationMap(struct_name, sub_relation_map, buff);
+        for (relation_maps) |*sub_relation_map| try self.parseEntitiesRelationMap(sub_relation_map.struct_name, sub_relation_map, buff);
     }
 
     fn parseEntitiesRelationMapOneFile(
