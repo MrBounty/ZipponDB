@@ -45,8 +45,8 @@ pub fn parseDate(value_str: []const u8) DateTime {
     if (std.mem.eql(u8, value_str, "NOW")) return DateTime.now();
 
     const year: u16 = std.fmt.parseInt(u16, value_str[0..4], 10) catch 0;
-    const month: u16 = std.fmt.parseInt(u16, value_str[5..7], 10) catch 0;
-    const day: u16 = std.fmt.parseInt(u16, value_str[8..10], 10) catch 0;
+    const month: u8 = std.fmt.parseInt(u8, value_str[5..7], 10) catch 0;
+    const day: u8 = std.fmt.parseInt(u8, value_str[8..10], 10) catch 0;
 
     return DateTime.init(year, month - 1, day - 1, 0, 0, 0, 0);
 }
@@ -78,9 +78,9 @@ pub fn parseArrayDateUnix(allocator: std.mem.Allocator, array_str: []const u8) !
 pub fn parseTime(value_str: []const u8) DateTime {
     if (std.mem.eql(u8, value_str, "NOW")) return DateTime.now();
 
-    const hours: u16 = std.fmt.parseInt(u16, value_str[0..2], 10) catch 0;
-    const minutes: u16 = std.fmt.parseInt(u16, value_str[3..5], 10) catch 0;
-    const seconds: u16 = if (value_str.len > 6) std.fmt.parseInt(u16, value_str[6..8], 10) catch 0 else 0;
+    const hours: u8 = std.fmt.parseInt(u8, value_str[0..2], 10) catch 0;
+    const minutes: u8 = std.fmt.parseInt(u8, value_str[3..5], 10) catch 0;
+    const seconds: u8 = if (value_str.len > 6) std.fmt.parseInt(u8, value_str[6..8], 10) catch 0 else 0;
     const milliseconds: u16 = if (value_str.len > 9) std.fmt.parseInt(u16, value_str[9..13], 10) catch 0 else 0;
 
     return DateTime.init(0, 0, 0, hours, minutes, seconds, milliseconds);
@@ -114,11 +114,11 @@ pub fn parseDatetime(value_str: []const u8) DateTime {
     if (std.mem.eql(u8, value_str, "NOW")) return DateTime.now();
 
     const year: u16 = std.fmt.parseInt(u16, value_str[0..4], 10) catch 0;
-    const month: u16 = std.fmt.parseInt(u16, value_str[5..7], 10) catch 0;
-    const day: u16 = std.fmt.parseInt(u16, value_str[8..10], 10) catch 0;
-    const hours: u16 = std.fmt.parseInt(u16, value_str[11..13], 10) catch 0;
-    const minutes: u16 = std.fmt.parseInt(u16, value_str[14..16], 10) catch 0;
-    const seconds: u16 = if (value_str.len > 17) std.fmt.parseInt(u16, value_str[17..19], 10) catch 0 else 0;
+    const month: u8 = std.fmt.parseInt(u8, value_str[5..7], 10) catch 0;
+    const day: u8 = std.fmt.parseInt(u8, value_str[8..10], 10) catch 0;
+    const hours: u8 = std.fmt.parseInt(u8, value_str[11..13], 10) catch 0;
+    const minutes: u8 = std.fmt.parseInt(u8, value_str[14..16], 10) catch 0;
+    const seconds: u8 = if (value_str.len > 17) std.fmt.parseInt(u8, value_str[17..19], 10) catch 0 else 0;
     const milliseconds: u16 = if (value_str.len > 20) std.fmt.parseInt(u16, value_str[20..24], 10) catch 0 else 0;
 
     return DateTime.init(year, month - 1, day - 1, hours, minutes, seconds, milliseconds);

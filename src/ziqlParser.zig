@@ -322,15 +322,19 @@ pub const Parser = struct {
                 var maps = std.ArrayList(std.StringHashMap(ConditionValue)).init(allocator);
                 defer maps.deinit();
 
+                var local_arena = std.heap.ArenaAllocator.init(allocator);
+                defer local_arena.deinit();
+                const local_allocator = arena.allocator();
+
                 var data_map = std.StringHashMap(ConditionValue).init(allocator);
                 defer data_map.deinit();
 
                 while (true) { // I could multithread that as it do take a long time for big benchmark
                     data_map.clearRetainingCapacity();
-                    try self.parseNewData(allocator, &data_map, struct_name, &order, ordered);
+                    try self.parseNewData(local_allocator, &data_map, struct_name, &order, ordered);
                     ordered = true;
 
-                    var error_message_buffer = std.ArrayList(u8).init(allocator);
+                    var error_message_buffer = std.ArrayList(u8).init(local_allocator);
                     defer error_message_buffer.deinit();
 
                     const error_message_buffer_writer = error_message_buffer.writer();
@@ -350,12 +354,12 @@ pub const Parser = struct {
                         );
                     }
 
-                    maps.append(data_map.clone() catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
+                    maps.append(data_map.cloneWithAllocator(local_allocator) catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
 
                     if (maps.items.len >= 1_000) {
                         self.file_engine.addEntity(struct_name, maps.items, &buff.writer()) catch return ZipponError.CantWriteEntity;
-                        for (maps.items) |*map| map.deinit();
                         maps.clearRetainingCapacity();
+                        _ = local_arena.reset(.retain_capacity);
                     }
 
                     token = self.toker.last_token;
