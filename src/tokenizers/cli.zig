@@ -18,6 +18,10 @@ pub const Token = struct {
         .{ "metrics", .keyword_metrics },
         .{ "use", .keyword_use },
         .{ "state", .keyword_state },
+        .{ "dump", .keyword_dump },
+        .{ "csv", .keyword_csv },
+        .{ "json", .keyword_json },
+        .{ "zid", .keyword_zid },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -39,6 +43,10 @@ pub const Token = struct {
         keyword_metrics,
         keyword_use,
         keyword_state,
+        keyword_dump,
+        keyword_csv,
+        keyword_json,
+        keyword_zid,
 
         string_literal,
         identifier,

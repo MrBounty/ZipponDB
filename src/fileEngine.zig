@@ -22,7 +22,6 @@ const JsonString = @import("stuffs/relationMap.zig").JsonString;
 const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
-const FileEngineError = @import("stuffs/errors.zig").FileEngineError;
 
 const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;
@@ -59,40 +58,40 @@ pub fn readSchemaFile(sub_path: []const u8, buffer: []u8) ZipponError!usize {
     const file = std.fs.cwd().openFile(sub_path, .{}) catch return ZipponError.CantOpenFile;
     defer file.close();
 
-    const len = file.readAll(buffer) catch return FileEngineError.ReadError;
+    const len = file.readAll(buffer) catch return ZipponError.ReadError;
     return len;
 }
 
 pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) ZipponError!void {
-    const main_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+    const main_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{ .iterate = true }) catch return ZipponError.CantOpenDir;
 
     const writer = buffer.writer();
-    writer.print("Database path: {s}\n", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.WriteError;
+    writer.print("Database path: {s}\n", .{self.path_to_ZipponDB_dir}) catch return ZipponError.WriteError;
     const main_size = utils.getDirTotalSize(main_dir) catch 0;
-    writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
+    writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1024.0 / 1024.0}) catch return ZipponError.WriteError;
 
-    const log_dir = main_dir.openDir("LOG", .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+    const log_dir = main_dir.openDir("LOG", .{ .iterate = true }) catch return ZipponError.CantOpenDir;
     const log_size = utils.getDirTotalSize(log_dir) catch 0;
-    writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
+    writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1024.0 / 1024.0}) catch return ZipponError.WriteError;
 
-    const backup_dir = main_dir.openDir("BACKUP", .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+    const backup_dir = main_dir.openDir("BACKUP", .{ .iterate = true }) catch return ZipponError.CantOpenDir;
     const backup_size = utils.getDirTotalSize(backup_dir) catch 0;
-    writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
+    writer.print("BACKUP: {d:.2}Mb\n", .{@as(f64, @floatFromInt(backup_size)) / 1024.0 / 1024.0}) catch return ZipponError.WriteError;
 
-    const data_dir = main_dir.openDir("DATA", .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+    const data_dir = main_dir.openDir("DATA", .{ .iterate = true }) catch return ZipponError.CantOpenDir;
     const data_size = utils.getDirTotalSize(data_dir) catch 0;
-    writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1024.0 / 1024.0}) catch return FileEngineError.WriteError;
+    writer.print("DATA: {d:.2}Mb\n", .{@as(f64, @floatFromInt(data_size)) / 1024.0 / 1024.0}) catch return ZipponError.WriteError;
 
     var iter = data_dir.iterate();
-    while (iter.next() catch return FileEngineError.DirIterError) |entry| {
+    while (iter.next() catch return ZipponError.DirIterError) |entry| {
         if (entry.kind != .directory) continue;
-        const sub_dir = data_dir.openDir(entry.name, .{ .iterate = true }) catch return FileEngineError.CantOpenDir;
+        const sub_dir = data_dir.openDir(entry.name, .{ .iterate = true }) catch return ZipponError.CantOpenDir;
         const size = utils.getDirTotalSize(sub_dir) catch 0;
         writer.print("  {s}: {d:.}Mb {d} entities\n", .{
             entry.name,
             @as(f64, @floatFromInt(size)) / 1024.0 / 1024.0,
             try self.getNumberOfEntity(entry.name),
-        }) catch return FileEngineError.WriteError;
+        }) catch return ZipponError.WriteError;
     }
 }
 
@@ -100,43 +99,43 @@ pub fn writeDbMetrics(self: *FileEngine, buffer: *std.ArrayList(u8)) ZipponError
 
 /// Create the main folder. Including DATA, LOG and BACKUP
 pub fn createMainDirectories(self: *FileEngine) ZipponError!void {
-    var path_buff = std.fmt.bufPrint(&path_buffer, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+    var path_buff = std.fmt.bufPrint(&path_buffer, "{s}", .{self.path_to_ZipponDB_dir}) catch return ZipponError.MemoryError;
 
     const cwd = std.fs.cwd();
 
     cwd.makeDir(path_buff) catch |err| switch (err) {
         error.PathAlreadyExists => {},
-        else => return FileEngineError.CantMakeDir,
+        else => return ZipponError.CantMakeDir,
     };
 
-    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/DATA", .{self.path_to_ZipponDB_dir}) catch return ZipponError.MemoryError;
 
     cwd.makeDir(path_buff) catch |err| switch (err) {
         error.PathAlreadyExists => {},
-        else => return FileEngineError.CantMakeDir,
+        else => return ZipponError.CantMakeDir,
     };
 
-    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/BACKUP", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/BACKUP", .{self.path_to_ZipponDB_dir}) catch return ZipponError.MemoryError;
 
     cwd.makeDir(path_buff) catch |err| switch (err) {
         error.PathAlreadyExists => {},
-        else => return FileEngineError.CantMakeDir,
+        else => return ZipponError.CantMakeDir,
     };
 
-    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/LOG", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/LOG", .{self.path_to_ZipponDB_dir}) catch return ZipponError.MemoryError;
 
     cwd.makeDir(path_buff) catch |err| switch (err) {
         error.PathAlreadyExists => {},
-        else => return FileEngineError.CantMakeDir,
+        else => return ZipponError.CantMakeDir,
     };
 
-    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/LOG/log", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
+    path_buff = std.fmt.bufPrint(&path_buffer, "{s}/LOG/log", .{self.path_to_ZipponDB_dir}) catch return ZipponError.MemoryError;
 
     if (RESET_LOG_AT_RESTART) {
-        _ = cwd.createFile(path_buff, .{}) catch return FileEngineError.CantMakeFile;
+        _ = cwd.createFile(path_buff, .{}) catch return ZipponError.CantMakeFile;
     } else {
         _ = std.fs.cwd().openFile(path_buff, .{}) catch {
-            _ = cwd.createFile(path_buff, .{}) catch return FileEngineError.CantMakeFile;
+            _ = cwd.createFile(path_buff, .{}) catch return ZipponError.CantMakeFile;
         };
     }
 }
@@ -150,11 +149,11 @@ pub fn createStructDirectories(self: *FileEngine, struct_array: []SchemaStruct) 
     for (struct_array) |schema_struct| {
         data_dir.makeDir(schema_struct.name) catch |err| switch (err) {
             error.PathAlreadyExists => continue,
-            else => return FileEngineError.CantMakeDir,
+            else => return ZipponError.CantMakeDir,
         };
-        const struct_dir = data_dir.openDir(schema_struct.name, .{}) catch return FileEngineError.CantOpenDir;
+        const struct_dir = data_dir.openDir(schema_struct.name, .{}) catch return ZipponError.CantOpenDir;
 
-        zid.createFile("0.zid", struct_dir) catch return FileEngineError.CantMakeFile;
+        zid.createFile("0.zid", struct_dir) catch return ZipponError.CantMakeFile;
     }
 }
 
@@ -174,12 +173,12 @@ pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) ZipponError
     const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
     for (0..(max_file_index + 1)) |i| {
-        const path_buff = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{i}) catch return FileEngineError.MemoryError;
+        const path_buff = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{i}) catch return ZipponError.MemoryError;
 
-        var iter = zid.DataIterator.init(allocator, path_buff, dir, sstruct.zid_schema) catch return FileEngineError.ZipponDataError;
+        var iter = zid.DataIterator.init(allocator, path_buff, dir, sstruct.zid_schema) catch return ZipponError.ZipponDataError;
         defer iter.deinit();
 
-        while (iter.next() catch return FileEngineError.ZipponDataError) |_| count += 1;
+        while (iter.next() catch return ZipponError.ZipponDataError) |_| count += 1;
     }
 
     return count;
@@ -209,7 +208,7 @@ pub fn populateFileIndexUUIDMap(
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return ZipponError.MemoryError;
     defer {
         for (thread_writer_list) |list| list.deinit();
         allocator.free(thread_writer_list);
@@ -227,7 +226,7 @@ pub fn populateFileIndexUUIDMap(
             file_index,
             dir,
             &sync_context,
-        }) catch return FileEngineError.ThreadError;
+        }) catch return ZipponError.ThreadError;
     }
 
     // Wait for all threads to complete
@@ -302,7 +301,7 @@ pub fn populateVoidUUIDMap(
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return FileEngineError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return ZipponError.MemoryError;
 
     for (thread_writer_list) |*list| {
         list.* = std.ArrayList(UUID).init(allocator);
@@ -317,7 +316,7 @@ pub fn populateVoidUUIDMap(
             file_index,
             dir,
             &sync_context,
-        }) catch return FileEngineError.ThreadError;
+        }) catch return ZipponError.ThreadError;
     }
 
     // Wait for all threads to complete
@@ -407,7 +406,7 @@ pub fn parseEntities(
 
     // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
     if (additional_data.childrens.items.len == 0)
-        additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types) catch return FileEngineError.MemoryError;
+        additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types) catch return ZipponError.MemoryError;
 
     // Do I populate the relationMap directly in the thread or do I do it on the string at the end ?
     // I think it is better at the end, like that I dont need to create a deplicate of each map for the number of file
@@ -426,7 +425,7 @@ pub fn parseEntities(
     // Could I create just the number of max cpu ? Because if I have 1000 files, I do 1000 list
     // But at the end, only the number of use CPU/Thread will use list simultanously
     // So I could pass list from a thread to another technicly
-    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return ZipponError.MemoryError;
 
     // Start parsing all file in multiple thread
     for (0..(max_file_index + 1)) |file_index| {
@@ -441,7 +440,7 @@ pub fn parseEntities(
             additional_data.*,
             try self.schema_engine.structName2DataType(struct_name),
             &sync_context,
-        }) catch return FileEngineError.ThreadError;
+        }) catch return ZipponError.ThreadError;
     }
 
     // Wait for all thread to either finish or return an error
@@ -450,9 +449,9 @@ pub fn parseEntities(
     }
 
     // Append all writer to each other
-    writer.writeByte('[') catch return FileEngineError.WriteError;
-    for (thread_writer_list) |list| writer.writeAll(list.items) catch return FileEngineError.WriteError;
-    writer.writeByte(']') catch return FileEngineError.WriteError;
+    writer.writeByte('[') catch return ZipponError.WriteError;
+    for (thread_writer_list) |list| writer.writeAll(list.items) catch return ZipponError.WriteError;
+    writer.writeByte(']') catch return ZipponError.WriteError;
 
     // Now I need to do the relation stuff, meaning parsing new files to get the relationship value
     // Without relationship to return, this function is basically finish here
@@ -549,7 +548,7 @@ pub fn parseEntitiesRelationMap(
         relation_map.additional_data.populateWithEverythingExceptLink(
             sstruct.members,
             sstruct.types,
-        ) catch return FileEngineError.MemoryError;
+        ) catch return ZipponError.MemoryError;
     }
 
     // Open the dir that contain all files
@@ -569,7 +568,7 @@ pub fn parseEntitiesRelationMap(
     var thread_map_list = allocator.alloc(
         std.AutoHashMap([16]u8, JsonString),
         to_parse.len,
-    ) catch return FileEngineError.MemoryError;
+    ) catch return ZipponError.MemoryError;
 
     // Start parsing all file in multiple thread
     for (to_parse, 0..) |file_index, i| {
@@ -583,7 +582,7 @@ pub fn parseEntitiesRelationMap(
             relation_map.additional_data,
             try self.schema_engine.structName2DataType(struct_name),
             &sync_context,
-        }) catch return FileEngineError.ThreadError;
+        }) catch return ZipponError.ThreadError;
     }
 
     // Wait for all thread to either finish or return an error
@@ -692,31 +691,31 @@ pub fn addEntity(
     const allocator = arena.allocator();
 
     var file_index = try self.getFirstUsableIndexFile(struct_name); // TODO: Speed up this
-    var path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
+    var path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return ZipponError.MemoryError;
 
-    var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
+    var data_writer = zid.DataWriter.init(path, null) catch return ZipponError.ZipponDataError;
     defer data_writer.deinit();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
 
     for (maps) |map| {
         const data = try self.orderedNewData(allocator, struct_name, map);
-        data_writer.write(data) catch return FileEngineError.ZipponDataError;
+        data_writer.write(data) catch return ZipponError.ZipponDataError;
         sstruct.uuid_file_index.map.*.put(UUID{ .bytes = data[0].UUID }, file_index) catch return ZipponError.MemoryError;
-        writer.print("\"{s}\", ", .{UUID.format_bytes(data[0].UUID)}) catch return FileEngineError.WriteError;
+        writer.print("\"{s}\", ", .{UUID.format_bytes(data[0].UUID)}) catch return ZipponError.WriteError;
 
         const file_stat = data_writer.fileStat() catch return ZipponError.ZipponDataError;
         if (file_stat.size > MAX_FILE_SIZE) {
             file_index = try self.getFirstUsableIndexFile(struct_name);
-            data_writer.flush() catch return FileEngineError.ZipponDataError;
+            data_writer.flush() catch return ZipponError.ZipponDataError;
             data_writer.deinit();
 
-            path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return FileEngineError.MemoryError;
-            data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
+            path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return ZipponError.MemoryError;
+            data_writer = zid.DataWriter.init(path, null) catch return ZipponError.ZipponDataError;
         }
     }
 
-    data_writer.flush() catch return FileEngineError.ZipponDataError;
+    data_writer.flush() catch return ZipponError.ZipponDataError;
 }
 
 pub fn updateEntities(
@@ -743,7 +742,7 @@ pub fn updateEntities(
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return ZipponError.MemoryError;
     for (thread_writer_list) |*list| {
         list.* = std.ArrayList(u8).init(allocator);
     }
@@ -767,7 +766,7 @@ pub fn updateEntities(
             file_index,
             dir,
             &sync_context,
-        }) catch return FileEngineError.ThreadError;
+        }) catch return ZipponError.ThreadError;
     }
 
     // Wait for all threads to complete
@@ -776,11 +775,11 @@ pub fn updateEntities(
     }
 
     // Combine results
-    writer.writeByte('[') catch return FileEngineError.WriteError;
+    writer.writeByte('[') catch return ZipponError.WriteError;
     for (thread_writer_list) |list| {
-        writer.writeAll(list.items) catch return FileEngineError.WriteError;
+        writer.writeAll(list.items) catch return ZipponError.WriteError;
     }
-    writer.writeByte(']') catch return FileEngineError.WriteError;
+    writer.writeByte(']') catch return ZipponError.WriteError;
 }
 
 fn updateEntitiesOneFile(
@@ -908,7 +907,7 @@ pub fn deleteEntities(
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return FileEngineError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return ZipponError.MemoryError;
     for (thread_writer_list) |*list| {
         list.* = std.ArrayList(u8).init(allocator);
     }
@@ -922,7 +921,7 @@ pub fn deleteEntities(
             file_index,
             dir,
             &sync_context,
-        }) catch return FileEngineError.ThreadError;
+        }) catch return ZipponError.ThreadError;
     }
 
     // Wait for all threads to complete
@@ -931,11 +930,11 @@ pub fn deleteEntities(
     }
 
     // Combine results
-    writer.writeByte('[') catch return FileEngineError.WriteError;
+    writer.writeByte('[') catch return ZipponError.WriteError;
     for (thread_writer_list) |list| {
-        writer.writeAll(list.items) catch return FileEngineError.WriteError;
+        writer.writeAll(list.items) catch return ZipponError.WriteError;
     }
-    writer.writeByte(']') catch return FileEngineError.WriteError;
+    writer.writeByte(']') catch return ZipponError.WriteError;
 
     // Update UUID file index map FIXME: Stop doing that and just remove UUID from the map itself instead of reparsing everything at the end
     sstruct.uuid_file_index.map.clearRetainingCapacity();
@@ -1062,14 +1061,14 @@ fn string2Data(allocator: Allocator, value: ConditionValue) ZipponError!zid.Data
             while (iter.next()) |uuid| {
                 items.append(uuid.bytes) catch return ZipponError.MemoryError;
             }
-            return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, items.items) catch return FileEngineError.AllocEncodError);
+            return zid.Data.initUUIDArray(zid.allocEncodArray.UUID(allocator, items.items) catch return ZipponError.AllocEncodError);
         },
         .self => |v| return zid.Data.initUUID(v.bytes),
-        .int_array => |v| return zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, v) catch return FileEngineError.AllocEncodError),
-        .float_array => |v| return zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, v) catch return FileEngineError.AllocEncodError),
-        .str_array => |v| return zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, v) catch return FileEngineError.AllocEncodError),
-        .bool_array => |v| return zid.Data.initBoolArray(zid.allocEncodArray.Bool(allocator, v) catch return FileEngineError.AllocEncodError),
-        .unix_array => |v| return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, v) catch return FileEngineError.AllocEncodError),
+        .int_array => |v| return zid.Data.initIntArray(zid.allocEncodArray.Int(allocator, v) catch return ZipponError.AllocEncodError),
+        .float_array => |v| return zid.Data.initFloatArray(zid.allocEncodArray.Float(allocator, v) catch return ZipponError.AllocEncodError),
+        .str_array => |v| return zid.Data.initStrArray(zid.allocEncodArray.Str(allocator, v) catch return ZipponError.AllocEncodError),
+        .bool_array => |v| return zid.Data.initBoolArray(zid.allocEncodArray.Bool(allocator, v) catch return ZipponError.AllocEncodError),
+        .unix_array => |v| return zid.Data.initUnixArray(zid.allocEncodArray.Unix(allocator, v) catch return ZipponError.AllocEncodError),
     }
 }
 
@@ -1082,7 +1081,7 @@ fn orderedNewData(
     map: std.StringHashMap(ConditionValue),
 ) ZipponError![]zid.Data {
     const members = try self.schema_engine.structName2structMembers(struct_name);
-    var datas = allocator.alloc(zid.Data, (members.len)) catch return FileEngineError.MemoryError;
+    var datas = allocator.alloc(zid.Data, (members.len)) catch return ZipponError.MemoryError;
 
     const new_uuid = UUID.init();
     datas[0] = zid.Data.initUUID(new_uuid.bytes);
@@ -1095,6 +1094,51 @@ fn orderedNewData(
     return datas;
 }
 
+// --------------------Dump--------------------
+pub fn dumpDb(self: FileEngine, parent_allocator: Allocator, path: []const u8, format: enum { csv, json, zid }) ZipponError!void {
+    std.fs.cwd().makeDir(path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return ZipponError.CantMakeDir,
+    };
+
+    var arena = std.heap.ArenaAllocator.init(parent_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const dir = std.fs.cwd().openDir(path, .{}) catch return ZipponError.CantOpenDir;
+
+    for (self.schema_engine.struct_array) |sstruct| {
+        const file_name = std.fmt.bufPrint(&path_buffer, "{s}.{s}", .{ sstruct.name, @tagName(format) }) catch return ZipponError.MemoryError;
+        const file = dir.createFile(file_name, .{}) catch return ZipponError.CantMakeFile;
+        defer file.close();
+
+        var writer = std.io.bufferedWriter(file.writer());
+        EntityWriter.writeHeaderCsv(writer.writer(), sstruct.members, ';') catch return ZipponError.WriteError;
+
+        const struct_dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+
+        const file_indexs = try self.allFileIndex(allocator, sstruct.name);
+        for (file_indexs) |file_index| {
+            var data_buffer: [BUFFER_SIZE]u8 = undefined;
+            var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
+            defer fa.reset();
+            const data_allocator = fa.allocator();
+
+            const zid_path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return ZipponError.MemoryError;
+
+            var iter = zid.DataIterator.init(data_allocator, zid_path, struct_dir, sstruct.zid_schema) catch return ZipponError.ZipponDataError;
+            while (iter.next() catch return ZipponError.ZipponDataError) |row| {
+                EntityWriter.writeEntityCsv(
+                    writer.writer(),
+                    row,
+                    sstruct.types,
+                    ';',
+                ) catch return ZipponError.WriteError;
+            }
+        }
+    }
+}
+
 // --------------------Schema utils--------------------
 
 /// Get the index of the first file that is bellow the size limit. If not found, create a new file
@@ -1105,36 +1149,53 @@ fn getFirstUsableIndexFile(self: FileEngine, struct_name: []const u8) ZipponErro
 
     var i: usize = 0;
     var iter = member_dir.iterate();
-    while (iter.next() catch return FileEngineError.DirIterError) |entry| {
+    while (iter.next() catch return ZipponError.DirIterError) |entry| {
         i += 1;
-        const file_stat = member_dir.statFile(entry.name) catch return FileEngineError.FileStatError;
+        const file_stat = member_dir.statFile(entry.name) catch return ZipponError.FileStatError;
         if (file_stat.size < MAX_FILE_SIZE) {
             // Cant I just return i ? It is supossed that files are ordered. I think I already check and it is not
             log.debug("{s}\n\n", .{entry.name});
-            return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return FileEngineError.InvalidFileIndex; // INFO: Hardcoded len of file extension
+            return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return ZipponError.InvalidFileIndex; // INFO: Hardcoded len of file extension
         }
     }
 
-    const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, i }) catch return FileEngineError.MemoryError;
-    zid.createFile(path, null) catch return FileEngineError.ZipponDataError;
+    const path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, i }) catch return ZipponError.MemoryError;
+    zid.createFile(path, null) catch return ZipponError.ZipponDataError;
 
     return i;
 }
 
 /// Iterate over all file of a struct and return the index of the last file.
 /// E.g. a struct with 0.csv and 1.csv it return 1.
+/// FIXME: I use 0..file_index but because now I delete empty file, I can end up trying to parse an empty file. So I need to delete that
+/// And do something that return a list of file to parse instead
 fn maxFileIndex(self: FileEngine, struct_name: []const u8) ZipponError!usize {
-    var member_dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
-    defer member_dir.close();
+    var dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
+    defer dir.close();
 
     var count: usize = 0;
 
-    var iter = member_dir.iterate();
-    while (iter.next() catch return FileEngineError.DirIterError) |entry| {
+    var iter = dir.iterate();
+    while (iter.next() catch return ZipponError.DirIterError) |entry| {
         if (entry.kind != .file) continue;
         count += 1;
     }
     return count - 1;
+}
+
+fn allFileIndex(self: FileEngine, allocator: Allocator, struct_name: []const u8) ZipponError![]usize {
+    var dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
+    defer dir.close();
+
+    var array = std.ArrayList(usize).init(allocator);
+
+    var iter = dir.iterate();
+    while (iter.next() catch return ZipponError.DirIterError) |entry| {
+        if (entry.kind != .file) continue;
+        const index = std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return ZipponError.InvalidFileIndex;
+        array.append(index) catch return ZipponError.MemoryError;
+    }
+    return array.toOwnedSlice() catch return ZipponError.MemoryError;
 }
 
 pub fn isSchemaFileInDir(self: *FileEngine) bool {
@@ -1143,7 +1204,7 @@ pub fn isSchemaFileInDir(self: *FileEngine) bool {
 }
 
 pub fn writeSchemaFile(self: *FileEngine, null_terminated_schema_buff: [:0]const u8) ZipponError!void {
-    var zippon_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{}) catch return FileEngineError.MemoryError;
+    var zippon_dir = std.fs.cwd().openDir(self.path_to_ZipponDB_dir, .{}) catch return ZipponError.MemoryError;
     defer zippon_dir.close();
 
     zippon_dir.deleteFile("schema") catch |err| switch (err) {

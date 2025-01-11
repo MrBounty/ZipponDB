@@ -25,6 +25,31 @@ pub const EntityWriter = struct {
         try writer.writeByte('\n');
     }
 
+    pub fn writeHeaderCsv(
+        writer: anytype,
+        members: [][]const u8,
+        delimiter: u8,
+    ) !void {
+        for (members, 0..) |member, i| {
+            try writer.writeAll(member);
+            if (i < members.len - 1) try writer.writeByte(delimiter);
+        }
+        try writer.writeByte('\n');
+    }
+
+    pub fn writeEntityCsv( // FIXME: I think if one value str have a \n this will broke. I need to use like """
+        writer: anytype,
+        row: []zid.Data,
+        data_types: []const DataType,
+        delimiter: u8,
+    ) !void {
+        for (0..row.len) |i| {
+            try writeValue(writer, row[i], data_types[i]);
+            if (i < row.len - 1) try writer.writeByte(delimiter);
+        }
+        try writer.writeByte('\n');
+    }
+
     pub fn writeEntityJSON(
         writer: anytype,
         row: []zid.Data,

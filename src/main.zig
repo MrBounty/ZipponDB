@@ -22,17 +22,6 @@ const BUFFER_SIZE = config.BUFFER_SIZE;
 const CPU_CORE = config.CPU_CORE;
 const HELP_MESSAGE = config.HELP_MESSAGE;
 
-const State = enum {
-    expect_main_command,
-    expect_query,
-    expect_schema_command,
-    expect_path_to_schema,
-    expect_db_command,
-    expect_path_to_db,
-    quit,
-    end,
-};
-
 // End up using like 302kB of memory here
 var log_buff: [1024]u8 = undefined;
 var log_path: []const u8 = undefined;
@@ -188,6 +177,19 @@ pub const DBEngine = struct {
 };
 
 pub fn main() !void {
+    const State = enum {
+        expect_main_command,
+        expect_query,
+        expect_schema_command,
+        expect_path_to_schema,
+        expect_db_command,
+        expect_path_to_db,
+        expect_file_format,
+        expect_path_to_dump,
+        quit,
+        end,
+    };
+
     var db_engine = DBEngine.init(null, null);
     defer db_engine.deinit();
 
@@ -212,7 +214,12 @@ pub fn main() !void {
             var token = toker.next();
             var state = State.expect_main_command;
 
-            while ((state != .end) and (state != .quit)) : (token = toker.next()) switch (state) {
+            var last_token: cliToken = undefined;
+
+            while ((state != .end) and (state != .quit)) : ({
+                last_token = token;
+                token = toker.next();
+            }) switch (state) {
                 .expect_main_command => switch (token.tag) {
                     .keyword_run => {
                         if (db_engine.state == .MissingFileEngine) {
@@ -241,9 +248,32 @@ pub fn main() !void {
                         state = .end;
                     },
                     .keyword_quit => state = .quit,
+                    .keyword_dump => {
+                        if (db_engine.state == .MissingFileEngine) {
+                            send("{s}", .{HELP_MESSAGE.no_engine});
+                            state = .end;
+                            continue;
+                        }
+                        if (db_engine.state == .MissingSchemaEngine) {
+                            send(HELP_MESSAGE.no_schema, .{db_engine.file_engine.path_to_ZipponDB_dir});
+                            state = .end;
+                            continue;
+                        }
+                        state = .expect_file_format;
+                    },
                     .eof => state = .end,
                     else => {
                         send("Command need to start with a keyword, including: run, db, schema, help and quit", .{});
+                        state = .end;
+                    },
+                },
+
+                .expect_file_format => switch (token.tag) {
+                    .keyword_csv => state = .expect_path_to_dump,
+                    .keyword_json => state = .expect_path_to_dump,
+                    .keyword_zid => state = .expect_path_to_dump,
+                    else => {
+                        send("Error: format available: csv, json, zid", .{});
                         state = .end;
                     },
                 },
@@ -343,6 +373,22 @@ pub fn main() !void {
                     },
                     else => {
                         send("Error: Expect path to schema file.", .{});
+                        state = .end;
+                    },
+                },
+
+                .expect_path_to_dump => switch (token.tag) {
+                    .identifier => {
+                        try db_engine.file_engine.dumpDb(allocator, toker.getTokenSlice(token), switch (last_token.tag) {
+                            .keyword_csv => .csv,
+                            .keyword_zid => .zid,
+                            .keyword_json => .json,
+                            else => unreachable,
+                        });
+                        state = .end;
+                    },
+                    else => {
+                        send("Error: Expect path to dump dir.", .{});
                         state = .end;
                     },
                 },
