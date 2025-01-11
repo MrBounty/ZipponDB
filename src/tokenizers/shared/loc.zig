@@ -1,4 +1,4 @@
-pub const Loc = struct {
-    start: usize,
-    end: usize,
-};
+pub const Loc = @This();
+
+start: usize,
+end: usize,

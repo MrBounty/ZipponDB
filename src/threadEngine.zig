@@ -55,27 +55,27 @@ pub const ThreadSyncContext = struct {
     }
 };
 
-pub const ThreadEngine = struct {
-    thread_arena: *std.heap.ThreadSafeAllocator,
-    thread_pool: *Pool,
+pub const ThreadEngine = @This();
 
-    pub fn init() ThreadEngine {
-        thread_arena = std.heap.ThreadSafeAllocator{
-            .child_allocator = allocator,
-        };
+thread_arena: *std.heap.ThreadSafeAllocator,
+thread_pool: *Pool,
 
-        thread_pool.init(std.Thread.Pool.Options{
-            .allocator = thread_arena.allocator(),
-            .n_jobs = CPU_CORE,
-        }) catch @panic("=(");
+pub fn init() ThreadEngine {
+    thread_arena = std.heap.ThreadSafeAllocator{
+        .child_allocator = allocator,
+    };
 
-        return ThreadEngine{
-            .thread_pool = &thread_pool,
-            .thread_arena = &thread_arena,
-        };
-    }
+    thread_pool.init(std.Thread.Pool.Options{
+        .allocator = thread_arena.allocator(),
+        .n_jobs = CPU_CORE,
+    }) catch @panic("=(");
 
-    pub fn deinit(_: ThreadEngine) void {
-        thread_pool.deinit();
-    }
-};
+    return ThreadEngine{
+        .thread_pool = &thread_pool,
+        .thread_arena = &thread_arena,
+    };
+}
+
+pub fn deinit(_: ThreadEngine) void {
+    thread_pool.deinit();
+}
