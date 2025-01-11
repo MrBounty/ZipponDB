@@ -9,29 +9,29 @@ const DataType = dtype.DataType;
 const ZipponError = @import("errors.zig").ZipponError;
 
 /// This is the [] part
-pub const AdditionalData = struct {
-    allocator: Allocator,
-    limit: usize = 0,
-    childrens: std.ArrayList(AdditionalDataMember),
+pub const AdditionalData = @This();
 
-    pub fn init(allocator: Allocator) AdditionalData {
-        return AdditionalData{
-            .allocator = allocator,
-            .childrens = std.ArrayList(AdditionalDataMember).init(allocator),
-        };
-    }
+allocator: Allocator,
+limit: usize = 0,
+childrens: std.ArrayList(AdditionalDataMember),
 
-    pub fn populateWithEverythingExceptLink(self: *AdditionalData, members: [][]const u8, dtypes: []DataType) !void {
-        for (members, dtypes, 0..) |member, dt, i| {
-            if (dt == .link or dt == .link_array) continue;
-            try self.childrens.append(AdditionalDataMember.init(self.allocator, member, i));
-        }
-    }
+pub fn init(allocator: Allocator) AdditionalData {
+    return AdditionalData{
+        .allocator = allocator,
+        .childrens = std.ArrayList(AdditionalDataMember).init(allocator),
+    };
+}
 
-    pub fn addMember(self: *AdditionalData, name: []const u8, index: usize) ZipponError!void {
-        self.childrens.append(AdditionalDataMember.init(self.allocator, name, index)) catch return ZipponError.MemoryError;
+pub fn populateWithEverythingExceptLink(self: *AdditionalData, members: [][]const u8, dtypes: []DataType) !void {
+    for (members, dtypes, 0..) |member, dt, i| {
+        if (dt == .link or dt == .link_array) continue;
+        try self.childrens.append(AdditionalDataMember.init(self.allocator, member, i));
     }
-};
+}
+
+pub fn addMember(self: *AdditionalData, name: []const u8, index: usize) ZipponError!void {
+    self.childrens.append(AdditionalDataMember.init(self.allocator, name, index)) catch return ZipponError.MemoryError;
+}
 
 // This is name in: [name]
 // There is an additional data because it can be [friend [1; name]]

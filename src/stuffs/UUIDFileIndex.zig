@@ -2,49 +2,49 @@ const std = @import("std");
 const UUID = @import("dtype").UUID;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
-pub const UUIDIndexMap = struct {
-    arena: *ArenaAllocator,
-    map: *std.AutoHashMap(UUID, usize),
+pub const UUIDIndexMap = @This();
 
-    pub fn init(allocator: std.mem.Allocator) !UUIDIndexMap {
-        const arena = try allocator.create(ArenaAllocator);
-        errdefer allocator.destroy(arena);
-        arena.* = ArenaAllocator.init(allocator);
+arena: *ArenaAllocator,
+map: *std.AutoHashMap(UUID, usize),
 
-        const map = try arena.allocator().create(std.AutoHashMap(UUID, usize));
-        map.* = std.AutoHashMap(UUID, usize).init(arena.allocator());
+pub fn init(allocator: std.mem.Allocator) !UUIDIndexMap {
+    const arena = try allocator.create(ArenaAllocator);
+    errdefer allocator.destroy(arena);
+    arena.* = ArenaAllocator.init(allocator);
 
-        return UUIDIndexMap{
-            .map = map,
-            .arena = arena,
-        };
-    }
+    const map = try arena.allocator().create(std.AutoHashMap(UUID, usize));
+    map.* = std.AutoHashMap(UUID, usize).init(arena.allocator());
 
-    pub fn deinit(self: *UUIDIndexMap) void {
-        const allocator = self.arena.child_allocator;
-        self.arena.deinit();
-        allocator.destroy(self.arena);
-    }
+    return UUIDIndexMap{
+        .map = map,
+        .arena = arena,
+    };
+}
 
-    pub fn put(self: *UUIDIndexMap, uuid: UUID, file_index: usize) !void {
-        const allocator = self.arena.allocator();
-        const new_uuid = try allocator.create(UUID);
-        new_uuid.* = uuid;
+pub fn deinit(self: *UUIDIndexMap) void {
+    const allocator = self.arena.child_allocator;
+    self.arena.deinit();
+    allocator.destroy(self.arena);
+}
 
-        const new_file_index = try allocator.create(usize);
-        new_file_index.* = file_index;
+pub fn put(self: *UUIDIndexMap, uuid: UUID, file_index: usize) !void {
+    const allocator = self.arena.allocator();
+    const new_uuid = try allocator.create(UUID);
+    new_uuid.* = uuid;
 
-        try self.map.*.put(new_uuid.*, new_file_index.*);
-    }
+    const new_file_index = try allocator.create(usize);
+    new_file_index.* = file_index;
 
-    pub fn contains(self: UUIDIndexMap, uuid: UUID) bool {
-        return self.map.contains(uuid);
-    }
+    try self.map.*.put(new_uuid.*, new_file_index.*);
+}
 
-    pub fn get(self: UUIDIndexMap, uuid: UUID) ?usize {
-        return self.map.get(uuid);
-    }
-};
+pub fn contains(self: UUIDIndexMap, uuid: UUID) bool {
+    return self.map.contains(uuid);
+}
+
+pub fn get(self: UUIDIndexMap, uuid: UUID) ?usize {
+    return self.map.get(uuid);
+}
 
 test "Create empty UUIDIndexMap" {
     const allocator = std.testing.allocator;

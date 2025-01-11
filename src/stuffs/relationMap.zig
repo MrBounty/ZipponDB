@@ -28,48 +28,47 @@ pub const JsonString = struct {
     init: bool = false,
 };
 
-pub const RelationMap = struct {
-    struct_name: []const u8,
-    member_name: []const u8,
-    additional_data: AdditionalData,
-    map: *std.AutoHashMap([16]u8, JsonString),
+pub const RelationMap = @This();
+struct_name: []const u8,
+member_name: []const u8,
+additional_data: AdditionalData,
+map: *std.AutoHashMap([16]u8, JsonString),
 
-    /// Will use a string in the JSON format and look for {|<[16]u8>|}
-    /// It will then check if it is for the right member name and if so, add an empty JSON string at the key
-    pub fn populate(self: *RelationMap, input: []const u8) ZipponError!void {
-        var uuid_bytes: [16]u8 = undefined;
-        var start: usize = 0;
-        while (std.mem.indexOf(u8, input[start..], "{|<")) |pos| {
-            const pattern_start = start + pos + 3;
-            const pattern_end = pattern_start + 16;
+/// Will use a string in the JSON format and look for {|<[16]u8>|}
+/// It will then check if it is for the right member name and if so, add an empty JSON string at the key
+pub fn populate(self: *RelationMap, input: []const u8) ZipponError!void {
+    var uuid_bytes: [16]u8 = undefined;
+    var start: usize = 0;
+    while (std.mem.indexOf(u8, input[start..], "{|<")) |pos| {
+        const pattern_start = start + pos + 3;
+        const pattern_end = pattern_start + 16;
 
-            const member_end = if (input[pattern_start - 4] == '[') pattern_start - 6 else pattern_start - 5; // This should be ": {|<"
-            var member_start = member_end - 1;
-            while (input[member_start] != ' ') : (member_start -= 1) {}
-            member_start += 1;
+        const member_end = if (input[pattern_start - 4] == '[') pattern_start - 6 else pattern_start - 5; // This should be ": {|<"
+        var member_start = member_end - 1;
+        while (input[member_start] != ' ') : (member_start -= 1) {}
+        member_start += 1;
 
-            if (!std.mem.eql(u8, input[member_start..member_end], self.member_name)) continue;
+        if (!std.mem.eql(u8, input[member_start..member_end], self.member_name)) continue;
 
-            if (input[pattern_start - 4] == '[') {
-                start = try self.populateArray(input, pattern_start - 3);
-                continue;
-            }
-
-            @memcpy(uuid_bytes[0..], input[pattern_start..pattern_end]);
-
-            self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
-            start = pattern_end + 3;
+        if (input[pattern_start - 4] == '[') {
+            start = try self.populateArray(input, pattern_start - 3);
+            continue;
         }
-    }
 
-    // Array are pack in format {|<[16]u8>|},{|<[16]u8>|},{|<[16]u8>|},{|<[16]u8>|},
-    fn populateArray(self: *RelationMap, input: []const u8, origin: usize) ZipponError!usize {
-        var uuid_bytes: [16]u8 = undefined;
-        var start = origin;
-        while (input.len > start + 23 and std.mem.eql(u8, input[start .. start + 3], "{|<") and std.mem.eql(u8, input[start + 19 .. start + 23], ">|},")) : (start += 23) {
-            for (start + 3..start + 19, 0..) |i, j| uuid_bytes[j] = input[i];
-            self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
-        }
-        return start;
+        @memcpy(uuid_bytes[0..], input[pattern_start..pattern_end]);
+
+        self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
+        start = pattern_end + 3;
     }
-};
+}
+
+// Array are pack in format {|<[16]u8>|},{|<[16]u8>|},{|<[16]u8>|},{|<[16]u8>|},
+fn populateArray(self: *RelationMap, input: []const u8, origin: usize) ZipponError!usize {
+    var uuid_bytes: [16]u8 = undefined;
+    var start = origin;
+    while (input.len > start + 23 and std.mem.eql(u8, input[start .. start + 3], "{|<") and std.mem.eql(u8, input[start + 19 .. start + 23], ">|},")) : (start += 23) {
+        for (start + 3..start + 19, 0..) |i, j| uuid_bytes[j] = input[i];
+        self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
+    }
+    return start;
+}
