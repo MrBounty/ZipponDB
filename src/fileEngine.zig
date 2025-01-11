@@ -21,7 +21,7 @@ const RelationMap = @import("dataStructure/relationMap.zig");
 const JsonString = @import("dataStructure/relationMap.zig").JsonString;
 const ConditionValue = @import("dataStructure/filter.zig").ConditionValue;
 
-const ZipponError = @import("errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 
 const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;

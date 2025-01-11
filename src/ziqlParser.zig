@@ -18,7 +18,7 @@ const AdditionalDataMember = @import("dataStructure/additionalData.zig").Additio
 const send = @import("utils.zig").send;
 const printError = @import("utils.zig").printError;
 
-const ZipponError = @import("errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 const PRINT_STATE = @import("config").PRINT_STATE;
 
 const log = std.log.scoped(.ziqlParser);

@@ -21,7 +21,7 @@
 
 const std = @import("std");
 const AdditionalData = @import("additionalData.zig").AdditionalData;
-const ZipponError = @import("../errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 
 pub const JsonString = struct {
     slice: []const u8 = "",

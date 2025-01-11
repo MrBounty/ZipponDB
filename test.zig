@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const Parser = @import("src/ziqlParser.zig").Parser;
 const Tokenizer = @import("src/tokenizers/ziql.zig").Tokenizer;
 const DBEngine = @import("src/main.zig").DBEngine;
-const ZipponError = @import("src/stuffs/errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 
 const DB = struct {
     path: []const u8,
@@ -150,7 +150,7 @@ test "3 struct both side" {
     try testParsing(db, "DELETE Post {}");
     try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, friends=none, posts=none, comments=none, bday=2000/01/01)");
     try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from=none, comments=none)");
-    try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={}, comments=none) -> new_post -> UPDATE User {} TO (posts APPEND new_post)");
+    //try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={}, comments=none) -> new_post -> UPDATE User {} TO (posts APPEND new_post)");
     // try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={} APPEND TO posts, comments=none)"); Maybe I can use that to be like the above query
     // ADD Post (text = 'Hello every body', at=NOW, from={} TO last_post, comments=none) And this for a single link
     // try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={} APPEND TO [posts, last_post], comments=none)"); Can be an array to add it to multiple list

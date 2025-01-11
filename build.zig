@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
     exe.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     exe.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
+    exe.root_module.addImport("error", b.createModule(.{ .root_source_file = b.path("lib/errors.zig") }));
 
     // Run
     // -----------------------------------------------
@@ -30,7 +31,7 @@ pub fn build(b: *std.Build) void {
     // Test
     // -----------------------------------------------
     const tests1 = b.addTest(.{
-        .root_source_file = b.path("src/stuffs/UUIDFileIndex.zig"),
+        .root_source_file = b.path("src/dataStructure/UUIDFileIndex.zig"),
         .target = target,
         .optimize = optimize,
         .name = "CLI tokenizer",
@@ -78,10 +79,11 @@ pub fn build(b: *std.Build) void {
     tests5.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
     tests5.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     tests5.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
+    tests5.root_module.addImport("error", b.createModule(.{ .root_source_file = b.path("lib/errors.zig") }));
     const run_tests5 = b.addRunArtifact(tests5);
 
     const tests6 = b.addTest(.{
-        .root_source_file = b.path("src/stuffs/filter.zig"),
+        .root_source_file = b.path("src/dataStructure/filter.zig"),
         .target = target,
         .optimize = optimize,
         .name = "Filter tree",
@@ -90,6 +92,7 @@ pub fn build(b: *std.Build) void {
     tests6.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
     tests6.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     tests6.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
+    tests6.root_module.addImport("error", b.createModule(.{ .root_source_file = b.path("lib/errors.zig") }));
     const run_tests6 = b.addRunArtifact(tests6);
 
     const test_step = b.step("test", "Run unit tests");
@@ -111,6 +114,7 @@ pub fn build(b: *std.Build) void {
     benchmark.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
     benchmark.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
     benchmark.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
+    benchmark.root_module.addImport("error", b.createModule(.{ .root_source_file = b.path("lib/errors.zig") }));
     b.installArtifact(benchmark);
 
     const run_benchmark = b.addRunArtifact(benchmark);

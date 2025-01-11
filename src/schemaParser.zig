@@ -10,7 +10,7 @@ const Loc = @import("tokenizers/shared/loc.zig").Loc;
 const send = @import("utils.zig").send;
 const printError = @import("utils.zig").printError;
 
-const SchemaParserError = @import("errors.zig").SchemaParserError;
+const ZipponError = @import("error").ZipponError;
 
 const State = enum {
     end,
@@ -60,15 +60,15 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
             .identifier => {
                 state = .expect_l_paren;
                 name = self.toker.getTokenSlice(token);
-                member_list.append("id") catch return SchemaParserError.MemoryError;
-                type_list.append(.self) catch return SchemaParserError.MemoryError;
+                member_list.append("id") catch return ZipponError.MemoryError;
+                type_list.append(.self) catch return ZipponError.MemoryError;
             },
             .eof => state = .end,
             else => {
                 std.debug.print("{s}\n", .{self.toker.getTokenSlice(token)});
                 return printError(
                     "Error parsing schema: Expected a struct name",
-                    SchemaParserError.SynthaxError,
+                    ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
@@ -80,7 +80,7 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
             .l_paren => state = .expect_member_name,
             else => return printError(
                 "Error parsing schema: Expected (",
-                SchemaParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
@@ -95,7 +95,7 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
             .r_paren => state = .add_struct,
             else => return printError(
                 "Error parsing schema: Expected member name or )",
-                SchemaParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
@@ -105,10 +105,10 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
         .add_struct => {
             struct_array.append(try SchemaStruct.init(
                 name,
-                member_list.toOwnedSlice() catch return SchemaParserError.MemoryError,
-                type_list.toOwnedSlice() catch return SchemaParserError.MemoryError,
+                member_list.toOwnedSlice() catch return ZipponError.MemoryError,
+                type_list.toOwnedSlice() catch return ZipponError.MemoryError,
                 try links.clone(),
-            )) catch return SchemaParserError.MemoryError;
+            )) catch return ZipponError.MemoryError;
 
             links.deinit();
             links = std.StringHashMap([]const u8).init(self.allocator);
@@ -122,7 +122,7 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
 
         .expect_member_name => {
             state = .expect_two_dot;
-            member_list.append(self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
+            member_list.append(self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
             member_token = token;
         },
 
@@ -130,7 +130,7 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
             .two_dot => state = .expect_value_type,
             else => return printError(
                 "Error parsing schema: Expected :",
-                SchemaParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
@@ -140,41 +140,41 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
         .expect_value_type => switch (token.tag) {
             .type_int => {
                 state = .expect_comma;
-                type_list.append(.int) catch return SchemaParserError.MemoryError;
+                type_list.append(.int) catch return ZipponError.MemoryError;
             },
             .type_str => {
                 state = .expect_comma;
-                type_list.append(.str) catch return SchemaParserError.MemoryError;
+                type_list.append(.str) catch return ZipponError.MemoryError;
             },
             .type_float => {
                 state = .expect_comma;
-                type_list.append(.float) catch return SchemaParserError.MemoryError;
+                type_list.append(.float) catch return ZipponError.MemoryError;
             },
             .type_bool => {
                 state = .expect_comma;
-                type_list.append(.bool) catch return SchemaParserError.MemoryError;
+                type_list.append(.bool) catch return ZipponError.MemoryError;
             },
             .type_date => {
                 state = .expect_comma;
-                type_list.append(.date) catch return SchemaParserError.MemoryError;
+                type_list.append(.date) catch return ZipponError.MemoryError;
             },
             .type_time => {
                 state = .expect_comma;
-                type_list.append(.time) catch return SchemaParserError.MemoryError;
+                type_list.append(.time) catch return ZipponError.MemoryError;
             },
             .type_datetime => {
                 state = .expect_comma;
-                type_list.append(.datetime) catch return SchemaParserError.MemoryError;
+                type_list.append(.datetime) catch return ZipponError.MemoryError;
             },
             .identifier => {
                 state = .expect_comma;
-                type_list.append(.link) catch return SchemaParserError.MemoryError;
-                links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
+                type_list.append(.link) catch return ZipponError.MemoryError;
+                links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
             },
             .lr_bracket => state = .expext_array_type,
             else => return printError(
                 "Error parsing schema: Expected data type",
-                SchemaParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
@@ -184,40 +184,40 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
         .expext_array_type => switch (token.tag) {
             .type_int => {
                 state = .expect_comma;
-                type_list.append(.int_array) catch return SchemaParserError.MemoryError;
+                type_list.append(.int_array) catch return ZipponError.MemoryError;
             },
             .type_str => {
                 state = .expect_comma;
-                type_list.append(.str_array) catch return SchemaParserError.MemoryError;
+                type_list.append(.str_array) catch return ZipponError.MemoryError;
             },
             .type_float => {
                 state = .expect_comma;
-                type_list.append(.float_array) catch return SchemaParserError.MemoryError;
+                type_list.append(.float_array) catch return ZipponError.MemoryError;
             },
             .type_bool => {
                 state = .expect_comma;
-                type_list.append(.bool_array) catch return SchemaParserError.MemoryError;
+                type_list.append(.bool_array) catch return ZipponError.MemoryError;
             },
             .type_date => {
                 state = .expect_comma;
-                type_list.append(.date_array) catch return SchemaParserError.MemoryError;
+                type_list.append(.date_array) catch return ZipponError.MemoryError;
             },
             .type_time => {
                 state = .expect_comma;
-                type_list.append(.time_array) catch return SchemaParserError.MemoryError;
+                type_list.append(.time_array) catch return ZipponError.MemoryError;
             },
             .type_datetime => {
                 state = .expect_comma;
-                type_list.append(.datetime_array) catch return SchemaParserError.MemoryError;
+                type_list.append(.datetime_array) catch return ZipponError.MemoryError;
             },
             .identifier => {
                 state = .expect_comma;
-                type_list.append(.link_array) catch return SchemaParserError.MemoryError;
-                links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return SchemaParserError.MemoryError;
+                type_list.append(.link_array) catch return ZipponError.MemoryError;
+                links.put(self.toker.getTokenSlice(member_token), self.toker.getTokenSlice(token)) catch return ZipponError.MemoryError;
             },
             else => return printError(
                 "Error parsing schema: Expected data type",
-                SchemaParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
@@ -228,7 +228,7 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
             .comma => state = .expect_member_name_OR_r_paren,
             else => return printError(
                 "Error parsing schema: Expected ,",
-                SchemaParserError.SynthaxError,
+                ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,

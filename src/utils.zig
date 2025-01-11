@@ -1,5 +1,5 @@
 const std = @import("std");
-const ZipponError = @import("errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 const config = @import("config");
 
 const log = std.log.scoped(.utils);

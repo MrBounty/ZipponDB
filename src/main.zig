@@ -15,7 +15,7 @@ const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("tokenizers/ziql.zig").Token;
 const ziqlParser = @import("ziqlParser.zig");
 
-const ZipponError = @import("errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 
 const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;
@@ -86,7 +86,7 @@ pub const DBEngine = struct {
     pub fn init(potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
         var self = DBEngine{};
 
-        self.thread_engine = ThreadEngine.init() catch @panic("TODO");
+        self.thread_engine = ThreadEngine.init();
 
         const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable("ZIPPONDB_PATH");
         if (potential_main_path_or_environment_variable) |main_path| {

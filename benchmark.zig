@@ -4,7 +4,7 @@ const DBEngine = @import("src/main.zig").DBEngine;
 const ziqlTokenizer = @import("src/tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("src/tokenizers/ziql.zig").Token;
 const ziqlParser = @import("src/ziqlParser.zig").Parser;
-const ZipponError = @import("src/stuffs/errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 
 const names = [_][]const u8{ "Alice", "Bob", "Charlie", "Dave", "Eve" };
 const emails = [_][]const u8{ "alice@email.com", "bob@email.com", "charlie@email.com", "dave@email.com", "eve@email.com" };
@@ -31,7 +31,7 @@ pub fn myLog(
 }
 
 pub fn main() !void {
-    const to_test = [_]usize{500};
+    const to_test = [_]usize{500_000};
     {
         var line_buffer: [1024 * 1024]u8 = undefined;
         var db_engine = DBEngine.init("benchmark", "schema/example");
@@ -75,7 +75,7 @@ pub fn main() !void {
 
                 for (users_count - 1) |_| {
                     try writer.print(
-                        "('{s}', '{s}', {d}, [ {d} ], {{}}, none, {s}, {s}, {s})",
+                        "('{s}', '{s}', {d}, [ {d} ], none, none, {s}, {s}, {s})",
                         .{
                             names[rng.uintAtMost(usize, names.len - 1)],
                             emails[rng.uintAtMost(usize, emails.len - 1)],
@@ -128,6 +128,7 @@ pub fn main() !void {
                     "GRAB User {bday > 2000/01/01}",
                     "GRAB User {age > 30 AND name = 'Charlie' AND bday > 2000/01/01}",
                     "GRAB User {best_friend IN {name = 'Charlie'}}",
+                    "DELETE User {}",
                 };
 
                 // Run benchmarks

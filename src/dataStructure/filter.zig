@@ -10,7 +10,7 @@
 
 const std = @import("std");
 const s2t = @import("dtype").s2t;
-const ZipponError = @import("../errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 const DataType = @import("dtype").DataType;
 const DateTime = @import("dtype").DateTime;
 const UUID = @import("dtype").UUID;

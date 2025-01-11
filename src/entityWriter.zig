@@ -8,7 +8,7 @@ const DataType = dtype.DataType;
 const DateTime = dtype.DateTime;
 const UUID = dtype.UUID;
 
-const ZipponError = @import("errors.zig").ZipponError;
+const ZipponError = @import("error").ZipponError;
 
 pub fn writeEntityTable(
     writer: anytype,
