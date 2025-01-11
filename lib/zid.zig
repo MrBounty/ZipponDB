@@ -509,7 +509,7 @@ pub const ArrayIterator = struct {
 /// Performance concern once again.
 pub const DataWriter = struct {
     file: std.fs.File,
-    writer: std.io.BufferedWriter(4096, std.fs.File.Writer), // TODO: Increase buffer size, this should speed up a bit
+    writer: std.io.BufferedWriter(4096, std.fs.File.Writer),
 
     pub fn init(name: []const u8, dir: ?std.fs.Dir) !DataWriter {
         const d_ = dir orelse std.fs.cwd();

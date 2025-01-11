@@ -98,7 +98,6 @@ pub const FileEngine = struct {
     // --------------------Init folder and files--------------------
 
     /// Create the main folder. Including DATA, LOG and BACKUP
-    /// TODO: Maybe start using a fixed lenght buffer instead of free everytime, but that not that important
     pub fn createMainDirectories(self: *FileEngine) ZipponError!void {
         var path_buff = std.fmt.bufPrint(&path_buffer, "{s}", .{self.path_to_ZipponDB_dir}) catch return FileEngineError.MemoryError;
 
@@ -462,7 +461,7 @@ pub const FileEngine = struct {
 
         // I then call parseEntitiesRelationMap on each
         // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
-        for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(relation_map.struct_name, relation_map, &buff);
+        for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(allocator, relation_map.struct_name, relation_map, &buff);
 
         return buff.toOwnedSlice() catch return ZipponError.MemoryError;
     }
@@ -522,11 +521,12 @@ pub const FileEngine = struct {
     // TODO: Use the new function in SchemaEngine to reduce the number of files to parse
     pub fn parseEntitiesRelationMap(
         self: *FileEngine,
+        parent_allocator: Allocator,
         struct_name: []const u8,
         relation_map: *RelationMap,
         buff: *std.ArrayList(u8),
     ) ZipponError!void {
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var arena = std.heap.ArenaAllocator.init(parent_allocator);
         defer arena.deinit();
         const allocator = arena.allocator();
 
@@ -541,9 +541,7 @@ pub const FileEngine = struct {
         );
 
         const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-        const max_file_index = try self.maxFileIndex(sstruct.name); // Chqnge to use a list of file index
-
-        log.debug("Max file index {d}", .{max_file_index});
+        const to_parse = try self.schema_engine.fileListToParse(allocator, struct_name, relation_map.map.*);
 
         // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
         if (relation_map.additional_data.childrens.items.len == 0) {
@@ -563,21 +561,21 @@ pub const FileEngine = struct {
         // Multi thread stuffs
         var sync_context = ThreadSyncContext.init(
             relation_map.additional_data.limit,
-            max_file_index + 1,
+            to_parse.len,
         );
 
         // Do one writer for each thread otherwise it create error by writing at the same time
         var thread_map_list = allocator.alloc(
             std.AutoHashMap([16]u8, JsonString),
-            max_file_index + 1,
+            to_parse.len,
         ) catch return FileEngineError.MemoryError;
 
         // Start parsing all file in multiple thread
-        for (0..(max_file_index + 1)) |file_index| {
-            thread_map_list[file_index] = relation_map.map.cloneWithAllocator(allocator) catch return ZipponError.MemoryError;
+        for (to_parse, 0..) |file_index, i| {
+            thread_map_list[i] = relation_map.map.cloneWithAllocator(allocator) catch return ZipponError.MemoryError;
 
             self.thread_pool.spawn(parseEntitiesRelationMapOneFile, .{
-                &thread_map_list[file_index],
+                &thread_map_list[i],
                 file_index,
                 dir,
                 sstruct.zid_schema,
@@ -614,7 +612,7 @@ pub const FileEngine = struct {
 
         // I then call parseEntitiesRelationMap on each
         // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
-        for (relation_maps) |*sub_relation_map| try self.parseEntitiesRelationMap(sub_relation_map.struct_name, sub_relation_map, buff);
+        for (relation_maps) |*sub_relation_map| try self.parseEntitiesRelationMap(allocator, sub_relation_map.struct_name, sub_relation_map, buff);
     }
 
     fn parseEntitiesRelationMapOneFile(

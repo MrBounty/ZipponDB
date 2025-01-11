@@ -10,8 +10,6 @@ const UUID = dtype.UUID;
 
 const ZipponError = @import("stuffs/errors.zig").ZipponError;
 
-// TODO: Try std.json
-
 pub const EntityWriter = struct {
     pub fn writeEntityTable(
         writer: anytype,

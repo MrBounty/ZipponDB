@@ -258,18 +258,19 @@ pub const SchemaEngine = struct {
         alloc: Allocator,
         struct_name: []const u8,
         map: std.AutoHashMap([16]u8, JsonString),
-    ) ![]usize {
+    ) ZipponError![]usize {
         const sstruct = try self.structName2SchemaStruct(struct_name);
         var unique_indices = std.AutoHashMap(usize, void).init(alloc);
+        defer unique_indices.deinit();
 
         var iter = map.keyIterator();
         while (iter.next()) |uuid| {
-            if (sstruct.uuid_file_index.get(uuid.*)) |file_index| {
-                try unique_indices.put(file_index, {});
+            if (sstruct.uuid_file_index.get(UUID{ .bytes = uuid.* })) |file_index| {
+                unique_indices.put(file_index, {}) catch return ZipponError.MemoryError;
             }
         }
 
-        var result = try alloc.alloc(usize, unique_indices.count());
+        var result = alloc.alloc(usize, unique_indices.count()) catch return ZipponError.MemoryError;
         var i: usize = 0;
         var index_iter = unique_indices.keyIterator();
         while (index_iter.next()) |index| {

@@ -70,9 +70,7 @@ pub const Parser = struct {
     file_engine: *FileEngine,
     schema_engine: *SchemaEngine,
 
-    // TODO: Improve memory management, stop using an alloc in init maybe
     pub fn init(toker: *Tokenizer, file_engine: *FileEngine, schema_engine: *SchemaEngine) Parser {
-        // Do I need to init a FileEngine at each Parser, can't I put it in the CLI parser instead ?
         return Parser{
             .toker = toker,
             .file_engine = file_engine,
@@ -309,7 +307,6 @@ pub const Parser = struct {
                 ),
             },
 
-            // TODO: Speed up batch by flushing one time and speed up how to find which file to use
             .parse_new_data_and_add_data => {
                 var order = std.ArrayList([]const u8).init(allocator);
                 defer order.deinit();
@@ -1048,13 +1045,11 @@ pub const Parser = struct {
                     }
                 }
             },
-            .link, .link_array => {}, // TODO: Check if next token is either [ or {
+            .link, .link_array => {},
             else => unreachable,
         }
 
         // And finally create the ConditionValue
-        // FIXME: This take the majority of time when ADD in big batch. Need serious speed up. I aim to be able to load a simple 10MB query in less then 0.1s
-        // Rn for 100_000 users for around 10Mb, it take 30s... I mean come on, 30s ? For 10MB ? That suck...
         switch (data_type) {
             .int => return ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
             .float => return ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
@@ -1110,7 +1105,7 @@ pub const Parser = struct {
                     additional_data.limit = 1;
 
                     const link_sstruct = try self.schema_engine.linkedStructName(struct_name, member_name);
-                    if (token.tag == .l_brace) filter = try self.parseFilter( // FIXME: Look like the filter is empty after that (root node is Empty)
+                    if (token.tag == .l_brace) filter = try self.parseFilter(
                         allocator,
                         link_sstruct.name,
                         false,
@@ -1126,7 +1121,6 @@ pub const Parser = struct {
                         .empty => null,
                         else => filter,
                     };
-                    std.debug.print("Filter: {any}\n", .{filter});
 
                     // Here I have the filter and additionalData
                     const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
