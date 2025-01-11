@@ -1,5 +1,5 @@
 const std = @import("std");
-const utils = @import("stuffs/utils.zig");
+const utils = @import("utils.zig");
 const send = utils.send;
 const Allocator = std.mem.Allocator;
 const Pool = std.Thread.Pool;
@@ -15,7 +15,7 @@ const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("tokenizers/ziql.zig").Token;
 const ziqlParser = @import("ziqlParser.zig").Parser;
 
-const ZipponError = @import("stuffs/errors.zig").ZipponError;
+const ZipponError = @import("errors.zig").ZipponError;
 
 const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;

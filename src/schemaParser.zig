@@ -7,10 +7,10 @@ const UUID = @import("dtype").UUID;
 const Toker = @import("tokenizers/schema.zig").Tokenizer;
 const Token = @import("tokenizers/schema.zig").Token;
 const Loc = @import("tokenizers/shared/loc.zig").Loc;
-const send = @import("stuffs/utils.zig").send;
-const printError = @import("stuffs/utils.zig").printError;
+const send = @import("utils.zig").send;
+const printError = @import("utils.zig").printError;
 
-const SchemaParserError = @import("stuffs/errors.zig").SchemaParserError;
+const SchemaParserError = @import("errors.zig").SchemaParserError;
 
 const State = enum {
     end,

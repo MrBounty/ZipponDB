@@ -8,17 +8,17 @@ const Token = @import("tokenizers/ziql.zig").Token;
 const dtype = @import("dtype");
 const UUID = dtype.UUID;
 
-const Filter = @import("stuffs/filter.zig").Filter;
-const Condition = @import("stuffs/filter.zig").Condition;
-const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
-const ComparisonOperator = @import("stuffs/filter.zig").ComparisonOperator;
+const Filter = @import("dataStructure/filter.zig").Filter;
+const Condition = @import("dataStructure/filter.zig").Condition;
+const ConditionValue = @import("dataStructure/filter.zig").ConditionValue;
+const ComparisonOperator = @import("dataStructure/filter.zig").ComparisonOperator;
 
-const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
-const AdditionalDataMember = @import("stuffs/additionalData.zig").AdditionalDataMember;
-const send = @import("stuffs/utils.zig").send;
-const printError = @import("stuffs/utils.zig").printError;
+const AdditionalData = @import("dataStructure/additionalData.zig").AdditionalData;
+const AdditionalDataMember = @import("dataStructure/additionalData.zig").AdditionalDataMember;
+const send = @import("utils.zig").send;
+const printError = @import("utils.zig").printError;
 
-const ZipponError = @import("stuffs/errors.zig").ZipponError;
+const ZipponError = @import("errors.zig").ZipponError;
 const PRINT_STATE = @import("config").PRINT_STATE;
 
 const log = std.log.scoped(.ziqlParser);

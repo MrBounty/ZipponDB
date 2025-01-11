@@ -1,14 +1,14 @@
 const std = @import("std");
-const utils = @import("stuffs/utils.zig");
+const utils = @import("utils.zig");
 const zid = @import("ZipponData");
-const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
-const JsonString = @import("stuffs/relationMap.zig").JsonString;
+const AdditionalData = @import("dataStructure/additionalData.zig").AdditionalData;
+const JsonString = @import("dataStructure/relationMap.zig").JsonString;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
 const DateTime = dtype.DateTime;
 const UUID = dtype.UUID;
 
-const ZipponError = @import("stuffs/errors.zig").ZipponError;
+const ZipponError = @import("errors.zig").ZipponError;
 
 pub const EntityWriter = struct {
     pub fn writeEntityTable(

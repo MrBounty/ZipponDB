@@ -1,5 +1,5 @@
 const std = @import("std");
-const utils = @import("stuffs/utils.zig");
+const utils = @import("utils.zig");
 const zid = @import("ZipponData");
 const U64 = std.atomic.Value(u64);
 const Pool = std.Thread.Pool;
@@ -15,13 +15,13 @@ const UUID = dtype.UUID;
 const DateTime = dtype.DateTime;
 const DataType = dtype.DataType;
 
-const AdditionalData = @import("stuffs/additionalData.zig").AdditionalData;
-const Filter = @import("stuffs/filter.zig").Filter;
-const RelationMap = @import("stuffs/relationMap.zig").RelationMap;
-const JsonString = @import("stuffs/relationMap.zig").JsonString;
-const ConditionValue = @import("stuffs/filter.zig").ConditionValue;
+const AdditionalData = @import("dataStructure/additionalData.zig").AdditionalData;
+const Filter = @import("dataStructure/filter.zig").Filter;
+const RelationMap = @import("dataStructure/relationMap.zig").RelationMap;
+const JsonString = @import("dataStructure/relationMap.zig").JsonString;
+const ConditionValue = @import("dataStructure/filter.zig").ConditionValue;
 
-const ZipponError = @import("stuffs/errors.zig").ZipponError;
+const ZipponError = @import("errors.zig").ZipponError;
 
 const config = @import("config");
 const BUFFER_SIZE = config.BUFFER_SIZE;
@@ -184,7 +184,7 @@ pub fn getNumberOfEntity(self: *FileEngine, struct_name: []const u8) ZipponError
     return count;
 }
 
-const UUIDFileIndex = @import("stuffs/UUIDFileIndex.zig").UUIDIndexMap;
+const UUIDFileIndex = @import("dataStructure/UUIDFileIndex.zig").UUIDIndexMap;
 
 /// Populate a map with all UUID bytes as key and file index as value
 /// This map is store in the SchemaStruct to then by using a list of UUID, get a list of file_index to parse

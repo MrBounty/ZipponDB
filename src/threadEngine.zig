@@ -5,7 +5,7 @@ const U64 = std.atomic.Value(u64);
 const Pool = std.Thread.Pool;
 const Allocator = std.mem.Allocator;
 
-const ZipponError = @import("stuffs/errors.zig").ZipponError;
+const ZipponError = @import("errors.zig").ZipponError;
 const CPU_CORE = @import("config").CPU_CORE;
 const OUT_BUFFER_SIZE = @import("config").OUT_BUFFER_SIZE;
 const log = std.log.scoped(.thread);

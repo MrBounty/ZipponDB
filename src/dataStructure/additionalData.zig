@@ -6,7 +6,7 @@ const DataType = dtype.DataType;
 
 // TODO: Put this in a data structure directory
 
-const ZipponError = @import("errors.zig").ZipponError;
+const ZipponError = @import("../errors.zig").ZipponError;
 
 /// This is the [] part
 pub const AdditionalData = @This();
