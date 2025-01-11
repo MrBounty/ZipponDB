@@ -352,6 +352,12 @@ pub const Parser = struct {
 
                     maps.append(data_map.clone() catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
 
+                    if (maps.items.len >= 1_000) {
+                        self.file_engine.addEntity(struct_name, maps.items, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                        for (maps.items) |*map| map.deinit();
+                        maps.clearRetainingCapacity();
+                    }
+
                     token = self.toker.last_token;
                     if (token.tag == .l_paren) continue;
                     break;
