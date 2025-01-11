@@ -698,9 +698,12 @@ pub const FileEngine = struct {
         var data_writer = zid.DataWriter.init(path, null) catch return FileEngineError.ZipponDataError;
         defer data_writer.deinit();
 
+        const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
+
         for (maps) |map| {
             const data = try self.orderedNewData(allocator, struct_name, map);
             data_writer.write(data) catch return FileEngineError.ZipponDataError;
+            sstruct.uuid_file_index.map.*.put(UUID{ .bytes = data[0].UUID }, file_index) catch return ZipponError.MemoryError;
             writer.print("\"{s}\", ", .{UUID.format_bytes(data[0].UUID)}) catch return FileEngineError.WriteError;
 
             const file_stat = data_writer.fileStat() catch return ZipponError.ZipponDataError;
@@ -929,12 +932,16 @@ pub const FileEngine = struct {
         }
 
         // Combine results
-        // TODO: Make a struct for writing
         writer.writeByte('[') catch return FileEngineError.WriteError;
         for (thread_writer_list) |list| {
             writer.writeAll(list.items) catch return FileEngineError.WriteError;
         }
         writer.writeByte(']') catch return FileEngineError.WriteError;
+
+        // Update UUID file index map FIXME: Stop doing that and just remove UUID from the map itself instead of reparsing everything at the end
+        sstruct.uuid_file_index.map.clearRetainingCapacity();
+        _ = sstruct.uuid_file_index.arena.reset(.free_all);
+        try self.populateFileIndexUUIDMap(sstruct, sstruct.uuid_file_index);
     }
 
     fn deleteEntitiesOneFile(
@@ -983,6 +990,7 @@ pub const FileEngine = struct {
             return;
         }) |row| {
             if (!finish_writing and (filter == null or filter.?.evaluate(row))) {
+                // _ = sstruct.uuid_file_index.map.remove(UUID{ .bytes = row[0].UUID }); FIXME: This doesnt work in multithread because they try to remove at the same time
                 writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
                     sync_context.logError("Error writting", err);
                     return;
@@ -990,7 +998,6 @@ pub const FileEngine = struct {
 
                 finish_writing = sync_context.incrementAndCheckStructLimit();
             } else {
-                std.debug.print("Oups", .{});
                 new_writer.write(row) catch |err| {
                     sync_context.logError("Error writing unchanged data", err);
                     return;
