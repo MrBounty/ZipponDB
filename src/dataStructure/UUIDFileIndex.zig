@@ -28,14 +28,7 @@ pub fn deinit(self: *UUIDIndexMap) void {
 }
 
 pub fn put(self: *UUIDIndexMap, uuid: UUID, file_index: usize) !void {
-    const allocator = self.arena.allocator();
-    const new_uuid = try allocator.create(UUID);
-    new_uuid.* = uuid;
-
-    const new_file_index = try allocator.create(usize);
-    new_file_index.* = file_index;
-
-    try self.map.*.put(new_uuid.*, new_file_index.*);
+    try self.map.*.put(uuid, file_index);
 }
 
 pub fn contains(self: UUIDIndexMap, uuid: UUID) bool {

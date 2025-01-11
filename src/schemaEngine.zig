@@ -1,18 +1,18 @@
 const std = @import("std");
 const zid = @import("ZipponData");
 const Allocator = std.mem.Allocator;
-const Parser = @import("schemaParser.zig").Parser;
+const Parser = @import("schemaParser.zig");
 const Tokenizer = @import("tokenizers/schema.zig").Tokenizer;
 const ZipponError = @import("errors.zig").ZipponError;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
-const AdditionalData = @import("dataStructure/additionalData.zig").AdditionalData;
-const RelationMap = @import("dataStructure/relationMap.zig").RelationMap;
+const AdditionalData = @import("dataStructure/additionalData.zig");
+const RelationMap = @import("dataStructure/relationMap.zig");
 const JsonString = @import("dataStructure/relationMap.zig").JsonString;
 const ConditionValue = @import("dataStructure/filter.zig").ConditionValue;
 const UUID = dtype.UUID;
-const UUIDFileIndex = @import("dataStructure/UUIDFileIndex.zig").UUIDIndexMap;
-const FileEngine = @import("fileEngine.zig").FileEngine;
+const UUIDFileIndex = @import("dataStructure/UUIDFileIndex.zig");
+const FileEngine = @import("fileEngine.zig");
 
 // TODO: Create a schemaEngine directory and add this as core and the parser with it
 

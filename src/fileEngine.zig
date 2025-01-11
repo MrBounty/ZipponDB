@@ -4,10 +4,10 @@ const zid = @import("ZipponData");
 const U64 = std.atomic.Value(u64);
 const Pool = std.Thread.Pool;
 const Allocator = std.mem.Allocator;
-const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
+const SchemaEngine = @import("schemaEngine.zig");
 const SchemaStruct = @import("schemaEngine.zig").SchemaStruct;
-const ThreadSyncContext = @import("threadEngine.zig").ThreadSyncContext;
-const EntityWriter = @import("entityWriter.zig").EntityWriter;
+const ThreadSyncContext = @import("thread/context.zig");
+const EntityWriter = @import("entityWriter.zig");
 
 const dtype = @import("dtype");
 const s2t = dtype.s2t;
@@ -15,9 +15,9 @@ const UUID = dtype.UUID;
 const DateTime = dtype.DateTime;
 const DataType = dtype.DataType;
 
-const AdditionalData = @import("dataStructure/additionalData.zig").AdditionalData;
+const AdditionalData = @import("dataStructure/additionalData.zig");
 const Filter = @import("dataStructure/filter.zig").Filter;
-const RelationMap = @import("dataStructure/relationMap.zig").RelationMap;
+const RelationMap = @import("dataStructure/relationMap.zig");
 const JsonString = @import("dataStructure/relationMap.zig").JsonString;
 const ConditionValue = @import("dataStructure/filter.zig").ConditionValue;
 

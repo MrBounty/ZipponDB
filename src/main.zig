@@ -4,16 +4,16 @@ const send = utils.send;
 const Allocator = std.mem.Allocator;
 const Pool = std.Thread.Pool;
 
-const FileEngine = @import("fileEngine.zig").FileEngine;
-const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
-const ThreadEngine = @import("threadEngine.zig").ThreadEngine;
+const FileEngine = @import("fileEngine.zig");
+const SchemaEngine = @import("schemaEngine.zig");
+const ThreadEngine = @import("thread/engine.zig");
 
 const cliTokenizer = @import("tokenizers/cli.zig").Tokenizer;
 const cliToken = @import("tokenizers/cli.zig").Token;
 
 const ziqlTokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("tokenizers/ziql.zig").Token;
-const ziqlParser = @import("ziqlParser.zig").Parser;
+const ziqlParser = @import("ziqlParser.zig");
 
 const ZipponError = @import("errors.zig").ZipponError;
 
@@ -86,7 +86,7 @@ pub const DBEngine = struct {
     pub fn init(potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) DBEngine {
         var self = DBEngine{};
 
-        self.thread_engine = ThreadEngine.init();
+        self.thread_engine = ThreadEngine.init() catch @panic("TODO");
 
         const potential_main_path_or_environment_variable = potential_main_path orelse utils.getEnvVariable("ZIPPONDB_PATH");
         if (potential_main_path_or_environment_variable) |main_path| {

@@ -66,6 +66,7 @@ const State = enum {
 };
 
 pub const Parser = @This();
+
 toker: *Tokenizer,
 file_engine: *FileEngine,
 schema_engine: *SchemaEngine,
