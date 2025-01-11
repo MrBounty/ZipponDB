@@ -31,44 +31,37 @@ pub fn myLog(
 }
 
 pub fn main() !void {
-    const to_test = [_]usize{50_000};
-    var line_buffer: [1024 * 1024]u8 = undefined;
-    var db_engine = DBEngine.init("benchmark", "schema/example");
-    defer db_engine.deinit();
+    const to_test = [_]usize{500};
+    {
+        var line_buffer: [1024 * 1024]u8 = undefined;
+        var db_engine = DBEngine.init("benchmark", "schema/example");
+        defer db_engine.deinit();
 
-    for (to_test) |users_count| {
-        // Populate with random dummy value
-        // Need some speed up, spended times to find that it is the parsonConditionValue that take time, the last switch to be exact, that parse str to value
-        {
-            std.debug.print("\n=====================================\n\n", .{});
-            std.debug.print("Populating with {d} users.\n", .{users_count});
+        for (to_test) |users_count| {
+            {
+                const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE User {{}}", .{});
+                var toker = ziqlTokenizer.init(null_term_query_str);
+                var parser = ziqlParser.init(&toker, &db_engine.file_engine, &db_engine.schema_engine);
+                try parser.parse();
+            }
+            // Populate with random dummy value
+            // Need some speed up, spended times to find that it is the parsonConditionValue that take time, the last switch to be exact, that parse str to value
+            {
+                std.debug.print("\n=====================================\n\n", .{});
+                std.debug.print("Populating with {d} users.\n", .{users_count});
 
-            const allocator = std.heap.page_allocator;
+                const allocator = std.heap.page_allocator;
 
-            var prng = std.rand.DefaultPrng.init(0);
-            const rng = prng.random();
-            const populate_start_time = std.time.nanoTimestamp();
+                var prng = std.rand.DefaultPrng.init(0);
+                const rng = prng.random();
+                const populate_start_time = std.time.nanoTimestamp();
 
-            var array = std.ArrayList(u8).init(allocator);
-            defer array.deinit();
-            var writer = array.writer();
+                var array = std.ArrayList(u8).init(allocator);
+                defer array.deinit();
+                var writer = array.writer();
 
-            try writer.print(
-                "ADD User (name = '{s}', email='{s}', age={d}, scores=[ {d} ], best_friend=none, friends=none, bday={s}, a_time={s}, last_order={s})",
-                .{
-                    names[rng.uintAtMost(usize, names.len - 1)],
-                    emails[rng.uintAtMost(usize, emails.len - 1)],
-                    rng.uintAtMost(usize, 100),
-                    scores[rng.uintAtMost(usize, scores.len - 1)],
-                    dates[rng.uintAtMost(usize, dates.len - 1)],
-                    times[rng.uintAtMost(usize, times.len - 1)],
-                    datetimes[rng.uintAtMost(usize, datetimes.len - 1)],
-                },
-            );
-
-            for (users_count - 1) |_| {
                 try writer.print(
-                    "('{s}', '{s}', {d}, [ {d} ], none, none, {s}, {s}, {s})",
+                    "ADD User (name = '{s}', email='{s}', age={d}, scores=[ {d} ], best_friend=none, friends=none, bday={s}, a_time={s}, last_order={s})",
                     .{
                         names[rng.uintAtMost(usize, names.len - 1)],
                         emails[rng.uintAtMost(usize, emails.len - 1)],
@@ -79,56 +72,92 @@ pub fn main() !void {
                         datetimes[rng.uintAtMost(usize, datetimes.len - 1)],
                     },
                 );
-            }
 
-            const null_term_query_str = try std.fmt.allocPrintZ(allocator, "{s}", .{array.items});
-            defer allocator.free(null_term_query_str);
+                for (users_count - 1) |_| {
+                    try writer.print(
+                        "('{s}', '{s}', {d}, [ {d} ], {{}}, none, {s}, {s}, {s})",
+                        .{
+                            names[rng.uintAtMost(usize, names.len - 1)],
+                            emails[rng.uintAtMost(usize, emails.len - 1)],
+                            rng.uintAtMost(usize, 100),
+                            scores[rng.uintAtMost(usize, scores.len - 1)],
+                            dates[rng.uintAtMost(usize, dates.len - 1)],
+                            times[rng.uintAtMost(usize, times.len - 1)],
+                            datetimes[rng.uintAtMost(usize, datetimes.len - 1)],
+                        },
+                    );
+                }
 
-            var toker = ziqlTokenizer.init(null_term_query_str);
-            var parser = ziqlParser.init(&toker, &db_engine.file_engine, &db_engine.schema_engine);
-            try parser.parse();
+                const null_term_query_str = try std.fmt.allocPrintZ(allocator, "{s}", .{array.items});
+                defer allocator.free(null_term_query_str);
 
-            const populate_end_time = std.time.nanoTimestamp();
-            const populate_duration = @as(f64, @floatFromInt(populate_end_time - populate_start_time)) / 1e9;
-
-            std.debug.print("Populate duration: {d:.6} seconds\n\n", .{populate_duration});
-
-            var buffer = std.ArrayList(u8).init(std.heap.page_allocator);
-            defer buffer.deinit();
-            try db_engine.file_engine.writeDbMetrics(&buffer);
-            std.debug.print("{s}\n", .{buffer.items});
-            std.debug.print("--------------------------------------\n\n", .{});
-        }
-
-        // Define your benchmark queries
-        {
-            const queries = [_][]const u8{
-                "GRAB User {}",
-                "GRAB User [1] {}",
-                "GRAB User [name] {}",
-                "GRAB User {name = 'Charlie'}",
-                "GRAB User {age > 30}",
-                "GRAB User {bday > 2000/01/01}",
-                "DELETE User {}",
-            };
-
-            // Run benchmarks
-            for (queries) |query| {
-                const start_time = std.time.nanoTimestamp();
-
-                // Execute the query here
-                const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "{s}", .{query});
                 var toker = ziqlTokenizer.init(null_term_query_str);
                 var parser = ziqlParser.init(&toker, &db_engine.file_engine, &db_engine.schema_engine);
                 try parser.parse();
 
-                const end_time = std.time.nanoTimestamp();
-                const duration = @as(f64, @floatFromInt(end_time - start_time)) / 1e9;
+                const populate_end_time = std.time.nanoTimestamp();
+                const populate_duration = @as(f64, @floatFromInt(populate_end_time - populate_start_time)) / 1e9;
 
-                std.debug.print("Query: \t\t{s}\nDuration: \t{d:.6} seconds\n\n", .{ query, duration });
+                std.debug.print("Populate duration: {d:.6} seconds\n\n", .{populate_duration});
+
+                var buffer = std.ArrayList(u8).init(std.heap.page_allocator);
+                defer buffer.deinit();
+                try db_engine.file_engine.writeDbMetrics(&buffer);
+                std.debug.print("{s}\n", .{buffer.items});
+                std.debug.print("--------------------------------------\n\n", .{});
             }
 
-            std.debug.print("=====================================\n\n", .{});
+            {
+                for (db_engine.schema_engine.struct_array) |sstruct| {
+                    const mb: f64 = @as(f64, @floatFromInt(sstruct.uuid_file_index.arena.queryCapacity())) / 1024.0 / 1024.0;
+                    std.debug.print("Sstruct: {s}\n", .{sstruct.name});
+                    std.debug.print("Memory: {d:.2}Mb\n", .{mb});
+                    std.debug.print("Count: {d}\n\n", .{sstruct.uuid_file_index.map.count()});
+                    std.debug.print("--------------------------------------\n\n", .{});
+                }
+            }
+
+            // Define your benchmark queries
+            {
+                const queries = [_][]const u8{
+                    "GRAB User {}",
+                    "GRAB User [1] {}",
+                    "GRAB User [name] {}",
+                    "GRAB User {name = 'Charlie'}",
+                    "GRAB User {age > 30}",
+                    "GRAB User {bday > 2000/01/01}",
+                    "GRAB User {age > 30 AND name = 'Charlie' AND bday > 2000/01/01}",
+                    "GRAB User {best_friend IN {name = 'Charlie'}}",
+                };
+
+                // Run benchmarks
+                for (queries) |query| {
+                    const start_time = std.time.nanoTimestamp();
+
+                    // Execute the query here
+                    const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "{s}", .{query});
+                    var toker = ziqlTokenizer.init(null_term_query_str);
+                    var parser = ziqlParser.init(&toker, &db_engine.file_engine, &db_engine.schema_engine);
+                    try parser.parse();
+
+                    const end_time = std.time.nanoTimestamp();
+                    const duration = @as(f64, @floatFromInt(end_time - start_time)) / 1e6;
+
+                    std.debug.print("Query: \t\t{s}\nDuration: \t{d:.6} ms\n\n", .{ query, duration });
+                }
+
+                std.debug.print("=====================================\n\n", .{});
+            }
+
+            {
+                for (db_engine.schema_engine.struct_array) |sstruct| {
+                    const mb: f64 = @as(f64, @floatFromInt(sstruct.uuid_file_index.arena.queryCapacity())) / 1024.0 / 1024.0;
+                    std.debug.print("Sstruct: {s}\n", .{sstruct.name});
+                    std.debug.print("Memory: {d:.2}Mb\n", .{mb});
+                    std.debug.print("Count: {d}\n\n", .{sstruct.uuid_file_index.map.count()});
+                    std.debug.print("--------------------------------------\n\n", .{});
+                }
+            }
         }
     }
 }

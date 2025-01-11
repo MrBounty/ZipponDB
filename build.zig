@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     // Exe
     // -----------------------------------------------
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSafe });
 
     const exe = b.addExecutable(.{
         .name = "ZipponDB",
