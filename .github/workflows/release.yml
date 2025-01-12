@@ -33,7 +33,7 @@ jobs:
           done
 
       - name: Upload release artifacts
-        uses: softprops/gotta-release@v2
+        uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
