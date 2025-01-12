@@ -5,7 +5,7 @@ const utils = @import("../utils.zig");
 const Self = @import("core.zig").Self;
 const ZipponError = @import("error").ZipponError;
 const Allocator = std.mem.Allocator;
-const EntityWriter = @import("../entityWriter.zig");
+const EntityWriter = @import("entityWriter.zig");
 
 var path_buffer: [1024]u8 = undefined;
 

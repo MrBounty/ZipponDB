@@ -12,7 +12,7 @@ const ConditionValue = @import("../dataStructure/filter.zig").ConditionValue;
 const AdditionalData = @import("../dataStructure/additionalData.zig");
 const RelationMap = @import("../dataStructure/relationMap.zig");
 const JsonString = RelationMap.JsonString;
-const EntityWriter = @import("../entityWriter.zig");
+const EntityWriter = @import("entityWriter.zig");
 const ThreadSyncContext = @import("../thread/context.zig");
 
 const dtype = @import("dtype");

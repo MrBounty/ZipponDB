@@ -12,7 +12,7 @@ const AdditionalData = @import("../dataStructure/additionalData.zig");
 const RelationMap = @import("../dataStructure/relationMap.zig");
 const UUIDFileIndex = @import("../dataStructure/UUIDFileIndex.zig").UUIDIndexMap;
 const JsonString = @import("../dataStructure/relationMap.zig").JsonString;
-const EntityWriter = @import("../entityWriter.zig");
+const EntityWriter = @import("entityWriter.zig");
 const ThreadSyncContext = @import("../thread/context.zig");
 
 const dtype = @import("dtype");

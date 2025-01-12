@@ -5,8 +5,7 @@ const Allocator = std.mem.Allocator;
 const FileEngine = @import("../file/core.zig");
 const SchemaEngine = @import("../schema/core.zig");
 const ThreadEngine = @import("../thread/engine.zig");
-const ziqlTokenizer = @import("../tokenizers/ziql.zig").Tokenizer;
-const ziqlParser = @import("../ziqlParser.zig").Parser;
+const ziqlParser = @import("../ziql/core.zig");
 const setLogPath = @import("../main.zig").setLogPath;
 const log = std.log.scoped(.cli);
 
@@ -144,9 +143,8 @@ pub fn getEnvVariable(variable: []const u8) ?[]const u8 {
 }
 
 pub fn runQuery(self: *Self, null_term_query_str: [:0]const u8) void {
-    var toker = ziqlTokenizer.init(null_term_query_str);
-    var parser = ziqlParser.init(&toker, &self.file_engine, &self.schema_engine);
-    parser.parse() catch |err| log.err("Error parsing: {any}", .{err});
+    var parser = ziqlParser.init(&self.file_engine, &self.schema_engine);
+    parser.parse(null_term_query_str) catch |err| log.err("Error parsing: {any}", .{err});
 }
 
 pub fn deinit(self: *Self) void {
