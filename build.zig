@@ -132,12 +132,12 @@ pub fn build(b: *std.Build) void {
 
         const targets = [_]std.Build.ResolvedTarget{
             b.resolveTargetQuery(.{ .os_tag = .windows, .cpu_arch = .x86_64 }),
-            b.resolveTargetQuery(.{ .os_tag = .windows, .cpu_arch = .arm }),
+            //b.resolveTargetQuery(.{ .os_tag = .windows, .cpu_arch = .arm }),
             b.resolveTargetQuery(.{ .os_tag = .macos, .cpu_arch = .x86_64 }),
             b.resolveTargetQuery(.{ .os_tag = .macos, .cpu_arch = .aarch64 }),
             b.resolveTargetQuery(.{ .os_tag = .linux, .cpu_arch = .x86_64 }),
             b.resolveTargetQuery(.{ .os_tag = .linux, .cpu_arch = .aarch64 }),
-            b.resolveTargetQuery(.{ .os_tag = .linux, .cpu_arch = .arm }),
+            //b.resolveTargetQuery(.{ .os_tag = .linux, .cpu_arch = .arm }),
             b.resolveTargetQuery(.{ .os_tag = .linux, .cpu_arch = .riscv64 }),
         };
 
