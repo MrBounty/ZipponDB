@@ -38,6 +38,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: false
-          title: "Release ${GITHUB_REF##*/}"
+          name: "Release ${GITHUB_REF##*/}"
           body: "Automatically generated release notes."
           artifacts: release/zips/*.zip
