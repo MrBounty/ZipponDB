@@ -1,0 +1,43 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Zig
+        uses: ziglang/setup-zig@v1
+        with:
+          zig-version: '0.13.0'
+
+      - name: Build release artifacts
+        run: |
+          zig build release
+
+      - name: Create zip files for release artifacts
+        run: |
+          mkdir -p release/zips
+          for file in release/*; do
+            if [ -f "$file" ]; then
+              zip -j "release/zips/${file##*/}.zip" "$file"
+            fi
+          done
+
+      - name: Upload release artifacts
+        uses: softprops/gotta-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: false
+          title: "Release ${GITHUB_REF##*/}"
+          body: "Automatically generated release notes."
+          artifact: release/zips/*.zip
