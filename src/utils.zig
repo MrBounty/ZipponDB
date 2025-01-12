@@ -6,24 +6,10 @@ const log = std.log.scoped(.utils);
 
 // This use 2MB / 2048KB of memory
 var map_error_buffer: [1024 * 1024]u8 = undefined; // This is for map AND error, not map of error and whatever
-var value_buffer: [1024]u8 = undefined;
 var path_buffer: [1024 * 1024]u8 = undefined;
 
 var fa = std.heap.FixedBufferAllocator.init(&map_error_buffer);
 const allocator = fa.allocator();
-
-pub fn getEnvVariable(variable: []const u8) ?[]const u8 {
-    fa.reset();
-
-    var env_map = std.process.getEnvMap(allocator) catch return null;
-
-    var iter = env_map.iterator();
-    while (iter.next()) |entry| {
-        if (std.mem.eql(u8, entry.key_ptr.*, variable)) return std.fmt.bufPrint(&value_buffer, "{s}", .{entry.value_ptr.*}) catch return null;
-    }
-
-    return null;
-}
 
 const stdout = std.io.getStdOut().writer();
 

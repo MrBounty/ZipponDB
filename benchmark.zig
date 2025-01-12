@@ -1,6 +1,6 @@
 const std = @import("std");
 const dtype = @import("dtype");
-const DBEngine = @import("src/main.zig").DBEngine;
+const DBEngine = @import("src/cli/core.zig");
 const ziqlTokenizer = @import("src/tokenizers/ziql.zig").Tokenizer;
 const ziqlToken = @import("src/tokenizers/ziql.zig").Token;
 const ziqlParser = @import("src/ziqlParser.zig").Parser;
