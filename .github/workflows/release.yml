@@ -35,9 +35,6 @@ jobs:
       - name: Upload release artifacts
         uses: ncipollo/release-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          draft: true
-          prerelease: false
           name: "Release ${GITHUB_REF##*/}"
           body: "Automatically generated release notes."
           artifacts: release/zips/*.zip
