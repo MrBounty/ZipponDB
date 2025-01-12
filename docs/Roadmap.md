@@ -22,7 +22,7 @@
 #### v0.3 - QoL 
 - [X] Docs website
 - [ ] Schema migration   
-- [ ] Dump/Bump data  
+- [~] Dump/Bump data  
 - [ ] Recovery
 - [ ] Better CLI
 - [ ] Linked query  
@@ -53,6 +53,7 @@
 ### Gold
 #### v0.8 - Advanced  
 - [ ] Query optimizer  
+- [ ] Single file
 
 #### v0.9 - Docs  
 - [ ] ZiQL tuto  

@@ -107,15 +107,15 @@ pub fn main() !void {
                 std.debug.print("--------------------------------------\n\n", .{});
             }
 
-            {
-                for (db_engine.schema_engine.struct_array) |sstruct| {
-                    const mb: f64 = @as(f64, @floatFromInt(sstruct.uuid_file_index.arena.queryCapacity())) / 1024.0 / 1024.0;
-                    std.debug.print("Sstruct: {s}\n", .{sstruct.name});
-                    std.debug.print("Memory: {d:.2}Mb\n", .{mb});
-                    std.debug.print("Count: {d}\n\n", .{sstruct.uuid_file_index.map.count()});
-                    std.debug.print("--------------------------------------\n\n", .{});
-                }
-            }
+            //{
+            //    for (db_engine.schema_engine.struct_array) |sstruct| {
+            //        const mb: f64 = @as(f64, @floatFromInt(sstruct.uuid_file_index.arena.queryCapacity())) / 1024.0 / 1024.0;
+            //        std.debug.print("Sstruct: {s}\n", .{sstruct.name});
+            //        std.debug.print("Memory: {d:.2}Mb\n", .{mb});
+            //        std.debug.print("Count: {d}\n\n", .{sstruct.uuid_file_index.map.count()});
+            //        std.debug.print("--------------------------------------\n\n", .{});
+            //    }
+            //}
 
             // Define your benchmark queries
             {
@@ -148,16 +148,6 @@ pub fn main() !void {
                 }
 
                 std.debug.print("=====================================\n\n", .{});
-            }
-
-            {
-                for (db_engine.schema_engine.struct_array) |sstruct| {
-                    const mb: f64 = @as(f64, @floatFromInt(sstruct.uuid_file_index.arena.queryCapacity())) / 1024.0 / 1024.0;
-                    std.debug.print("Sstruct: {s}\n", .{sstruct.name});
-                    std.debug.print("Memory: {d:.2}Mb\n", .{mb});
-                    std.debug.print("Count: {d}\n\n", .{sstruct.uuid_file_index.map.count()});
-                    std.debug.print("--------------------------------------\n\n", .{});
-                }
             }
         }
     }

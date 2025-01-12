@@ -8,13 +8,13 @@ ZipponDB's goal is to be ACID, light, simple, and high-performance. It aims at s
 
 ### Why Zippon ?
 
-- Relational database (Soon)
+- Relational database 
 - Simple and minimal query language
 - Small, light, fast, and implementable everywhere
 
 For more informations visit the docs: https://mrbounty.github.io/ZipponDB/
 
-***Note: ZipponDB is still in Alpha v0.1 and is missing a lot of features, see roadmap at the end of this README.***
+***Note: ZipponDB is still in Alpha v0.2, see roadmap.***
 
 # Declare a schema
 
@@ -31,7 +31,7 @@ User (
 )
 ```
 
-Note that the best friend is a link to another `User`.
+Note that the best friend is a link to another `User`. You can find more examples [here](https://github.com/MrBounty/ZipponDB/tree/main/schema).
 
 # ZipponQL
 
@@ -43,8 +43,6 @@ ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the k
 - `()` contain new or updated data (not already in the file)
 - `||` are additional options
 
-***Disclaimer: Lot of stuff are still missing and the language may change over time.***
-
 ## GRAB
 
 The main action is `GRAB`, this will parse files and return data.  
@@ -54,10 +52,10 @@ GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
 
 Can use [] before the filter to tell what to return.  
 ```js
-GRAB User [id, email] {name = 'Bob' AND (age > 30 OR age < 10)}
+GRAB User [id, email] {name = 'Bob'}
 ```
 
-Here a preview to how to use relationship.
+Relationship use filter within filter.
 ```js
 GRAB User {best_friend IN {name = 'Bob'}}
 ```
