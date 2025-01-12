@@ -25,23 +25,6 @@ pub fn getEnvVariable(variable: []const u8) ?[]const u8 {
     return null;
 }
 
-pub fn getDirTotalSize(dir: std.fs.Dir) !u64 {
-    var total: u64 = 0;
-    var stat: std.fs.File.Stat = undefined;
-    var iter = dir.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind == .directory) {
-            const sub_dir = try dir.openDir(entry.name, .{ .iterate = true });
-            total += try getDirTotalSize(sub_dir);
-        }
-
-        if (entry.kind != .file) continue;
-        stat = try dir.statFile(entry.name);
-        total += stat.size;
-    }
-    return total;
-}
-
 const stdout = std.io.getStdOut().writer();
 
 // Maybe create a struct for that

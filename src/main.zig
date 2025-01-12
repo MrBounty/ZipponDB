@@ -4,7 +4,7 @@ const send = utils.send;
 const Allocator = std.mem.Allocator;
 const Pool = std.Thread.Pool;
 
-const FileEngine = @import("fileEngine.zig");
+const FileEngine = @import("fileEngine/core.zig");
 const SchemaEngine = @import("schemaEngine.zig");
 const ThreadEngine = @import("thread/engine.zig");
 

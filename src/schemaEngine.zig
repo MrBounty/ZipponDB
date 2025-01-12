@@ -11,7 +11,7 @@ const JsonString = @import("dataStructure/relationMap.zig").JsonString;
 const ConditionValue = @import("dataStructure/filter.zig").ConditionValue;
 const UUID = dtype.UUID;
 const UUIDFileIndex = @import("dataStructure/UUIDFileIndex.zig");
-const FileEngine = @import("fileEngine.zig");
+const FileEngine = @import("fileEngine/core.zig");
 
 const ZipponError = @import("error").ZipponError;
 
