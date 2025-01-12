@@ -40,4 +40,4 @@ jobs:
           prerelease: false
           title: "Release ${GITHUB_REF##*/}"
           body: "Automatically generated release notes."
-          artifact: release/zips/*.zip
+          artifacts: release/zips/*.zip
