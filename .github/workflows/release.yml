@@ -24,21 +24,14 @@ jobs:
         run: |
           zig build release
 
-      - name: List directory contents
-        run: |
-          echo "Current directory:"
-          ls -R
-          echo "zig-out directory:"
-          ls -R zig-out          
-
       - name: Create zip files for release artifacts
         run: |
           mkdir -p zig-out/release/zips
           for file in zig-out/release/*; do
-            if [ -f "$file" ]; then
-              zip -j "zig-out/release/zips/${file##*/}.zip" "$file"
+            if [ -f "$file" ] && [[ "$(basename "$file")" != *.pdb ]]; then
+              zip -j "zig-out/release/zips/$(basename "$file").zip" "$file"
             fi
-          done          
+          done    
 
       - name: Upload release artifacts
         uses: ncipollo/release-action@v1
