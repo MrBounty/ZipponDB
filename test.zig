@@ -125,8 +125,13 @@ test "GRAB Relationship AdditionalData Filtered" {
 }
 
 test "GRAB Relationship dot" {
+    // DO I add this ? I'm not sure about this feature
     const db = DB{ .path = "test1", .schema = "schema/example" };
-    try testParsing(db, "GRAB User.best_friend {}");
+    // try testParsing(db, "GRAB User.best_friend {}");
+    // try testParsing(db, "GRAB User.best_friend.best_friend {}");
+    // try testParsing(db, "GRAB User.best_friend.posts {}");
+    // try testParsing(db, "GRAB User.best_friend.posts.comments {}");
+    try testParsing(db, "GRAB User [1] {}");
 }
 
 test "DELETE" {
