@@ -29,9 +29,12 @@ jobs:
           mkdir -p zig-out/release/zips
           for file in zig-out/release/*; do
             if [ -f "$file" ] && [[ "$(basename "$file")" != *.pdb ]]; then
-              zip -j "zig-out/release/zips/$(basename "$file").zip" "$file"
+              filename=$(basename "$file")
+              zipname="${filename%.*}"
+              zip -j "zig-out/release/zips/${zipname}.zip" "$file"
             fi
-          done    
+          done
+  
 
       - name: Upload release artifacts
         uses: ncipollo/release-action@v1
