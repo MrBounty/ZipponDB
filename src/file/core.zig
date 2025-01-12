@@ -1,6 +1,6 @@
 const std = @import("std");
 const Pool = std.Thread.Pool;
-const SchemaEngine = @import("../schemaEngine.zig");
+const SchemaEngine = @import("../schema/core.zig");
 
 const ZipponError = @import("error").ZipponError;
 const log = std.log.scoped(.fileEngine);
@@ -11,6 +11,8 @@ var path_to_ZipponDB_dir_buffer: [1024]u8 = undefined;
 /// Or even get stats, whatever. If it touch files, it's here
 pub const Self = @This();
 
+// This basically expend the file with other
+// So I can define function in other file for the same struct
 pub usingnamespace @import("utils.zig");
 pub usingnamespace @import("directory.zig");
 pub usingnamespace @import("read.zig");

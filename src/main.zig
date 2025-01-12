@@ -4,8 +4,8 @@ const send = utils.send;
 const Allocator = std.mem.Allocator;
 const Pool = std.Thread.Pool;
 
-const FileEngine = @import("fileEngine/core.zig");
-const SchemaEngine = @import("schemaEngine.zig");
+const FileEngine = @import("file/core.zig");
+const SchemaEngine = @import("schema/core.zig");
 const ThreadEngine = @import("thread/engine.zig");
 
 const cliTokenizer = @import("tokenizers/cli.zig").Tokenizer;

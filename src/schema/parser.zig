@@ -1,14 +1,14 @@
 const std = @import("std");
 const zid = @import("ZipponData");
-const SchemaStruct = @import("schemaEngine.zig").SchemaStruct;
+const SchemaStruct = @import("struct.zig");
 const Allocator = std.mem.Allocator;
 const DataType = @import("dtype").DataType;
 const UUID = @import("dtype").UUID;
-const Toker = @import("tokenizers/schema.zig").Tokenizer;
-const Token = @import("tokenizers/schema.zig").Token;
-const Loc = @import("tokenizers/shared/loc.zig").Loc;
-const send = @import("utils.zig").send;
-const printError = @import("utils.zig").printError;
+const Toker = @import("tokenizer.zig").Tokenizer;
+const Token = @import("tokenizer.zig").Token;
+const Loc = @import("../dataStructure/loc.zig");
+const send = @import("../utils.zig").send;
+const printError = @import("../utils.zig").printError;
 
 const ZipponError = @import("error").ZipponError;
 
@@ -27,6 +27,7 @@ const State = enum {
 };
 
 pub const Parser = @This();
+
 toker: *Toker,
 allocator: Allocator,
 
@@ -104,6 +105,7 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
 
         .add_struct => {
             struct_array.append(try SchemaStruct.init(
+                struct_array.allocator,
                 name,
                 member_list.toOwnedSlice() catch return ZipponError.MemoryError,
                 type_list.toOwnedSlice() catch return ZipponError.MemoryError,

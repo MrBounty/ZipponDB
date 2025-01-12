@@ -29,7 +29,7 @@ pub fn dumpDb(self: Self, parent_allocator: Allocator, path: []const u8, format:
         var writer = std.io.bufferedWriter(file.writer());
         EntityWriter.writeHeaderCsv(writer.writer(), sstruct.members, ';') catch return ZipponError.WriteError;
 
-        const struct_dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+        const struct_dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
         const file_indexs = try self.allFileIndex(allocator, sstruct.name);
         for (file_indexs) |file_index| {

@@ -6,12 +6,12 @@ const Allocator = std.mem.Allocator;
 const Self = @import("core.zig").Self;
 const ZipponError = @import("error").ZipponError;
 
-const SchemaStruct = @import("../schemaEngine.zig").SchemaStruct;
+const SchemaStruct = @import("../schema/struct.zig");
 const Filter = @import("../dataStructure/filter.zig").Filter;
 const ConditionValue = @import("../dataStructure/filter.zig").ConditionValue;
 const AdditionalData = @import("../dataStructure/additionalData.zig");
 const RelationMap = @import("../dataStructure/relationMap.zig");
-const JsonString = @import("../dataStructure/relationMap.zig").JsonString;
+const JsonString = RelationMap.JsonString;
 const EntityWriter = @import("../entityWriter.zig");
 const ThreadSyncContext = @import("../thread/context.zig");
 
@@ -78,7 +78,7 @@ pub fn updateEntities(
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
     const max_file_index = try self.maxFileIndex(sstruct.name);
 
-    const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
@@ -115,9 +115,7 @@ pub fn updateEntities(
     }
 
     // Wait for all threads to complete
-    while (!sync_context.isComplete()) {
-        std.time.sleep(100_000); // Check every 0.1ms
-    }
+    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
 
     // Combine results
     writer.writeByte('[') catch return ZipponError.WriteError;
@@ -243,7 +241,7 @@ pub fn deleteEntities(
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
     const max_file_index = try self.maxFileIndex(sstruct.name);
 
-    const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
@@ -270,9 +268,7 @@ pub fn deleteEntities(
     }
 
     // Wait for all threads to complete
-    while (!sync_context.isComplete()) {
-        std.time.sleep(100_000); // Check every 0.1ms
-    }
+    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
 
     // Combine results
     writer.writeByte('[') catch return ZipponError.WriteError;

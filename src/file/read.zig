@@ -6,7 +6,7 @@ const Allocator = std.mem.Allocator;
 const Self = @import("core.zig").Self;
 const ZipponError = @import("error").ZipponError;
 
-const SchemaStruct = @import("../schemaEngine.zig").SchemaStruct;
+const SchemaStruct = @import("../schema/struct.zig");
 const Filter = @import("../dataStructure/filter.zig").Filter;
 const AdditionalData = @import("../dataStructure/additionalData.zig");
 const RelationMap = @import("../dataStructure/relationMap.zig");
@@ -35,7 +35,7 @@ pub fn getNumberOfEntity(self: *Self, struct_name: []const u8) ZipponError!usize
     const max_file_index = try self.maxFileIndex(sstruct.name);
     var count: usize = 0;
 
-    const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
     for (0..(max_file_index + 1)) |i| {
         const path_buff = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{i}) catch return ZipponError.MemoryError;
@@ -62,7 +62,7 @@ pub fn populateFileIndexUUIDMap(
 
     const max_file_index = try self.maxFileIndex(sstruct.name);
 
-    const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
@@ -93,9 +93,7 @@ pub fn populateFileIndexUUIDMap(
     }
 
     // Wait for all threads to complete
-    while (!sync_context.isComplete()) {
-        std.time.sleep(10_000_000);
-    }
+    while (!sync_context.isComplete()) std.time.sleep(10_000_000);
 
     // Combine results
     for (thread_writer_list, 0..) |list, file_index| {
@@ -155,7 +153,7 @@ pub fn populateVoidUUIDMap(
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
     const max_file_index = try self.maxFileIndex(sstruct.name);
 
-    const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
@@ -183,9 +181,7 @@ pub fn populateVoidUUIDMap(
     }
 
     // Wait for all threads to complete
-    while (!sync_context.isComplete()) {
-        std.time.sleep(10_000_000);
-    }
+    while (!sync_context.isComplete()) std.time.sleep(10_000_000);
 
     // Combine results
     for (thread_writer_list) |list| {
@@ -276,7 +272,7 @@ pub fn parseEntities(
     const relation_maps = try self.schema_engine.relationMapArrayInit(allocator, struct_name, additional_data.*);
 
     // Open the dir that contain all files
-    const dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
+    const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
 
     // Multi thread stuffs
     var sync_context = ThreadSyncContext.init(
@@ -307,9 +303,7 @@ pub fn parseEntities(
     }
 
     // Wait for all thread to either finish or return an error
-    while (!sync_context.isComplete()) {
-        std.time.sleep(100_000); // Check every 0.1ms
-    }
+    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
 
     // Append all writer to each other
     writer.writeByte('[') catch return ZipponError.WriteError;
@@ -414,7 +408,7 @@ pub fn parseEntitiesRelationMap(
     }
 
     // Open the dir that contain all files
-    const dir = try utils.printOpenDir(
+    const dir = try self.printOpenDir(
         "{s}/DATA/{s}",
         .{ self.path_to_ZipponDB_dir, sstruct.name },
         .{ .access_sub_paths = false },
@@ -448,9 +442,7 @@ pub fn parseEntitiesRelationMap(
     }
 
     // Wait for all thread to either finish or return an error
-    while (!sync_context.isComplete()) {
-        std.time.sleep(100_000); // Check every 0.1ms
-    }
+    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
 
     // Now here I should have a list of copy of the map with all UUID a bit everywhere
 

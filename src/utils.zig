@@ -76,13 +76,3 @@ pub fn printError(message: []const u8, err: ZipponError, query: ?[]const u8, sta
     if (config.DONT_SEND and !config.DONT_SEND_ERROR) std.debug.print("{s}", .{buffer.items});
     return err;
 }
-
-pub fn printOpenDir(comptime format: []const u8, args: anytype, options: std.fs.Dir.OpenDirOptions) ZipponError!std.fs.Dir {
-    const path = std.fmt.bufPrint(&path_buffer, format, args) catch return ZipponError.CantOpenDir;
-    return std.fs.cwd().openDir(path, options) catch ZipponError.CantOpenDir;
-}
-
-pub fn printOpenFile(comptime format: []const u8, args: anytype, options: std.fs.File.OpenFlags) ZipponError!std.fs.File {
-    const path = std.fmt.bufPrint(&path_buffer, format, args) catch return ZipponError.CantOpenDir;
-    return std.fs.cwd().openFile(path, options) catch ZipponError.CantOpenFile;
-}

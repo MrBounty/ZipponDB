@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const FileEngine = @import("fileEngine/core.zig");
-const SchemaEngine = @import("schemaEngine.zig").SchemaEngine;
+const FileEngine = @import("file/core.zig");
+const SchemaEngine = @import("schema/core.zig");
 const Tokenizer = @import("tokenizers/ziql.zig").Tokenizer;
 const Token = @import("tokenizers/ziql.zig").Token;
 

@@ -130,7 +130,7 @@ pub fn orderedNewData(
 /// Get the index of the first file that is bellow the size limit. If not found, create a new file
 /// TODO: Need some serious speed up. I should keep in memory a file->size as a hashmap and use that instead
 pub fn getFirstUsableIndexFile(self: Self, struct_name: []const u8) ZipponError!usize {
-    var member_dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
+    var member_dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
     defer member_dir.close();
 
     var i: usize = 0;
@@ -156,7 +156,7 @@ pub fn getFirstUsableIndexFile(self: Self, struct_name: []const u8) ZipponError!
 /// FIXME: I use 0..file_index but because now I delete empty file, I can end up trying to parse an empty file. So I need to delete that
 /// And do something that return a list of file to parse instead
 pub fn maxFileIndex(self: Self, struct_name: []const u8) ZipponError!usize {
-    var dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
+    var dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
     defer dir.close();
 
     var count: usize = 0;
@@ -170,7 +170,7 @@ pub fn maxFileIndex(self: Self, struct_name: []const u8) ZipponError!usize {
 }
 
 pub fn allFileIndex(self: Self, allocator: Allocator, struct_name: []const u8) ZipponError![]usize {
-    var dir = try utils.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
+    var dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
     defer dir.close();
 
     var array = std.ArrayList(usize).init(allocator);
@@ -185,7 +185,7 @@ pub fn allFileIndex(self: Self, allocator: Allocator, struct_name: []const u8) Z
 }
 
 pub fn isSchemaFileInDir(self: *Self) bool {
-    _ = utils.printOpenFile("{s}/schema", .{self.path_to_ZipponDB_dir}, .{}) catch return false;
+    _ = self.printOpenFile("{s}/schema", .{self.path_to_ZipponDB_dir}, .{}) catch return false;
     return true;
 }
 
@@ -201,4 +201,14 @@ pub fn writeSchemaFile(self: *Self, null_terminated_schema_buff: [:0]const u8) Z
     var file = zippon_dir.createFile("schema", .{}) catch return ZipponError.CantMakeFile;
     defer file.close();
     file.writeAll(null_terminated_schema_buff) catch return ZipponError.WriteError;
+}
+
+pub fn printOpenDir(_: Self, comptime format: []const u8, args: anytype, options: std.fs.Dir.OpenDirOptions) ZipponError!std.fs.Dir {
+    const path = std.fmt.bufPrint(&path_buffer, format, args) catch return ZipponError.CantOpenDir;
+    return std.fs.cwd().openDir(path, options) catch ZipponError.CantOpenDir;
+}
+
+pub fn printOpenFile(_: Self, comptime format: []const u8, args: anytype, options: std.fs.File.OpenFlags) ZipponError!std.fs.File {
+    const path = std.fmt.bufPrint(&path_buffer, format, args) catch return ZipponError.CantOpenDir;
+    return std.fs.cwd().openFile(path, options) catch ZipponError.CantOpenFile;
 }
