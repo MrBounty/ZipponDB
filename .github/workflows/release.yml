@@ -27,9 +27,9 @@ jobs:
       - name: Create zip files for release artifacts
         run: |
           mkdir -p release/zips
-          for file in release/*; do
+          for file in zig-out/release/*; do
             if [ -f "$file" ]; then
-              zip -j "release/zips/${file##*/}.zip" "$file"
+              zip -j "zig-out/release/zips/${file##*/}.zip" "$file"
             fi
           done
 
@@ -37,5 +37,5 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: "Release ${{ github.ref_name }}"
-          body: "Automatically generated release notes."
-          artifacts: release/zips/*.zip
+          body: "Base release. Most ZipponQL features are here but stuffs around is missing."
+          artifacts: zig-out/release/zips/*.zip
