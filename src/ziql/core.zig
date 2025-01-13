@@ -366,7 +366,7 @@ pub fn parse(self: *Parser, buffer: [:0]const u8) ZipponError!void {
                 maps.append(data_map.cloneWithAllocator(local_allocator) catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
 
                 if (maps.items.len >= 1_000) {
-                    self.file_engine.addEntity(struct_name, maps.items, &buff.writer()) catch return ZipponError.CantWriteEntity;
+                    try self.file_engine.addEntity(struct_name, maps.items, &buff.writer());
                     maps.clearRetainingCapacity();
                     _ = local_arena.reset(.retain_capacity);
                 }
@@ -376,7 +376,7 @@ pub fn parse(self: *Parser, buffer: [:0]const u8) ZipponError!void {
                 break;
             }
 
-            self.file_engine.addEntity(struct_name, maps.items, &buff.writer()) catch return ZipponError.CantWriteEntity;
+            try self.file_engine.addEntity(struct_name, maps.items, &buff.writer());
 
             buff.writer().writeAll("]") catch return ZipponError.WriteError;
             send("{s}", .{buff.items});
