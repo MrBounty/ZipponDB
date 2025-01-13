@@ -41,7 +41,6 @@ ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the k
 - `{}` are filters
 - `[]` specify how much and what data
 - `()` contain new or updated data (not already in the file)
-- `||` are additional options
 
 ## GRAB
 
@@ -85,6 +84,51 @@ A mix of `GRAB` and `ADD`. It takes a filter first, then the new data.
 Here, we update the first 5 `User` entities named 'bob' to capitalize the name and become 'Bob':
 ```js
 UPDATE User [5] {name='bob'} TO (name = 'Bob')
+```
+
+## Vs SQL
+
+```sql
+SELECT * FROM User
+```
+
+```
+GRAB User
+```
+
+```sql
+SELECT *
+FROM your_table_name
+WHERE name = 'Bob'
+AND (age > 30 OR age < 10);
+```
+
+```
+GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
+```
+
+```sql
+SELECT u1.name AS user_name, GROUP_CONCAT(u2.name || ' (' || u2.age || ')') AS friends_list
+FROM User u1
+LEFT JOIN User u2 ON ',' || u1.friends || ',' LIKE '%,' || u2.id || ',%'
+WHERE u1.age > 30
+GROUP BY u1.name;
+```
+
+```
+GRAB User [name, friends [name, age]] {age > 30}
+```
+
+```sql
+SELECT u1.name AS user_name, GROUP_CONCAT(u2.name || ' (' || u2.age || ')') AS friends_list
+FROM User u1
+LEFT JOIN User u2 ON ',' || u1.friends || ',' LIKE '%,' || u2.id || ',%'
+WHERE u2.age > 30
+GROUP BY u1.name;
+```
+
+```
+GRAB User [name, friends [name, age] {age > 30}]
 ```
 
 ## Link query - Not yet implemented
