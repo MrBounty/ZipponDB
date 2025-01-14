@@ -1,3 +1,4 @@
+site_name: "Documentation"
 site_url: https://MrBounty.github.io/ZipponDB/
 repo_url: https://github.com/MrBounty/ZipponDB
 theme:
@@ -13,7 +14,8 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: lime
+      primary: custom
+      accent: amber
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
@@ -21,10 +23,12 @@ theme:
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: lime
+      primary: custom
+      accent: amber
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+
 markdown_extensions:
   - attr_list
   - md_in_html
@@ -40,17 +44,22 @@ plugins:
   - glightbox
   - search
 
+extra_css:
+  - stylesheets/extra.css
+
 nav:
   - Home: index.md
-  - Using ZipponDB:
+  - Features: features.md
+  - Learn:
     - Quickstart: Quickstart.md
     - Schema: Schema.md
     - ZipponQL: ZiQL.md
     - Data types: Data type.md
     - Command Line Interface: cli.md
-  - Under the Hood:
+  - Technical:
     - Benchmark: Benchmark.md
     - Technical: Technical docs.md
     - ZipponData: ZipponData.md
-    - About: about.md
-    - Roadmap: Roadmap.md
+  - About: about.md
+  - Roadmap: Roadmap.md
+  - Release: release.md

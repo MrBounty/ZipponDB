@@ -1,4 +1,4 @@
-![alt text](https://github.com/MrBounty/ZipponDB/blob/main/docs/images/banner.old.png)
+![alt text](https://github.com/MrBounty/ZipponDB/blob/main/docs/images/banner.png)
 
 # Introduction
 

@@ -220,6 +220,10 @@ A condition have those infos:
 NewData is a map with member name as key and ConditionValue as value, it is created when parsing and is use to add data into a file.
 I transform ConditionValue into Zid Data. Maybe I can directly do a map member name -> zid Data ?
 
+### RelationMap
+
+TODO: Explain.
+
 ## EntityWriter
 
 This is responsable to transform the raw Data into a JSON, Table or other output format to send send to end user.
