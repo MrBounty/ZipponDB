@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
     // -----------------------------------------------
     {
         const exe = b.addExecutable(.{
-            .name = "ZipponDB",
+            .name = "zippondb",
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
@@ -113,7 +113,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         benchmark.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
-        benchmark.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
+        benchmark.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config_benchmark.zig") }));
         benchmark.root_module.addImport("ZipponData", b.createModule(.{ .root_source_file = b.path("lib/zid.zig") }));
         benchmark.root_module.addImport("error", b.createModule(.{ .root_source_file = b.path("lib/errors.zig") }));
         b.installArtifact(benchmark);
@@ -125,7 +125,7 @@ pub fn build(b: *std.Build) void {
         benchmark_step.dependOn(&run_benchmark.step);
     }
 
-    // Benchmark
+    // Release
     // -----------------------------------------------
     {
         const release_step = b.step("release", "Create release binaries for multiple platforms");
