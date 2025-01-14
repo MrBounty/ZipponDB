@@ -26,27 +26,16 @@ var path_buffer: [1024]u8 = undefined;
 
 /// Use a struct name to populate a list with all UUID of this struct
 /// TODO: Multi thread that too
-pub fn getNumberOfEntity(self: *Self, struct_name: []const u8) ZipponError!usize {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+pub fn getNumberOfEntityAndFile(self: *Self, struct_name: []const u8) ZipponError!struct { entity: usize, file: usize } {
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-    const max_file_index = try self.maxFileIndex(sstruct.name);
-    var count: usize = 0;
+    const to_parse = try self.allFileIndex(allocator, struct_name);
+    defer allocator.free(to_parse);
 
-    const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
-
-    for (0..(max_file_index + 1)) |i| {
-        const path_buff = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{i}) catch return ZipponError.MemoryError;
-
-        var iter = zid.DataIterator.init(allocator, path_buff, dir, sstruct.zid_schema) catch return ZipponError.ZipponDataError;
-        defer iter.deinit();
-
-        while (iter.next() catch return ZipponError.ZipponDataError) |_| count += 1;
-    }
-
-    return count;
+    return .{ .entity = sstruct.uuid_file_index.map.count(), .file = to_parse.len };
 }
 
 /// Populate a map with all UUID bytes as key and file index as value
@@ -56,7 +45,7 @@ pub fn populateFileIndexUUIDMap(
     sstruct: SchemaStruct,
     map: *UUIDFileIndex,
 ) ZipponError!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -146,7 +135,7 @@ pub fn populateVoidUUIDMap(
     map: *std.AutoHashMap(UUID, void),
     additional_data: *AdditionalData,
 ) ZipponError!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -250,7 +239,7 @@ pub fn parseEntities(
     additional_data: *AdditionalData,
     entry_allocator: Allocator,
 ) ZipponError![]const u8 {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 

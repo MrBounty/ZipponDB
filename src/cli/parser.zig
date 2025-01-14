@@ -29,6 +29,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
     var state = State.expect_main_command;
 
     defer _ = arena.reset(.free_all);
+    errdefer arena.deinit();
 
     var last_token: cliToken = undefined;
 
@@ -88,6 +89,10 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
             .keyword_csv => state = .expect_path_to_dump,
             .keyword_json => state = .expect_path_to_dump,
             .keyword_zid => state = .expect_path_to_dump,
+            .keyword_help => {
+                send("{s}", .{config.HELP_MESSAGE.dump});
+                state = .end;
+            },
             else => {
                 send("Error: format available: csv, json, zid", .{});
                 state = .end;
@@ -95,7 +100,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
         },
 
         .expect_db_command => switch (token.tag) {
-            .keyword_new, .keyword_use => state = .expect_path_to_db, //TODO: When new, create the dir. If use, dont create the dir
+            .keyword_use => state = .expect_path_to_db,
             .keyword_metrics => {
                 if (self.state == .MissingFileEngine) {
                     send("{s}", .{config.HELP_MESSAGE.no_engine});
@@ -124,7 +129,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
                 state = .end;
             },
             else => {
-                send("Error: db commands available: new, metrics, swap & help", .{});
+                send("Error: db commands available: use, metrics & help", .{});
                 state = .end;
             },
         },
@@ -165,8 +170,8 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
                 send("Schema:\n {s}", .{self.schema_engine.null_terminated});
                 state = .end;
             },
-            .keyword_init => {
-                if (self.state == .MissingFileEngine) send("Error: No database selected. Please use 'db new' or 'db use'.", .{});
+            .keyword_use => {
+                if (self.state == .MissingFileEngine) send("Error: No database selected. Please use 'db use'.", .{});
                 state = .expect_path_to_schema;
             },
             .keyword_help => {
@@ -213,6 +218,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
     };
 
     if (state == .quit) {
+        arena.deinit();
         log.info("Bye bye\n", .{});
         return true;
     }

@@ -45,10 +45,12 @@ pub fn writeDbMetrics(self: *Self, buffer: *std.ArrayList(u8)) ZipponError!void 
         if (entry.kind != .directory) continue;
         const sub_dir = data_dir.openDir(entry.name, .{ .iterate = true }) catch return ZipponError.CantOpenDir;
         const size = getDirTotalSize(sub_dir) catch 0;
-        writer.print("  {s}: {d:.}Mb {d} entities\n", .{
+        const result = try self.getNumberOfEntityAndFile(entry.name);
+        writer.print("  {s}: {d:.2}Mb | {d} entities | {d} files\n", .{
             entry.name,
             @as(f64, @floatFromInt(size)) / 1024.0 / 1024.0,
-            try self.getNumberOfEntity(entry.name),
+            result.entity,
+            result.file,
         }) catch return ZipponError.WriteError;
     }
 }

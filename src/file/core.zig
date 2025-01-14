@@ -19,6 +19,7 @@ pub usingnamespace @import("read.zig");
 pub usingnamespace @import("write.zig");
 pub usingnamespace @import("dump.zig");
 
+allocator: std.mem.Allocator = std.heap.page_allocator,
 path_to_ZipponDB_dir: []const u8,
 thread_pool: *Pool, // same pool as the ThreadEngine
 schema_engine: SchemaEngine = undefined, // This is init after the FileEngine and I attach after. Do I need to init after tho ?
