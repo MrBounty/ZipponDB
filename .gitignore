@@ -2,7 +2,7 @@
 .venv
 ZipponDB
 data
-benchmark
+benchmarkDB
 engine
 engine.o
 zig-out
