@@ -1,8 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Parser = @import("src/ziqlParser.zig").Parser;
-const Tokenizer = @import("src/tokenizers/ziql.zig").Tokenizer;
-const DBEngine = @import("src/main.zig").DBEngine;
+const Parser = @import("src/parser/core.zig").Parser;
+const Tokenizer = @import("src/parser/tokenizer.zig").Tokenizer;
+const DBEngine = @import("src/cli/core.zig");
 const ZipponError = @import("error").ZipponError;
 
 const DB = struct {

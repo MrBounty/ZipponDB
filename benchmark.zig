@@ -1,7 +1,7 @@
 const std = @import("std");
 const dtype = @import("dtype");
 const DBEngine = @import("src/cli/core.zig");
-const ziqlParser = @import("src/ziql/core.zig");
+const ziqlParser = @import("src/parser/core.zig");
 const ZipponError = @import("error").ZipponError;
 
 const names = [_][]const u8{ "Alice", "Bob", "Charlie", "Dave", "Eve" };
@@ -29,7 +29,7 @@ pub fn myLog(
 }
 
 pub fn main() !void {
-    const to_test = [_]usize{ 500, 50_000, 5_000_000 };
+    const to_test = [_]usize{ 500, 50_000, 1_000_000 };
     var line_buffer: [1024 * 1024]u8 = undefined;
     for (to_test) |users_count| {
         var db_engine = DBEngine.init("benchmarkDB", "schema/benchmark");
@@ -57,29 +57,19 @@ pub fn main() !void {
             var writer = array.writer();
 
             try writer.print(
-                "ADD User (name = '{s}', email='{s}')",
+                "ADD User (name = '{s}', email='{s}', orders=none)",
                 .{
                     names[rng.uintAtMost(usize, names.len - 1)],
                     emails[rng.uintAtMost(usize, emails.len - 1)],
-                    rng.uintAtMost(usize, 100),
-                    scores[rng.uintAtMost(usize, scores.len - 1)],
-                    dates[rng.uintAtMost(usize, dates.len - 1)],
-                    times[rng.uintAtMost(usize, times.len - 1)],
-                    datetimes[rng.uintAtMost(usize, datetimes.len - 1)],
                 },
             );
 
             for (users_count - 1) |_| {
                 try writer.print(
-                    "('{s}', '{s}', {d}, [ {d} ], none, none, {s}, {s}, {s})",
+                    "('{s}', '{s}', none)",
                     .{
                         names[rng.uintAtMost(usize, names.len - 1)],
                         emails[rng.uintAtMost(usize, emails.len - 1)],
-                        rng.uintAtMost(usize, 100),
-                        scores[rng.uintAtMost(usize, scores.len - 1)],
-                        dates[rng.uintAtMost(usize, dates.len - 1)],
-                        times[rng.uintAtMost(usize, times.len - 1)],
-                        datetimes[rng.uintAtMost(usize, datetimes.len - 1)],
                     },
                 );
             }
@@ -119,10 +109,6 @@ pub fn main() !void {
                 "GRAB User [1] {}",
                 "GRAB User [name] {}",
                 "GRAB User {name = 'Charlie'}",
-                "GRAB User {age > 30}",
-                "GRAB User {bday > 2000/01/01}",
-                "GRAB User {age > 30 AND name = 'Charlie' AND bday > 2000/01/01}",
-                "GRAB User {best_friend IN {name = 'Charlie'}}",
                 "DELETE User {}",
             };
 

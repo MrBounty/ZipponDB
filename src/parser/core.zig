@@ -64,14 +64,14 @@ pub const State = enum {
     add_array_to_map,
 };
 
-pub const Parser = @This();
+pub const Self = @This();
 
-pub usingnamespace @import("parser/comparison.zig");
-pub usingnamespace @import("parser/condition.zig");
-pub usingnamespace @import("parser/newData.zig");
-pub usingnamespace @import("parser/value.zig");
-pub usingnamespace @import("parser/filter.zig");
-pub usingnamespace @import("parser/additionalData.zig");
+pub usingnamespace @import("parts/comparison.zig");
+pub usingnamespace @import("parts/condition.zig");
+pub usingnamespace @import("parts/newData.zig");
+pub usingnamespace @import("parts/value.zig");
+pub usingnamespace @import("parts/filter.zig");
+pub usingnamespace @import("parts/additionalData.zig");
 pub usingnamespace @import("utils.zig");
 
 var toker: Tokenizer = undefined;
@@ -80,14 +80,14 @@ toker: *Tokenizer = undefined,
 file_engine: *FileEngine,
 schema_engine: *SchemaEngine,
 
-pub fn init(file_engine: *FileEngine, schema_engine: *SchemaEngine) Parser {
-    return Parser{
+pub fn init(file_engine: *FileEngine, schema_engine: *SchemaEngine) Self {
+    return Self{
         .file_engine = file_engine,
         .schema_engine = schema_engine,
     };
 }
 
-pub fn parse(self: *Parser, buffer: [:0]const u8) ZipponError!void {
+pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
