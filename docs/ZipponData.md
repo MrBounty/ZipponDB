@@ -95,7 +95,7 @@ pub fn main() !void {
 
 ***Note: The dir can be null and it will use cwd.***
 
-# Array
+## Array
 
 All data type have an array equivalent. To write an array, you need to first encode it using `allocEncodArray` before writing it. 
 This use an allocator so you need to free what it return.
@@ -155,21 +155,9 @@ pub fn main() !void {
 } 
 ```
 
-# Benchmark
+## Benchmark
 
 Done on a AMD Ryzen 7 7800X3D with a Samsung SSD 980 PRO 2TB (up to 7,000/5,100MB/s for read/write speed) on one thread.
-
-| Rows | Write Time (ms) | Average Write Time (μs) | Read Time (ms) | Average Read Time (μs) | File Size (kB) |
-| --- | --- | --- | --- | --- | --- |
-| 1             | 0.01      | 13.63 | 0.025     | 25.0  | 0.04      |
-| 10            | 0.01      | 1.69  | 0.03      | 3.28  | 0.4       |
-| 100           | 0.04      | 0.49  | 0.07      | 0.67  | 4.0       |
-| 1_000         | 0.36      | 0.36  | 0.48      | 0.48  | 40        |
-| 10_000        | 3.42      | 0.34  | 4.67      | 0.47  | 400       |
-| 100_000       | 36.39     | 0.36  | 48.00     | 0.49  | 4_000     |
-| 1_000_000     | 361.41    | 0.36  | 481.00    | 0.48  | 40_000    |
-
-TODO: Update number to use Unix one. Benchmark on my laptop and maybe on some cloud VM.
 
 Data use:
 ```zig
@@ -192,87 +180,16 @@ const data = &[_]Data{
 };
 ```
 
-***Note: You can check Benchmark.md in ZipponDB to see performance using multi-threading. Was able to parse 1_000_000 users in less than 100ms***
+Result:
 
-# Importing the package
+| Number of Entity | Total Write Time (ms) | Average Write Time / entity (μs) | Total Read Time (ms) | Average Read Time / entity (μs) | File Size (kB) |
+| --- | --- | --- | --- | --- | --- |
+| 1             | 0.01      | 13.63 | 0.025     | 25.0  | 0.04      |
+| 10            | 0.01      | 1.69  | 0.03      | 3.28  | 0.4       |
+| 100           | 0.04      | 0.49  | 0.07      | 0.67  | 4.0       |
+| 1_000         | 0.36      | 0.36  | 0.48      | 0.48  | 40        |
+| 10_000        | 3.42      | 0.34  | 4.67      | 0.47  | 400       |
+| 100_000       | 36.39     | 0.36  | 48.00     | 0.49  | 4_000     |
+| 1_000_000     | 361.41    | 0.36  | 481.00    | 0.48  | 40_000    |
 
-Create a `build.zig.zon` next to `build.zig` if not already done.
-
-Add this dependencies in `build.zig.zon`:
-```zig
-.ZipponData = .{
-    .url = "git+https://github.com/MrBounty/ZipponData",
-    //the correct hash will be suggested by zig},
-```
-
-Here what my complete `build.zig.zon` is for my project ZipponDB:
-```zig
-.{
-    .name = "ZipponDB",
-    .version = "0.1.4",
-    .dependencies = .{
-        .ZipponData = .{
-            .url = "git+https://github.com/MrBounty/ZipponData",
-            //the correct hash will be suggested by zig}, 
-    },
-    .paths = .{
-        "",
-    },
-}
-```
-
-And in `build.zig` you can import the module like this:
-```zig
-const zid = b.dependency("ZipponData", .{});
-exe.root_module.addImport("ZipponData", zid.module("ZipponData"));
-```
-
-And you can now import it like std in your project:
-```zig
-const zid = @import("ZipponData");
-zid.createFile("Hello.zid", null);
-```
-
-# What you can't do
-
-You can't update files. You gonna need to implement that yourself. The easier way (and only I know), is to parse the entire file and write it into another.
-
-Here an example that evaluate all struct using a `Filter` and write only struct that are false. (A filter can be like `age > 20`, if the member `age` of the struct is `> 20`, it is true):
-```zig
-pub fn delete(file_name: []const u8, dir: std.fs.Dir, filter: Filter) !void {
-    // 1. Create the iterator of the current file
-    var iter = try zid.DataIterator.init(self.allocator, file_name, dir, sstruct.zid_schema);
-    defer iter.deinit();
-
-    // 2. Create a new file
-    const new_path_buff = try std.fmt.allocPrint(self.allocator, "{s}.new", .{file_name});
-    defer self.allocator.free(new_path_buff);
-    try zid.createFile(new_path_buff, dir);
-
-    // 3. Create a writer of the new data
-    var new_writer = try zid.DataWriter.init(new_path_buff, dir);
-    defer new_writer.deinit();
-
-    // 4. For all struct, evaluate and write to new file if false
-    while (try iter.next()) |row| {
-        if (!filter.evaluate(row)) {
-            try new_writer.write(row);
-        }
-    }
-
-    // 5. Flush, delete old file and rename new file to previous file
-    try new_writer.flush();
-    try dir.deleteFile(path_buff);
-    try dir.rename(new_path_buff, path_buff);
-}
-```
-
-# Potential update
-
-I don't plan do update this but it will depend if my other project need it.
-
-- Functions to update files
-- Add a header with the data type at the beginning of the file so no need to make a schema and I can check everytime I write if it's in the good format 
-- More type
-- Multi threading
-
+***Note: You can check [benchmark](/ZipponDB/Benchmark) to see performance of the real database using multi-threading. Was able to parse 1_000_000 users in less than 100ms***

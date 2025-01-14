@@ -42,9 +42,25 @@ Comment (
 
 *Note: The [] symbol preceding a type indicates an array of that type. For example, []User represents an array of User structs.*
 
-## Schema Migration (Coming Soon)
+## Schema Migration - Not yet implemented
 
 In future releases, ZipponDB will support schema updates, allowing you to modify existing structs or add new ones, and then apply these changes to your database. Currently, schema modifications are not possible once the database has been initialized.
+
+I will add commands or query to add, delete and update struct in the schema. Maybe the schema will be a Struct itself with a schema like that:
+
+```
+Struct (
+    name: str,
+    members: []Member,
+)
+
+Member (
+    name: str,
+    type: int,
+)
+```
+
+Like that can just do ZiQL qquery directly on it.
 
 ### Planned Migration Features
 

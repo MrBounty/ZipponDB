@@ -1,10 +1,10 @@
 # Benchmark
 
-***Benchmark are set to quicly evolve. I have currently multiple ideas to improve perf***
+***Benchmark are set to quicly evolve. I have currently multiple ideas to improve performance.***
 
 ## Command
 
-You can run `zig build benchmark` if you clone the repo to benchmark your machine.
+You can run `zig build benchmark` if you clone the repo to benchmark your machine. [More info.](/ZipponDB/build)
 
 Here an example on my machine:
 

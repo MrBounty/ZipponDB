@@ -49,17 +49,26 @@ extra_css:
 
 nav:
   - Home: index.md
-  - Features: features.md
   - Learn:
     - Quickstart: Quickstart.md
     - Schema: Schema.md
-    - ZipponQL: ZiQL.md
+    - ZipponQL: 
+      - Intro: ziql/intro.md
+      - Vs SQL: ziql/vssql.md
+      - GRAB: ziql/grab.md
+      - ADD: ziql/add.md
+      - UPDATE: ziql/update.md
+      - DELETE: ziql/delete.md
     - Data types: Data type.md
     - Command Line Interface: cli.md
+    - Logs: logs.md
+    - Interface: interface.md
   - Technical:
     - Benchmark: Benchmark.md
     - Technical: Technical docs.md
+    - Build: build.md
     - ZipponData: ZipponData.md
+    - Single file: Single_file.md
   - About: about.md
   - Roadmap: Roadmap.md
   - Release: release.md

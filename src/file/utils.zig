@@ -28,6 +28,9 @@ pub fn writeDbMetrics(self: *Self, buffer: *std.ArrayList(u8)) ZipponError!void 
     const main_size = getDirTotalSize(main_dir) catch 0;
     writer.print("Total size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(main_size)) / 1024.0 / 1024.0}) catch return ZipponError.WriteError;
 
+    writer.print("CPU core: {d}\n", .{config.CPU_CORE}) catch return ZipponError.WriteError;
+    writer.print("Max file size: {d:.2}Mb\n", .{@as(f64, @floatFromInt(config.MAX_FILE_SIZE)) / 1024.0 / 1024.0}) catch return ZipponError.WriteError;
+
     const log_dir = main_dir.openDir("LOG", .{ .iterate = true }) catch return ZipponError.CantOpenDir;
     const log_size = getDirTotalSize(log_dir) catch 0;
     writer.print("LOG: {d:.2}Mb\n", .{@as(f64, @floatFromInt(log_size)) / 1024.0 / 1024.0}) catch return ZipponError.WriteError;

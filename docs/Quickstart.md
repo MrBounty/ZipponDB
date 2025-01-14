@@ -6,34 +6,23 @@ This guide will help you set up and start using ZipponDB quickly.
 
 Obtain a binary for your architecture by:
 
-- Building from source code (tutorial coming soon)
-- Downloading a pre-built binary from the releases page (coming soon)
+- Downloading a pre-built binary from the [releases page](https://github.com/MrBounty/ZipponDB/releases)
+- Building from [source code](https://mrbounty.github.io/ZipponDB/build)
 
-## Step 2: Create a Database
+Once with the binary, run it to get access to the CLI.
 
-Run the binary to start the Command Line Interface. Create a new database by running:
+## Step 2: Select a Database
 
-``` bash
-db new path/to/directory
-```
-This will create a new ZipponDB directory. Verify the creation by running:
-
-``` bash
-db metrics
-```
-
-## Step 3: Select a Database
-
-Select a database by running:
+Once in the CLI, create a database by running:
 ```bash
-db use path/to/ZipponDB
+db use path/to/dir
 ```
 
-Alternatively, set the `ZIPPONDB_PATH` environment variable to the path of a valid ZipponDB directory (containing DATA, BACKUP, and LOG directories).
+Alternatively, set the `ZIPPONDB_PATH` environment variable.
 
-## Step 4: Attach a Schema
+## Step 3: Attach a Schema
 
-Define a schema (see the next section for details) and attach it to the database by running:
+Define a [schema](/ZipponDB/Schema) and attach it to the database by running:
 
 ```bash
 schema init path/to/schema.txt
@@ -45,7 +34,9 @@ This will create the necessary directories and empty files for data storage. Tes
 schema describe
 ```
 
-## Step 5: Use the Database
+Alternatively, set the `ZIPPONDB_SCHEMA` environment variable.
+
+## Step 4: Use the Database
 
 Start using the database by sending queries, such as:
 
@@ -53,4 +44,4 @@ Start using the database by sending queries, such as:
 run "ADD User (name = 'Bob')"
 ```
 
-You're now ready to explore the features of ZipponDB!
+[Learn more about ZiQL.](/ZipponDB/ziql/intro)

@@ -8,9 +8,11 @@ Run a ZiQL query on the selected database.
 
 **Usage:**
 
+```go
+run "QUERY" // (1)!
 ```
-run QUERY
-```
+
+1. Note that query need to be between ""
 
 ## db
 
@@ -21,14 +23,8 @@ Print some metrics from the db, including: Size on disk and number of entities s
 **Usage:**
 
 ```
-db metrics [OPTIONS]
+db metrics
 ```
-
-**Options:**
-
-Name | Type | Description         | Default
----- | ---- | ------------------- | ----
-TODO | TODO | TODO | TODO
 
 ### db new
 
@@ -37,14 +33,8 @@ Create a new empty directory that can be then initialize with a schema.
 **Usage:**
 
 ```
-db new path/to/dir [OPTIONS]
+db new path/to/dir
 ```
-
-**Options:**
-
-Name | Type | Description         | Default
----- | ---- | ------------------- | ----
-TODO | TODO | TODO | TODO
 
 ### db use
 
@@ -53,14 +43,8 @@ Select an already created database with `db new`.
 **Usage:**
 
 ```
-db use path/to/dir [OPTIONS]
+db use path/to/dir
 ```
-
-**Options:**
-
-Name | Type | Description         | Default
----- | ---- | ------------------- | ----
-TODO | TODO | TODO | TODO
 
 ### db state
 
@@ -74,21 +58,15 @@ db state
 
 ## schema
 
-### schema init
+### schema use
 
-Initialize the database using a schema file.
+Attach a schema to the database using a schema file.
 
 **Usage:**
 
 ```
-schema use path/to/schema.file [OPTIONS]
+schema use path/to/schema.file 
 ```
-
-**Options:**
-
-Name | Type | Description         | Default
----- | ---- | ------------------- | ----
-TODO | TODO | TODO | TODO
 
 ### schema describe
 
@@ -97,8 +75,20 @@ Print the schema use by the selected database.
 **Usage:**
 
 ```
-schema use path/to/schema.file [OPTIONS]
+schema describe
 ```
+
+## dump
+
+Export the entier database in a specific format.
+
+**Usage:**
+
+```
+dump [FORMAT] [PATH]
+```
+
+FORMAT options: `csv`, `json`, `zid`
 
 ## quit
 
