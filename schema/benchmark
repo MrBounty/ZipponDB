@@ -1,0 +1,20 @@
+User (
+  name: str,
+  email: str,
+  orders: []Order,
+)
+
+Order (
+  items: []Item,
+  at: datetime,
+)
+
+Item (
+  name: str,
+  price: float,
+  category: Category,
+)
+
+Category (
+  name: str,
+)
