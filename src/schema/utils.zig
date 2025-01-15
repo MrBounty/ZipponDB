@@ -12,6 +12,10 @@ const JsonString = RelationMap.JsonString;
 
 const ZipponError = @import("error").ZipponError;
 
+// I need to redo how SchemaStruct work because it is a mess
+// I mean I use wayyyyyyyyyyyyyyyyyyyyyyy too much structName2SchemaStruct or stuff like that
+// I mean that not good to always for loop and compare when a map would work
+
 pub fn memberName2DataType(self: *Self, struct_name: []const u8, member_name: []const u8) ZipponError!DataType {
     for (try self.structName2structMembers(struct_name), 0..) |mn, i| {
         const dtypes = try self.structName2DataType(struct_name);
@@ -42,6 +46,7 @@ pub fn structName2structMembers(self: Self, struct_name: []const u8) ZipponError
     return self.struct_array[i].members;
 }
 
+// TODO: This is the first one I want to change to use a map
 pub fn structName2SchemaStruct(self: Self, struct_name: []const u8) ZipponError!SchemaStruct {
     var i: usize = 0;
 

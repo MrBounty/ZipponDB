@@ -3,7 +3,6 @@ const config = @import("config");
 const utils = @import("../utils.zig");
 const zid = @import("ZipponData");
 const Allocator = std.mem.Allocator;
-const Self = @import("core.zig").Self;
 const ZipponError = @import("error").ZipponError;
 
 const SchemaStruct = @import("../schema/struct.zig");
@@ -21,6 +20,8 @@ const UUID = dtype.UUID;
 const DateTime = dtype.DateTime;
 const DataType = dtype.DataType;
 const log = std.log.scoped(.fileEngine);
+
+const Self = @import("core.zig").Self;
 
 var path_buffer: [1024]u8 = undefined;
 

@@ -165,8 +165,16 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
 
         .expect_schema_command => switch (token.tag) {
             .keyword_describe => {
-                if (self.state == .MissingFileEngine) send("Error: No database selected. Please use 'db new' or 'db use'.", .{});
-                if (self.state == .MissingSchemaEngine) send("Error: No schema in database. Please use 'schema init'.", .{});
+                if (self.state == .MissingFileEngine) {
+                    send("{s}", .{config.HELP_MESSAGE.no_engine});
+                    state = .end;
+                    continue;
+                }
+                if (self.state == .MissingSchemaEngine) {
+                    send(config.HELP_MESSAGE.no_schema, .{self.file_engine.path_to_ZipponDB_dir});
+                    state = .end;
+                    continue;
+                }
                 send("Schema:\n {s}", .{self.schema_engine.null_terminated});
                 state = .end;
             },

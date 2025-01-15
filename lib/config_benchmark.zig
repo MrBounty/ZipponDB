@@ -1,4 +1,4 @@
-pub const BUFFER_SIZE = 1024 * 10; // Used a bit everywhere. The size for the schema for example. 10kB
+pub const BUFFER_SIZE = 1024 * 1024; // Used a bit everywhere. The size for the schema for example. 10kB
 pub const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 pub const CPU_CORE = 16;
 

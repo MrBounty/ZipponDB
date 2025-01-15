@@ -16,11 +16,11 @@ pub fn parseNewData(
     allocator: Allocator,
     map: *std.StringHashMap(ConditionValue),
     struct_name: []const u8,
-    order: ?*std.ArrayList([]const u8),
-    order_full: ?bool,
+    order: *std.ArrayList([]const u8),
 ) !void {
     var token = self.toker.next();
     var keep_next = false;
+    var reordering: bool = false;
     var member_name: []const u8 = undefined;
     var state: Self.State = .expect_member_OR_value;
     var i: usize = 0;
@@ -32,6 +32,10 @@ pub fn parseNewData(
     }) switch (state) {
         .expect_member_OR_value => switch (token.tag) {
             .identifier => {
+                if (!reordering) {
+                    order.*.clearRetainingCapacity();
+                    reordering = true;
+                }
                 member_name = self.toker.getTokenSlice(token);
                 if (!(self.schema_engine.isMemberNameInStruct(struct_name, member_name) catch {
                     return ZipponError.StructNotFound;
@@ -42,7 +46,7 @@ pub fn parseNewData(
                     token.loc.start,
                     token.loc.end,
                 );
-                if (order_full) |o| if (!o) order.?.*.append(allocator.dupe(u8, member_name) catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
+                order.*.append(allocator.dupe(u8, member_name) catch return ZipponError.MemoryError) catch return ZipponError.MemoryError;
                 state = .expect_equal;
             },
             .string_literal,
@@ -58,27 +62,11 @@ pub fn parseNewData(
             .l_brace,
             .keyword_none,
             .keyword_now,
-            => if (order_full) |o| {
-                if (!o) return printError(
-                    "Expected member name.",
-                    ZipponError.MemberMissing,
-                    self.toker.buffer,
-                    token.loc.start,
-                    token.loc.end,
-                );
-
-                member_name = order.?.items[i];
+            => {
+                member_name = order.items[i];
                 i += 1;
                 keep_next = true;
                 state = .expect_new_value;
-            } else {
-                return printError(
-                    "Expected member name.",
-                    ZipponError.MemberMissing,
-                    self.toker.buffer,
-                    token.loc.start,
-                    token.loc.end,
-                );
             },
             else => return printError(
                 "Error: Expected member name.",

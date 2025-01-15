@@ -235,9 +235,14 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
                     token.loc.end,
                 );
 
+                const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
+                var members = std.ArrayList([]const u8).init(allocator);
+                defer members.deinit();
+                members.appendSlice(sstruct.members[1..]) catch return ZipponError.MemoryError;
+
                 var data_map = std.StringHashMap(ConditionValue).init(allocator);
                 defer data_map.deinit();
-                try self.parseNewData(allocator, &data_map, struct_name, null, null);
+                try self.parseNewData(allocator, &data_map, struct_name, &members);
 
                 var buff = std.ArrayList(u8).init(allocator);
                 defer buff.deinit();
@@ -256,9 +261,14 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
                     token.loc.end,
                 );
 
+                const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
+                var members = std.ArrayList([]const u8).init(allocator);
+                defer members.deinit();
+                members.appendSlice(sstruct.members[1..]) catch return ZipponError.MemoryError;
+
                 var data_map = std.StringHashMap(ConditionValue).init(allocator);
                 defer data_map.deinit();
-                try self.parseNewData(allocator, &data_map, struct_name, null, null);
+                try self.parseNewData(allocator, &data_map, struct_name, &members);
 
                 var buff = std.ArrayList(u8).init(allocator);
                 defer buff.deinit();
@@ -320,9 +330,10 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
         },
 
         .parse_new_data_and_add_data => {
+            const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
             var order = std.ArrayList([]const u8).init(allocator);
             defer order.deinit();
-            var ordered = false;
+            order.appendSlice(sstruct.members[1..]) catch return ZipponError.MemoryError;
 
             var buff = std.ArrayList(u8).init(allocator);
             defer buff.deinit();
@@ -340,8 +351,7 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
 
             while (true) { // I could multithread that as it do take a long time for big benchmark
                 data_map.clearRetainingCapacity();
-                try self.parseNewData(local_allocator, &data_map, struct_name, &order, ordered);
-                ordered = true;
+                try self.parseNewData(local_allocator, &data_map, struct_name, &order);
 
                 var error_message_buffer = std.ArrayList(u8).init(local_allocator);
                 defer error_message_buffer.deinit();

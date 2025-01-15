@@ -63,7 +63,7 @@ pub const HELP_MESSAGE = struct {
     pub const no_schema: []const u8 =
         \\A database was found here `{s}` but no schema find inside. 
         \\To start a database, you need to attach it a schema using a schema file.
-        \\By using 'schema init path/to/schema'. For more informations on how to create a schema: TODO add link
+        \\By using 'schema use path/to/schema'. For more informations on how to create a schema: TODO add link
         \\
         \\You can also set the environment variable ZIPPONDB_SCHEMA to the path to a schema file.
         \\
