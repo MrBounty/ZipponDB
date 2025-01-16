@@ -4,8 +4,6 @@ const RelationMap = @import("relationMap.zig").RelationMap;
 const dtype = @import("dtype");
 const DataType = dtype.DataType;
 
-// TODO: Put this in a data structure directory
-
 const ZipponError = @import("error").ZipponError;
 
 /// This is the [] part

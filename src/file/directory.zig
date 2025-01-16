@@ -52,7 +52,6 @@ pub fn createMainDirectories(self: *Self) ZipponError!void {
 }
 
 /// Request a path to a schema file and then create the struct folder
-/// TODO: Check if some data already exist and if so ask if the user want to delete it and make a backup
 pub fn createStructDirectories(self: *Self, struct_array: []SchemaStruct) ZipponError!void {
     var data_dir = try self.printOpenDir("{s}/DATA", .{self.path_to_ZipponDB_dir}, .{});
     defer data_dir.close();

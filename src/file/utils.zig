@@ -132,7 +132,6 @@ pub fn orderedNewData(
 }
 
 /// Get the index of the first file that is bellow the size limit. If not found, create a new file
-/// TODO: Need some serious speed up. I should keep in memory a file->size as a hashmap and use that instead
 pub fn getFirstUsableIndexFile(self: Self, struct_name: []const u8) ZipponError!usize {
     var member_dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
     defer member_dir.close();
@@ -144,7 +143,7 @@ pub fn getFirstUsableIndexFile(self: Self, struct_name: []const u8) ZipponError!
         const file_stat = member_dir.statFile(entry.name) catch return ZipponError.FileStatError;
         if (file_stat.size < config.MAX_FILE_SIZE) {
             // Cant I just return i ? It is supossed that files are ordered. I think I already check and it is not
-            log.debug("{s}\n\n", .{entry.name});
+            log.debug("First usable file found for `{s}`: {s}", .{ struct_name, entry.name });
             return std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return ZipponError.InvalidFileIndex; // INFO: Hardcoded len of file extension
         }
     }
@@ -153,24 +152,6 @@ pub fn getFirstUsableIndexFile(self: Self, struct_name: []const u8) ZipponError!
     zid.createFile(path, null) catch return ZipponError.ZipponDataError;
 
     return i;
-}
-
-/// Iterate over all file of a struct and return the index of the last file.
-/// E.g. a struct with 0.csv and 1.csv it return 1.
-/// FIXME: I use 0..file_index but because now I delete empty file, I can end up trying to parse an empty file. So I need to delete that
-/// And do something that return a list of file to parse instead
-pub fn maxFileIndex(self: Self, struct_name: []const u8) ZipponError!usize {
-    var dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, struct_name }, .{ .iterate = true });
-    defer dir.close();
-
-    var count: usize = 0;
-
-    var iter = dir.iterate();
-    while (iter.next() catch return ZipponError.DirIterError) |entry| {
-        if (entry.kind != .file) continue;
-        count += 1;
-    }
-    return count - 1;
 }
 
 pub fn allFileIndex(self: Self, allocator: Allocator, struct_name: []const u8) ZipponError![]usize {

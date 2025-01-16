@@ -210,7 +210,6 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
             ),
         },
 
-        // TODO: Optimize so it doesnt use parseFilter but just parse the file and directly check the condition. Here I end up parsing 2 times.
         .filter_and_update => switch (token.tag) {
             .l_brace => {
                 var filter = try self.parseFilter(allocator, struct_name, false);

@@ -150,7 +150,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
             .string_literal => {
                 const null_term_query_str = try allocator.dupeZ(u8, toker.buffer[token.loc.start + 1 .. token.loc.end - 1]);
                 defer allocator.free(null_term_query_str);
-                self.runQuery(null_term_query_str); // TODO: THis should return something and I should send from here, not from the parser
+                self.runQuery(null_term_query_str); // This should most probably return something and I should send from here, not from the parser
                 state = .end;
             },
             .keyword_help => {

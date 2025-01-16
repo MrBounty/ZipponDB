@@ -24,7 +24,6 @@ const log = std.log.scoped(.fileEngine);
 
 var path_buffer: [1024]u8 = undefined;
 
-// TODO: Make it in batch too
 pub fn addEntity(
     self: *Self,
     struct_name: []const u8,
@@ -35,7 +34,7 @@ pub fn addEntity(
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var file_index = try self.getFirstUsableIndexFile(struct_name); // TODO: Speed up this
+    var file_index = try self.getFirstUsableIndexFile(struct_name);
     var path = std.fmt.bufPrint(&path_buffer, "{s}/DATA/{s}/{d}.zid", .{ self.path_to_ZipponDB_dir, struct_name, file_index }) catch return ZipponError.MemoryError;
 
     var data_writer = zid.DataWriter.init(path, null) catch return ZipponError.ZipponDataError;
