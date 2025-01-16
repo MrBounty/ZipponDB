@@ -36,7 +36,7 @@ pub fn writeHeaderCsv(
     try writer.writeByte('\n');
 }
 
-pub fn writeEntityCsv( // FIXME: I think if one value str have a \n this will broke. I need to use like """
+pub fn writeEntityCsv(
     writer: anytype,
     row: []zid.Data,
     data_types: []const DataType,
@@ -68,14 +68,19 @@ fn writeValue(writer: anytype, value: zid.Data, data_type: DataType) !void {
     switch (value) {
         .Float => |v| try writer.print("{d}", .{v}),
         .Int => |v| try writer.print("{d}", .{v}),
-        .Str => |v| try writer.print("\"{s}\"", .{v}),
+        .Str => |v| {
+            if (std.mem.containsAtLeast(u8, v, 1, "\n")) {
+                try writer.print("\"\"\"{s}\"\"\"", .{v});
+            } else {
+                try writer.print("\"{s}\"", .{v});
+            }
+        },
         .UUID => |v| {
             if (data_type == .self) {
                 try writer.print("\"{s}\"", .{UUID.format_bytes(v)});
                 return;
             }
-            const uuid = try UUID.parse("00000000-0000-0000-0000-000000000000"); // Maybe pass that comptime to prevent parsing it everytime
-            if (!std.meta.eql(v, uuid.bytes)) {
+            if (!std.meta.eql(v, dtype.Zero.bytes)) {
                 try writer.print("{{<|{s}|>}}", .{v});
             } else {
                 try writer.print("{{}}", .{});
@@ -97,29 +102,33 @@ fn writeValue(writer: anytype, value: zid.Data, data_type: DataType) !void {
     }
 }
 
-fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) ZipponError!void {
-    writer.writeByte('[') catch return ZipponError.WriteError;
-    var iter = zid.ArrayIterator.init(data) catch return ZipponError.ZipponDataError;
+fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) !void {
+    try writer.writeByte('[');
+    var iter = try zid.ArrayIterator.init(data);
     switch (data) {
-        .IntArray => while (iter.next()) |v| writer.print("{d}, ", .{v.Int}) catch return ZipponError.WriteError,
-        .FloatArray => while (iter.next()) |v| writer.print("{d}", .{v.Float}) catch return ZipponError.WriteError,
-        .StrArray => while (iter.next()) |v| writer.print("\"{s}\"", .{v.Str}) catch return ZipponError.WriteError,
-        .UUIDArray => while (iter.next()) |v| writer.print("{{<|{s}|>}},", .{v.UUID}) catch return ZipponError.WriteError,
-        .BoolArray => while (iter.next()) |v| writer.print("{any}", .{v.Bool}) catch return ZipponError.WriteError,
+        .IntArray => while (iter.next()) |v| try writer.print("{d}, ", .{v.Int}),
+        .FloatArray => while (iter.next()) |v| try writer.print("{d}", .{v.Float}),
+        .StrArray => while (iter.next()) |v| if (std.mem.containsAtLeast(u8, v.Str, 1, "\n")) {
+            try writer.print("\"\"\"{s}\"\"\"", .{v.Str});
+        } else {
+            try writer.print("\"{s}\"", .{v.Str});
+        },
+        .UUIDArray => while (iter.next()) |v| try writer.print("{{<|{s}|>}},", .{v.UUID}),
+        .BoolArray => while (iter.next()) |v| try writer.print("{any}", .{v.Bool}),
         .UnixArray => while (iter.next()) |v| {
             const datetime = DateTime.initUnix(v.Unix);
             writer.writeByte('"') catch return ZipponError.WriteError;
             switch (data_type) {
-                .date => datetime.format("YYYY/MM/DD", writer) catch return ZipponError.WriteError,
-                .time => datetime.format("HH:mm:ss.SSSS", writer) catch return ZipponError.WriteError,
-                .datetime => datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer) catch return ZipponError.WriteError,
+                .date => try datetime.format("YYYY/MM/DD", writer),
+                .time => try datetime.format("HH:mm:ss.SSSS", writer),
+                .datetime => try datetime.format("YYYY/MM/DD-HH:mm:ss.SSSS", writer),
                 else => unreachable,
             }
-            writer.writeAll("\", ") catch return ZipponError.WriteError;
+            try writer.writeAll("\", ");
         },
         else => unreachable,
     }
-    writer.writeByte(']') catch return ZipponError.WriteError;
+    try writer.writeByte(']');
 }
 
 /// Take a string in the JSON format and look for {<|[16]u8|>}, then will look into the map and check if it can find this UUID
