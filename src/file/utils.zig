@@ -111,7 +111,6 @@ pub fn string2Data(allocator: Allocator, value: ConditionValue) ZipponError!zid.
 }
 
 /// Take a map from the parseNewData and return an ordered array of Data to be use in a DataWriter
-/// TODO: Optimize and maybe put it somewhere else than fileEngine
 pub fn orderedNewData(
     self: *Self,
     allocator: Allocator,

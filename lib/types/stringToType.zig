@@ -2,9 +2,6 @@ const std = @import("std");
 const UUID = @import("uuid.zig").UUID;
 const DateTime = @import("date.zig").DateTime;
 
-// FIXME: Stop returning arrayList and use toOwnedSlice instead
-
-// TODO: Put those functions somewhere else
 pub fn parseInt(value_str: []const u8) i32 {
     return std.fmt.parseInt(i32, value_str, 10) catch return 0;
 }

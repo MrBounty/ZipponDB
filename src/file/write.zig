@@ -76,18 +76,18 @@ pub fn updateEntities(
     const allocator = arena.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-    const max_file_index = try self.maxFileIndex(sstruct.name);
 
     const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const to_parse = try self.allFileIndex(allocator, struct_name);
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
         additional_data.limit,
-        max_file_index + 1,
+        to_parse.len,
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return ZipponError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
     for (thread_writer_list) |*list| {
         list.* = std.ArrayList(u8).init(allocator);
     }
@@ -101,13 +101,13 @@ pub fn updateEntities(
     }
 
     // Spawn threads for each file
-    for (0..(max_file_index + 1)) |file_index| {
+    for (to_parse, 0..) |file_index, i| {
         self.thread_pool.spawn(updateEntitiesOneFile, .{
             new_data_buff,
             sstruct,
             filter,
             &map,
-            thread_writer_list[file_index].writer(),
+            thread_writer_list[i].writer(),
             file_index,
             dir,
             &sync_context,
@@ -239,28 +239,28 @@ pub fn deleteEntities(
     const allocator = arena.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-    const max_file_index = try self.maxFileIndex(sstruct.name);
 
     const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const to_parse = try self.allFileIndex(allocator, struct_name);
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
         additional_data.limit,
-        max_file_index + 1,
+        to_parse.len,
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return ZipponError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
     for (thread_writer_list) |*list| {
         list.* = std.ArrayList(u8).init(allocator);
     }
 
     // Spawn threads for each file
-    for (0..(max_file_index + 1)) |file_index| {
+    for (to_parse, 0..) |file_index, i| {
         self.thread_pool.spawn(deleteEntitiesOneFile, .{
             sstruct,
             filter,
-            thread_writer_list[file_index].writer(),
+            thread_writer_list[i].writer(),
             file_index,
             dir,
             &sync_context,
@@ -277,7 +277,8 @@ pub fn deleteEntities(
     }
     writer.writeByte(']') catch return ZipponError.WriteError;
 
-    // Update UUID file index map FIXME: Stop doing that and just remove UUID from the map itself instead of reparsing everything at the end
+    //  FIXME: Stop doing that and just remove UUID from the map itself instead of reparsing everything at the end
+    //  It's just that I can't do it in deleteEntitiesOneFile itself
     sstruct.uuid_file_index.map.clearRetainingCapacity();
     _ = sstruct.uuid_file_index.arena.reset(.free_all);
     try self.populateFileIndexUUIDMap(sstruct, sstruct.uuid_file_index);

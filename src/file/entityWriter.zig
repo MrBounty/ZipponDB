@@ -76,7 +76,7 @@ fn writeValue(writer: anytype, value: zid.Data, data_type: DataType) !void {
             }
             const uuid = try UUID.parse("00000000-0000-0000-0000-000000000000"); // Maybe pass that comptime to prevent parsing it everytime
             if (!std.meta.eql(v, uuid.bytes)) {
-                try writer.print("{{|<{s}>|}}", .{v});
+                try writer.print("{{<|{s}|>}}", .{v});
             } else {
                 try writer.print("{{}}", .{});
             }
@@ -104,7 +104,7 @@ fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) ZipponError!
         .IntArray => while (iter.next()) |v| writer.print("{d}, ", .{v.Int}) catch return ZipponError.WriteError,
         .FloatArray => while (iter.next()) |v| writer.print("{d}", .{v.Float}) catch return ZipponError.WriteError,
         .StrArray => while (iter.next()) |v| writer.print("\"{s}\"", .{v.Str}) catch return ZipponError.WriteError,
-        .UUIDArray => while (iter.next()) |v| writer.print("{{|<{s}>|}},", .{v.UUID}) catch return ZipponError.WriteError,
+        .UUIDArray => while (iter.next()) |v| writer.print("{{<|{s}|>}},", .{v.UUID}) catch return ZipponError.WriteError,
         .BoolArray => while (iter.next()) |v| writer.print("{any}", .{v.Bool}) catch return ZipponError.WriteError,
         .UnixArray => while (iter.next()) |v| {
             const datetime = DateTime.initUnix(v.Unix);
@@ -122,12 +122,12 @@ fn writeArray(writer: anytype, data: zid.Data, data_type: DataType) ZipponError!
     writer.writeByte(']') catch return ZipponError.WriteError;
 }
 
-/// Take a string in the JSON format and look for {|<[16]u8>|}, then will look into the map and check if it can find this UUID
-/// If it find it, it ill replace the {|<[16]u8>|} will the value
+/// Take a string in the JSON format and look for {<|[16]u8|>}, then will look into the map and check if it can find this UUID
+/// If it find it, it ill replace the {<|[16]u8|>} will the value
 pub fn updateWithRelation(writer: anytype, input: []const u8, map: std.AutoHashMap([16]u8, JsonString)) ZipponError!void {
     var uuid_bytes: [16]u8 = undefined;
     var start: usize = 0;
-    while (std.mem.indexOf(u8, input[start..], "{|<")) |pos| {
+    while (std.mem.indexOf(u8, input[start..], "{<|")) |pos| {
         const pattern_start = start + pos + 3;
         const pattern_end = pattern_start + 16;
 
@@ -155,7 +155,7 @@ pub fn updateWithRelation(writer: anytype, input: []const u8, map: std.AutoHashM
 fn updateArray(writer: anytype, input: []const u8, map: std.AutoHashMap([16]u8, JsonString), origin: usize) ZipponError!usize {
     var uuid_bytes: [16]u8 = undefined;
     var start = origin;
-    while (input.len > start + 23 and std.mem.eql(u8, input[start .. start + 3], "{|<") and std.mem.eql(u8, input[start + 19 .. start + 23], ">|},")) : (start += 23) {
+    while (input.len > start + 23 and std.mem.eql(u8, input[start .. start + 3], "{<|") and std.mem.eql(u8, input[start + 19 .. start + 23], "|>},")) : (start += 23) {
         @memcpy(uuid_bytes[0..], input[start + 3 .. start + 19]);
         if (map.get(uuid_bytes)) |json_string| {
             writer.writeAll(json_string.slice) catch return ZipponError.WriteError;

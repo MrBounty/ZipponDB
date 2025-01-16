@@ -19,6 +19,7 @@ pub const Token = struct {
         .{ "NOW", .keyword_now },
         .{ "APPEND", .keyword_append },
         .{ "POP", .keyword_pop },
+        .{ "CLEAR", .keyword_clear },
         .{ "REMOVE", .keyword_remove },
         .{ "REMOVEAT", .keyword_remove_at },
         .{ "grab", .keyword_grab },
@@ -56,6 +57,7 @@ pub const Token = struct {
         keyword_now,
         keyword_append,
         keyword_pop,
+        keyword_clear,
         keyword_remove,
         keyword_remove_at,
 

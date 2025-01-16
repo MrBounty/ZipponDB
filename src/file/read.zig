@@ -50,18 +50,17 @@ pub fn populateFileIndexUUIDMap(
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const max_file_index = try self.maxFileIndex(sstruct.name);
-
     const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const to_parse = try self.allFileIndex(allocator, sstruct.name);
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
         0,
-        max_file_index + 1,
+        to_parse.len,
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return ZipponError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), to_parse.len) catch return ZipponError.MemoryError;
     defer {
         for (thread_writer_list) |list| list.deinit();
         allocator.free(thread_writer_list);
@@ -72,10 +71,10 @@ pub fn populateFileIndexUUIDMap(
     }
 
     // Spawn threads for each file
-    for (0..(max_file_index + 1)) |file_index| {
+    for (to_parse, 0..) |file_index, i| {
         self.thread_pool.spawn(populateFileIndexUUIDMapOneFile, .{
             sstruct,
-            &thread_writer_list[file_index],
+            &thread_writer_list[i],
             file_index,
             dir,
             &sync_context,
@@ -141,29 +140,29 @@ pub fn populateVoidUUIDMap(
     const allocator = arena.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-    const max_file_index = try self.maxFileIndex(sstruct.name);
 
     const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
+    const to_parse = try self.allFileIndex(allocator, sstruct.name);
 
     // Multi-threading setup
     var sync_context = ThreadSyncContext.init(
         additional_data.limit,
-        max_file_index + 1,
+        to_parse.len,
     );
 
     // Create a thread-safe writer for each file
-    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), max_file_index + 1) catch return ZipponError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(UUID), to_parse.len + 1) catch return ZipponError.MemoryError;
 
     for (thread_writer_list) |*list| {
         list.* = std.ArrayList(UUID).init(allocator);
     }
 
     // Spawn threads for each file
-    for (0..(max_file_index + 1)) |file_index| {
+    for (to_parse, 0..) |file_index, i| {
         self.thread_pool.spawn(populateVoidUUIDMapOneFile, .{
             sstruct,
             filter,
-            &thread_writer_list[file_index],
+            &thread_writer_list[i],
             file_index,
             dir,
             &sync_context,
@@ -249,9 +248,7 @@ pub fn parseEntities(
     const writer = buff.writer();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-    const max_file_index = try self.maxFileIndex(sstruct.name);
-
-    log.debug("Max file index {d}", .{max_file_index});
+    const to_parse = try self.allFileIndex(allocator, struct_name);
 
     // If there is no member to find, that mean we need to return all members, so let's populate additional data with all of them
     if (additional_data.childrens.items.len == 0)
@@ -267,21 +264,21 @@ pub fn parseEntities(
     // Multi thread stuffs
     var sync_context = ThreadSyncContext.init(
         additional_data.limit,
-        max_file_index + 1,
+        to_parse.len,
     );
 
     // Do an array of writer for each thread
     // Could I create just the number of max cpu ? Because if I have 1000 files, I do 1000 list
     // But at the end, only the number of use CPU/Thread will use list simultanously
     // So I could pass list from a thread to another technicly
-    var thread_writer_list = allocator.alloc(std.ArrayList(u8), max_file_index + 1) catch return ZipponError.MemoryError;
+    var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
 
     // Start parsing all file in multiple thread
-    for (0..(max_file_index + 1)) |file_index| {
+    for (to_parse, 0..) |file_index, i| {
         thread_writer_list[file_index] = std.ArrayList(u8).init(allocator);
 
         self.thread_pool.spawn(parseEntitiesOneFile, .{
-            thread_writer_list[file_index].writer(),
+            thread_writer_list[i].writer(),
             file_index,
             dir,
             sstruct.zid_schema,
@@ -303,11 +300,11 @@ pub fn parseEntities(
     // Now I need to do the relation stuff, meaning parsing new files to get the relationship value
     // Without relationship to return, this function is basically finish here
 
-    // Here I take the JSON string and I parse it to find all {|<>|} and add them to the relation map with an empty JsonString
+    // Here I take the JSON string and I parse it to find all {<||>} and add them to the relation map with an empty JsonString
     for (relation_maps) |*relation_map| try relation_map.populate(buff.items);
 
     // I then call parseEntitiesRelationMap on each
-    // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
+    // This will update the buff items to be the same Json but with {<|[16]u8|>} replaced with the right Json
     for (relation_maps) |*relation_map| try self.parseEntitiesRelationMap(allocator, relation_map.struct_name, relation_map, &buff);
 
     return buff.toOwnedSlice() catch return ZipponError.MemoryError;
@@ -362,9 +359,9 @@ fn parseEntitiesOneFile(
 
 // Receive a map of UUID -> empty JsonString
 // Will parse the files and update the value to the JSON string of the entity that represent the key
-// Will then write the input with the JSON in the map looking for {|<>|}
-// Once the new input received, call parseEntitiesRelationMap again the string still contain {|<>|} because of sub relationship
-// The buffer contain the string with {|<>|} and need to be updated at the end
+// Will then write the input with the JSON in the map looking for {<||>}
+// Once the new input received, call parseEntitiesRelationMap again the string still contain {<||>} because of sub relationship
+// The buffer contain the string with {<||>} and need to be updated at the end
 pub fn parseEntitiesRelationMap(
     self: *Self,
     parent_allocator: Allocator,
@@ -449,13 +446,13 @@ pub fn parseEntitiesRelationMap(
     buff.clearRetainingCapacity();
     buff.writer().writeAll(new_buff.items) catch return ZipponError.WriteError;
 
-    // Now here I need to iterate if buff.items still have {|<>|}
+    // Now here I need to iterate if buff.items still have {<||>}
 
-    // Here I take the JSON string and I parse it to find all {|<>|} and add them to the relation map with an empty JsonString
+    // Here I take the JSON string and I parse it to find all {<||>} and add them to the relation map with an empty JsonString
     for (relation_maps) |*sub_relation_map| try sub_relation_map.populate(buff.items);
 
     // I then call parseEntitiesRelationMap on each
-    // This will update the buff items to be the same Json but with {|<[16]u8>|} replaced with the right Json
+    // This will update the buff items to be the same Json but with {<|[16]u8|>} replaced with the right Json
     for (relation_maps) |*sub_relation_map| try parseEntitiesRelationMap(self, allocator, sub_relation_map.struct_name, sub_relation_map, buff);
 }
 
