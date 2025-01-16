@@ -10,7 +10,17 @@ const printError = @import("../../utils.zig").printError;
 
 const ZipponError = @import("error").ZipponError;
 
+var buff: [1024]u8 = undefined;
+
+var zero_map_buf: [1024 * 4]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&zero_map_buf);
+var zero_map = std.AutoHashMap(UUID, void).init(fba.allocator());
+
 const Self = @import("../parser.zig");
+
+pub fn initZeroMap() ZipponError!void {
+    zero_map.put(dtype.Zero, {}) catch return ZipponError.MemoryError;
+}
 
 /// To run just after a condition like = or > or >= to get the corresponding ConditionValue that you need to compare
 pub fn parseConditionValue(self: Self, allocator: Allocator, struct_name: []const u8, member_name: []const u8, data_type: dtype.DataType, token: *Token) ZipponError!ConditionValue {
@@ -32,8 +42,9 @@ pub fn parseConditionValue(self: Self, allocator: Allocator, struct_name: []cons
             token.* = try self.checkTokensInArray(tag);
         } else {
             if (token.tag != tag) {
+                const msg = std.fmt.bufPrint(&buff, "Error: Wrong type. Expected: {any}", .{tag}) catch return ZipponError.MemoryError;
                 return printError(
-                    "Error: Wrong type", // TODO: Print the expected type
+                    msg,
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
@@ -155,12 +166,9 @@ pub fn parseConditionValue(self: Self, allocator: Allocator, struct_name: []cons
         .time_array => return try ConditionValue.initArrayTime(allocator, self.toker.buffer[start_index..token.loc.end]),
         .datetime_array => return try ConditionValue.initArrayDateTime(allocator, self.toker.buffer[start_index..token.loc.end]),
         .link => switch (token.tag) {
-            .keyword_none => { // TODO: Stop creating a map if empty, can be null or something. Or maybe just keep one map link that in memory, so I dont create it everytime
-                const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
-                map.* = std.AutoHashMap(UUID, void).init(allocator);
-                map.put(dtype.Zero, {}) catch return ZipponError.MemoryError;
+            .keyword_none => {
                 _ = self.toker.next();
-                return ConditionValue.initLink(map);
+                return ConditionValue.initLink(&zero_map);
             },
             .uuid_literal => {
                 const uuid = UUID.parse(self.toker.buffer[start_index..token.loc.end]) catch return ZipponError.InvalidUUID;

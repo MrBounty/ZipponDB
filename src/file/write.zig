@@ -329,7 +329,6 @@ fn deleteEntitiesOneFile(
         return;
     }) |row| {
         if (!finish_writing and (filter == null or filter.?.evaluate(row))) {
-            // _ = sstruct.uuid_file_index.map.remove(UUID{ .bytes = row[0].UUID }); FIXME: This doesnt work in multithread because they try to remove at the same time
             writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
                 sync_context.logError("Error writting", err);
                 return;

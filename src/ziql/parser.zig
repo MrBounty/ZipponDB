@@ -92,6 +92,8 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    try @import("parts/value.zig").initZeroMap();
+
     toker = Tokenizer.init(buffer);
     self.toker = &toker;
 
