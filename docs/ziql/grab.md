@@ -2,30 +2,30 @@
 
 The main action is `GRAB`, this will parse files and return data.  
 
-#### Basic
+## Basic
 
-Here's how to return all `User` entities without any filtering:
+Here's how to return all `User` without any filtering:
 ```
 GRAB User
 ```
 
 ---
 
-To get all `User` entities above 30 years old:
+To get all `User` above 30 years old:
 ```
 GRAB User {age > 30}
 ```
 
 ---
 
-To return only the `name` member of `User` entities:
+To return only the member `name` of `User`:
 ```
 GRAB User [name] {age > 30}
 ```
 
 ---
 
-To return the 10 first `User` entities:
+To return the 10 first `User`:
 ```
 GRAB User [10] {age > 30}
 ```
@@ -53,14 +53,14 @@ GRAB queries return a list of JSON objects with the data inside, e.g:
 
 ---
 
-#### Ordering - Not yet implemented
+## Ordering - Not yet implemented
 
 To order the results by `name`:
 ```js
 GRAB User [10; name] {age > 10} |ASC name|
 ```
 
-#### Array
+## Array
 You can use the `IN` operator to check if something is in an array:
 ```js
 GRAB User { age > 10 AND name IN ['Adrien' 'Bob']}
@@ -68,7 +68,7 @@ GRAB User { age > 10 AND name IN ['Adrien' 'Bob']}
 
 ---
 
-#### Relationship
+## Relationship
 
 2 main things to remember with relationship:
 
@@ -81,7 +81,7 @@ GRAB User { bestfriend IN { name = 'Adrien' } }
 ```
 ---
 
-You can specify how much data to return and which members to include, even for links inside entity. In this example, I get 1 friend's name for 10 `User`:
+You can specify how much data to return and which members to include, even for links. In this example, I get 1 friend's name for 10 `User`:
 ```js
 GRAB User [10; friends [1; name]]
 ```
@@ -94,7 +94,7 @@ GRAB User { friends IN { name = 'Adrien' } }
 ```
 ---
 
-To get `User` entities with all friends named Adrien:
+To get `User` with all friends named Adrien:
 ```js
 GRAB User { friends ALLIN { name = 'Adrien' } }
 ```
@@ -106,7 +106,7 @@ GRAB User { friends !IN { name = 'Adrien' } }
 ```
 ---
 
-#### Dot - Not yet implemented
+## Dot - Not yet implemented
 
 You can use `.` if you just want to do one comparison. Here I get all `User` that ordered at least one book:
 ```js
@@ -118,3 +118,13 @@ Same as:
 GRAB User {orders IN { products IN { category IN { name = 'Book'} } } }
 ```
 
+---
+
+You can also use the dot like that:
+
+```js
+GRAB User.orders {name = 'Bob'}
+```
+
+The filter is done on User but it return Order.
+It return all Order from User named 'Bob'.

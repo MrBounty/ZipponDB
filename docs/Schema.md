@@ -13,7 +13,7 @@ User (
 )
 ```
 
-In this example, the `best_friend` member is a reference to another `User` struct, demonstrating how relationships between structs can be established.
+In this example, the `best_friend` member is a reference to another `User`.
 
 Here's a more complex example featuring multiple structs:
 ```lua
@@ -48,7 +48,7 @@ In future releases, ZipponDB will support schema updates, allowing you to modify
 
 I will add commands or query to add, delete and update struct in the schema. Maybe the schema will be a Struct itself with a schema like that:
 
-```
+```lua
 Struct (
     name: str,
     members: []Member,
@@ -60,7 +60,7 @@ Member (
 )
 ```
 
-Like that can just do ZiQL qquery directly on it.
+Like that can just do ZiQL query directly on it.
 
 ### Planned Migration Features
 

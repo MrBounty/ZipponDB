@@ -25,7 +25,7 @@ Alternatively, set the `ZIPPONDB_PATH` environment variable.
 Define a [schema](/ZipponDB/Schema) and attach it to the database by running:
 
 ```bash
-schema init path/to/schema.txt
+schema use path/to/schema.txt
 ```
 
 This will create the necessary directories and empty files for data storage. Test the current database schema by running:

@@ -20,6 +20,8 @@ You can use operations on values themselves when updating:
 UPDATE User {name = 'Bob'} TO (age += 1)
 ```
 
+## Array - Not yet implemented
+
 You can also manipulate arrays, like adding or removing values:
 ```js
 UPDATE User {name='Bob'} TO (scores APPEND 45)
@@ -30,7 +32,7 @@ UPDATE User {name='Bob'} TO (scores REMOVEAT [0 1 2])
 Currently, there will be four keywords for manipulating lists:
 
 - `APPEND`: Adds a value to the end of the list.
-- `REMOVE`: Checks the list, and if the same value is found, deletes it.
+- `REMOVE`: Checks the list, and if the value is found, deletes it.
 - `REMOVEAT`: Deletes the value at a specific index.
 - `CLEAR`: Removes all values from the array.
 

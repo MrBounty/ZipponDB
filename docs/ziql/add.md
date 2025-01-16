@@ -27,3 +27,9 @@ ADD User
 ('Bob2', 33, 'bob2@email.com', [])
 ```
 
+## Soon
+
+* Default value
+* Array default is empty
+* Link default is none
+

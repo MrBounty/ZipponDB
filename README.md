@@ -1,16 +1,18 @@
 ![alt text](https://github.com/MrBounty/ZipponDB/blob/main/docs/images/banner.png)
 
-# Introduction
-
 ZipponDB is a relational database written entirely in Zig from scratch with 0 dependencies.
 
 ZipponDB's goal is to be ACID, light, simple, and high-performance. It aims at small to medium applications that don't need fancy features but a simple and reliable database.
 
-### Why Zippon ?
+Key Features:
 
-- Relational database 
-- Simple and minimal query language
-- Small, light, fast, and implementable everywhere
+* **Small:** Binary is small, around 2-3Mb.
+* **Fast:** Parse millions of entities in milliseconds.
+* **Relationship:** Build with focus on easy relationship.
+* **Query Language:** Use it's own simple query language.
+* **No dependencies:** Depend on nothing, every line of code running is in the codebase.
+* **Open-source:** Open-source under MIT licence.
+* **Portable:** Easily compiled and deployed across various platforms.
 
 For more informations visit the docs: https://mrbounty.github.io/ZipponDB/
 
@@ -20,18 +22,32 @@ For more informations visit the docs: https://mrbounty.github.io/ZipponDB/
 
 In ZipponDB, you use structures, or structs for short, and not tables to organize how your data is stored and manipulated. A struct has a name like `User` and members like `name` and `age`.
 
-Create a file that contains a schema that describes all structs. Compared to SQL, you can see it as a file where you declare all table names, column names, data types, and relationships. All structs have an id of the type UUID by default.
+Create a file that contains a schema that describes all structs. Compared to SQL, you can see it as a file where you declare all table names, column names, data types, and relationships. 
+All structs have an id of the type UUID by default.
 
 Here an example of a file:
 ```lua
 User (
     name: str,
+    age: int,
     email: str,
-    best_friend: User,
+    Parent: User,
+    childrens: []User,
+    orders: []Order,
+)
+
+Order (
+    at: datetime,
+    items: []Item,
+)
+
+Item (
+    name: str,
+    category: str,
 )
 ```
 
-Note that the best friend is a link to another `User`. You can find more examples [here](https://github.com/MrBounty/ZipponDB/tree/main/schema).
+Note that parent is a link to another `User` and can be `none`, `[]` mean an array. You can find more examples [here](https://github.com/MrBounty/ZipponDB/tree/main/schema).
 
 # ZipponQL
 
@@ -44,12 +60,12 @@ ZipponDB uses its own query language, ZipponQL or ZiQL for short. Here are the k
 
 ## GRAB
 
-The main action is `GRAB`, this will parse files and return data.  
+The main action is `GRAB`, it parse files and return data.  
 ```js
 GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
 ```
 
-Can use [] before the filter to tell what to return.  
+Using `[]` before the filter tell what to return.  
 ```js
 GRAB User [id, email] {name = 'Bob'}
 ```
@@ -59,7 +75,7 @@ Relationship use filter within filter.
 GRAB User {best_friend IN {name = 'Bob'}}
 ```
 
-GRAB queries return a list of JSON objects with the data inside, e.g:
+GRAB queries return a list of JSON objects, e.g:
 ```
 [{id:"1e170a80-84c9-429a-be25-ab4657894653", name: "Gwendolyn Ray", age: 70, email: "austin92@example.org", scores: [ 77 ], friends: [], }, ]
 ```
@@ -68,7 +84,7 @@ GRAB queries return a list of JSON objects with the data inside, e.g:
 
 The `ADD` action adds one entity to the database. The syntax is similar to `GRAB`, but uses `()`. This signifies that the data is not yet in the database.
 ```js
-ADD User (name = 'Bob', age = 30, email = 'bob@email.com', scores = [1 100 44 82])
+ADD User (name = 'Bob', age = 30)
 ```
 
 ## DELETE

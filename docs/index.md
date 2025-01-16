@@ -28,14 +28,14 @@ medium applications that want a quick and simple database.
 * **Small:** ZipponDB binary is small, around 2-3Mb.
 * **Fast:** ZipponDB can parse millions of entities in milliseconds.
 * **Relationship:** ZipponDB is build with focus on easy relationship.
-* **Query Language:** ZipponDB use it's own simple query language named ZipponQL.
-* **No dependencies:** ZipponDB depend on nothing, every line of code is in the codebase.
+* **Query Language:** ZipponDB use it's own simple query language.
+* **No dependencies:** ZipponDB depend on nothing, every line of code running is in the codebase.
 * **Open-source:** ZipponDB is open-source under MIT licence.
 * **Portable:** ZipponDB can be easily compiled and deployed across various platforms.*
 
 <small>* Plan for more platforms like arm, 32 bit system.</small>
 
-### To come
+### After
 
 * **Auth:** Be able to auth users, maybe third-party OAuth.
 * **HTTP server:** Be able to start a simple HTTP server and send json.

@@ -16,6 +16,8 @@ Here are the key points to remember:
 
 ***Disclaimer: The language may change a bit over time.***
 
+---
+
 ## Making errors
 
 When you make an error writing ZiQL, you should see something like this to help you understand where you made a mistake:
@@ -31,9 +33,11 @@ GRAB User {name = 'Bob' AND {age > 10}}
                             ^    
 ```
 
+---
+
 ## To return
 
-What is between `[]` are what data to return. You can see it as the column name after `SELECT` in SQL.
+What is between `[]` are what data to return. You can see it as the column name after `SELECT` in SQL and number after `LIMIT`.
 
 Here I return just the name of all users:
 ```
@@ -51,8 +55,6 @@ Here the name of the 100 first users:
 GRAB User [100; name]
 ```
 
-### For relationship
-
 You can also specify what data to return for each relationship returned. By default, query do not return any relationship.
 
 This will return the name and best friend of all users:
@@ -66,6 +68,8 @@ You can also specify what the best friend return:
 GRAB User [name, best_friend [name, age]] {}
 ```
 
+---
+
 ## Filters
 
 What is between `{}` are filters, basically as a list of condition. This filter is use when parsing files and evaluate entities. You can see it as `WHERE` in SQL.
@@ -78,7 +82,9 @@ Here an example in a query:
 GRAB User {name = 'Bob' AND age > 44}
 ```
 
-### For relationship
+---
+
+## Relationship
 
 Filter can be use inside filter. This allow simple yet powerfull relationship.
 
@@ -110,6 +116,8 @@ GRAB User {orders IN { products.category.name = 'Book' AND date > 2024/01/01} } 
 
 1.  Dot not yet implemented
 
+---
+
 
 ## Link query - Not yet implemented
 
@@ -136,9 +144,68 @@ Which is the same as:
 GRAB User {name != 'Bob' AND age > 18}
 ```
 
+<small>Note that the query are completly isolated, so files will be parse 3 times.</small>
+
 Another example:
 ```
 GRAB Product [1] {category.name = 'Book'} => book =>
 GRAB Order {date > 2024/01/01 AND products IN book} => book_orders =>
 GRAB User [100] {orders IN book_orders}
 ```
+
+---
+
+## Actions
+
+### [GRAB](/ZipponDB/ziql/grab)
+
+The main action is `GRAB`, it parse files and return data.  
+```js
+GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
+```
+
+Using `[]` before the filter tell what to return.  
+```js
+GRAB User [id, email] {name = 'Bob'}
+```
+
+Relationship use filter within filter.
+```js
+GRAB User {best_friend IN {name = 'Bob'}}
+```
+
+GRAB queries return a list of JSON objects, e.g:
+```
+[{id:"1e170a80-84c9-429a-be25-ab4657894653", name: "Gwendolyn Ray", age: 70, email: "austin92@example.org", scores: [ 77 ], friends: [], }, ]
+```
+
+[More info.](/ZipponDB/ziql/grab)
+
+### [ADD](/ZipponDB/ziql/add)
+
+The `ADD` action adds one entity to the database. The syntax is similar to `GRAB`, but uses `()`. This signifies that the data is not yet in the database.
+```js
+ADD User (name = 'Bob', age = 30)
+```
+
+[More info.](/ZipponDB/ziql/add)
+
+### [DELETE](/ZipponDB/ziql/delete)
+
+Similar to `GRAB` but deletes all entities found using the filter and returns a list of deleted UUIDs.
+```js
+DELETE User {name = 'Bob'}
+```
+
+[More info.](/ZipponDB/ziql/delete)
+
+### [UPDATE](/ZipponDB/ziql/update)
+
+A mix of `GRAB` and `ADD`. It takes a filter first, then the new data.
+Here, we update the first 5 `User` entities named 'bob' to capitalize the name and become 'Bob':
+```js
+UPDATE User [5] {name='bob'} TO (name = 'Bob')
+```
+
+[More info.](/ZipponDB/ziql/update)
+

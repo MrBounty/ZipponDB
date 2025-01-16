@@ -9,10 +9,10 @@ SELECT * FROM User
 ```
 
 ```
-GRAB User
-or
 GRAB User {}
 ```
+
+---
 
 ## Selection on condition
 
@@ -27,6 +27,8 @@ AND (age > 30 OR age < 10);
 GRAB User {name = 'Bob' AND (age > 30 OR age < 10)}
 ```
 
+---
+
 ## Select something
 
 ```
@@ -39,9 +41,10 @@ LIMIT 100
 GRAB User [100; name, age] {}
 ```
 
+---
+
 ## Relationship
 
-### List of other entity
 
 ```
 SELECT u1.name AS user_name, GROUP_CONCAT(u2.name || ' (' || u2.age || ')') AS friends_list
@@ -55,15 +58,13 @@ GROUP BY u1.name;
 GRAB User [name, friends [name, age]] {age > 30}
 ```
 
-### Join
-
-#### Simple one
+---
 
 SQL:
 ```
 SELECT Users.name, Orders.orderID, Orders.orderDate
 FROM Users
-INNER JOIN Orders ON Users.UsersID = Orders.CustomerID;
+INNER JOIN Orders ON Users.UserID = Orders.UserID;
 ```
 
 ZiQL:
@@ -71,7 +72,7 @@ ZiQL:
 GRAB User [name, order [id, date]] {}
 ```
 
-#### More complexe one
+---
 
 SQL:
 ```
@@ -95,12 +96,41 @@ ORDER BY
     O.orderDate DESC;
 ```
 
-ZiQL
+ZiQL:
 ```go
 GRAB User
-[ name, orders [id, date, details [quantity]], product [name], category [name] ]
-{ orders IN {date >= 2023/01/01} AND category IN {name != 'Accessories'} }
-| orders.date DESC | // (1)!
+[ name, orders [id, date, details [quantity, products [name, category [name]]]]]
+{ orders IN {date >= 2023/01/01 AND details.products.category.name != 'Accessories' } } // (1)!
+| orders.date DESC | // (2)!
 ```
 
-1.  Ordering not yet implemented
+1.  Dot not yet implemented. But you can do it with:
+    ```
+    details IN { products IN {category IN {name != 'Accessories'}}}
+    ```
+2.  Ordering not yet implemented
+
+---
+
+SQL:
+```
+UPDATE orders o
+JOIN customers c ON o.customer_id = c.customer_id
+SET o.status = 'Priority'
+WHERE c.membership_level = 'Premium' AND o.order_date > '2023-01-01';
+```
+
+ZiQL:
+```go
+GRAB User.orders { membership_level = 'Premium' } // (1)!
+=> premium_order => // (2)!
+UPDATE Order {id IN premium_order AND date > 2023/01/01}
+TO (status = 'Priority')
+```
+
+1.  Not yet implemented. Can't do it now.  
+    Here that mean filter are done on User but it return Order.  
+    It return all order of User with a premium membership.
+
+2.  Linked query not implemented
+
