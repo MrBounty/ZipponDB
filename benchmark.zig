@@ -1,7 +1,7 @@
 const std = @import("std");
 const dtype = @import("dtype");
 const DBEngine = @import("src/cli/core.zig");
-const ziqlParser = @import("src/parser/core.zig");
+const ziqlParser = @import("src/ziql/parser.zig");
 const ZipponError = @import("error").ZipponError;
 
 const names = [_][]const u8{ "Alice", "Bob", "Charlie", "Dave", "Eve" };
