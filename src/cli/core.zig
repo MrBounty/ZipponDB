@@ -5,7 +5,7 @@ const Allocator = std.mem.Allocator;
 const FileEngine = @import("../file/core.zig");
 const SchemaEngine = @import("../schema/core.zig");
 const ThreadEngine = @import("../thread/engine.zig");
-const ziqlParser = @import("../parser/core.zig");
+const ziqlParser = @import("../ziql/parser.zig");
 const setLogPath = @import("../main.zig").setLogPath;
 const log = std.log.scoped(.cli);
 
