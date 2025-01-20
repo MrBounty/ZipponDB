@@ -5,6 +5,7 @@ const Self = @import("core.zig").Self;
 const ZipponError = @import("error").ZipponError;
 const Allocator = std.mem.Allocator;
 const ConditionValue = @import("../dataStructure/filter.zig").ConditionValue;
+const ValueOrArray = @import("../ziql/parts/newData.zig").ValueOrArray;
 const dtype = @import("dtype");
 const UUID = dtype.UUID;
 const zid = @import("ZipponData");
@@ -115,7 +116,7 @@ pub fn orderedNewData(
     self: *Self,
     allocator: Allocator,
     struct_name: []const u8,
-    map: std.StringHashMap(ConditionValue),
+    map: std.StringHashMap(ValueOrArray),
 ) ZipponError![]zid.Data {
     const members = try self.schema_engine.structName2structMembers(struct_name);
     var datas = allocator.alloc(zid.Data, (members.len)) catch return ZipponError.MemoryError;
@@ -125,7 +126,7 @@ pub fn orderedNewData(
 
     for (members, 0..) |member, i| {
         if (i == 0) continue; // Skip the id
-        datas[i] = try string2Data(allocator, map.get(member).?);
+        datas[i] = try string2Data(allocator, map.get(member).?.value);
     }
 
     return datas;

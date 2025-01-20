@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
     // Run
     // -----------------------------------------------
@@ -126,6 +126,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // Release
+    // TODO: Make a small, fast and safe release
     // -----------------------------------------------
     {
         const release_step = b.step("release", "Create release binaries for multiple platforms");

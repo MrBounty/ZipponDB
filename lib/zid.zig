@@ -213,10 +213,16 @@ pub const Data = union(DType) {
 
 // I know, I know I use @sizeOf too much, but I like it. Allow me to understand what it represent
 
+const empty_buff: [4]u8 = .{ 0, 0, 0, 0 };
+
 /// Take an array of zig type and return an encoded version to use with Data.initType
 /// Like that: Data.initIntArray(try allocEncodArray.Int(my_array))
 /// Don't forget to free it! allocator.free(data.IntArray)
 pub const allocEncodArray = struct {
+    pub fn Empty() []const u8 {
+        return empty_buff[0..];
+    }
+
     pub fn Int(allocator: std.mem.Allocator, items: []const i32) ![]const u8 {
         // Create a buffer of the right size
         var buffer = try allocator.alloc(u8, @sizeOf(u64) + @sizeOf(i32) * items.len);

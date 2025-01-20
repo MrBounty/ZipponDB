@@ -8,6 +8,7 @@ const SchemaStruct = @import("struct.zig");
 const ConditionValue = @import("../dataStructure/filter.zig").ConditionValue;
 const AdditionalData = @import("../dataStructure/additionalData.zig");
 const RelationMap = @import("../dataStructure/relationMap.zig");
+const ValueOrArray = @import("../ziql/parts/newData.zig").ValueOrArray;
 const JsonString = RelationMap.JsonString;
 
 const ZipponError = @import("error").ZipponError;
@@ -100,7 +101,7 @@ pub fn linkedStructName(self: Self, struct_name: []const u8, member_name: []cons
 pub fn checkIfAllMemberInMap(
     self: Self,
     struct_name: []const u8,
-    map: *std.StringHashMap(ConditionValue),
+    map: *std.StringHashMap(ValueOrArray),
     error_message_buffer: *std.ArrayList(u8),
 ) ZipponError!bool {
     const all_struct_member = try self.structName2structMembers(struct_name);

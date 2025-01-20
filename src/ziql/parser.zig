@@ -7,13 +7,8 @@ const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const dtype = @import("dtype");
 const UUID = dtype.UUID;
 
-const Filter = @import("../dataStructure/filter.zig").Filter;
-const Condition = @import("../dataStructure/filter.zig").Condition;
-const ConditionValue = @import("../dataStructure/filter.zig").ConditionValue;
-const ComparisonOperator = @import("../dataStructure/filter.zig").ComparisonOperator;
-
+const ValueOrArray = @import("parts/newData.zig").ValueOrArray;
 const AdditionalData = @import("../dataStructure/additionalData.zig").AdditionalData;
-const AdditionalDataMember = @import("../dataStructure/additionalData.zig").AdditionalDataMember;
 const send = @import("../utils.zig").send;
 const printError = @import("../utils.zig").printError;
 
@@ -74,8 +69,6 @@ pub usingnamespace @import("parts/filter.zig");
 pub usingnamespace @import("parts/additionalData.zig");
 pub usingnamespace @import("utils.zig");
 
-var toker: Tokenizer = undefined;
-
 toker: *Tokenizer = undefined,
 file_engine: *FileEngine,
 schema_engine: *SchemaEngine,
@@ -94,7 +87,7 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
 
     try @import("parts/value.zig").initZeroMap();
 
-    toker = Tokenizer.init(buffer);
+    var toker = Tokenizer.init(buffer);
     self.toker = &toker;
 
     var state: State = .start;
@@ -241,9 +234,9 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
                 defer members.deinit();
                 members.appendSlice(sstruct.members[1..]) catch return ZipponError.MemoryError;
 
-                var data_map = std.StringHashMap(ConditionValue).init(allocator);
+                var data_map = std.StringHashMap(ValueOrArray).init(allocator);
                 defer data_map.deinit();
-                try self.parseNewData(allocator, &data_map, struct_name, &members);
+                try self.parseNewData(allocator, &data_map, struct_name, &members, true);
 
                 var buff = std.ArrayList(u8).init(allocator);
                 defer buff.deinit();
@@ -267,9 +260,9 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
                 defer members.deinit();
                 members.appendSlice(sstruct.members[1..]) catch return ZipponError.MemoryError;
 
-                var data_map = std.StringHashMap(ConditionValue).init(allocator);
+                var data_map = std.StringHashMap(ValueOrArray).init(allocator);
                 defer data_map.deinit();
-                try self.parseNewData(allocator, &data_map, struct_name, &members);
+                try self.parseNewData(allocator, &data_map, struct_name, &members, true);
 
                 var buff = std.ArrayList(u8).init(allocator);
                 defer buff.deinit();
@@ -340,19 +333,19 @@ pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
             defer buff.deinit();
             buff.writer().writeAll("[") catch return ZipponError.WriteError;
 
-            var maps = std.ArrayList(std.StringHashMap(ConditionValue)).init(allocator);
+            var maps = std.ArrayList(std.StringHashMap(ValueOrArray)).init(allocator);
             defer maps.deinit();
 
             var local_arena = std.heap.ArenaAllocator.init(allocator);
             defer local_arena.deinit();
             const local_allocator = arena.allocator();
 
-            var data_map = std.StringHashMap(ConditionValue).init(allocator);
+            var data_map = std.StringHashMap(ValueOrArray).init(allocator);
             defer data_map.deinit();
 
             while (true) { // I could multithread that as it do take a long time for big benchmark
                 data_map.clearRetainingCapacity();
-                try self.parseNewData(local_allocator, &data_map, struct_name, &order);
+                try self.parseNewData(local_allocator, &data_map, struct_name, &order, false);
 
                 var error_message_buffer = std.ArrayList(u8).init(local_allocator);
                 defer error_message_buffer.deinit();

@@ -5,10 +5,6 @@ const Allocator = std.mem.Allocator;
 
 const BORDER = "=" ** 80;
 
-const log_allocator = std.heap.page_allocator;
-var log_buff: [1024]u8 = undefined;
-var log_path: []const u8 = undefined;
-
 const log = std.log.scoped(.cli);
 pub const std_options = .{
     .logFn = myLog,

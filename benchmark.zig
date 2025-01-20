@@ -1,7 +1,6 @@
 const std = @import("std");
 const dtype = @import("dtype");
 const DBEngine = @import("src/cli/core.zig");
-const ziqlParser = @import("src/ziql/parser.zig");
 const ZipponError = @import("error").ZipponError;
 
 const names = [_][]const u8{ "Alice", "Bob", "Charlie", "Dave", "Eve" };
@@ -28,25 +27,24 @@ pub fn myLog(
     _ = args;
 }
 
+// Maybe I can make it a test to use the testing alloc
 pub fn main() !void {
+    const allocator = std.heap.page_allocator;
     const to_test = [_]usize{ 500, 50_000, 1_000_000 };
     var line_buffer: [1024 * 1024]u8 = undefined;
     for (to_test) |users_count| {
-        var db_engine = DBEngine.init("benchmarkDB", "schema/benchmark");
+        var db_engine = DBEngine.init(allocator, "benchmarkDB", "schema/benchmark");
         defer db_engine.deinit();
 
         {
             const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE User {{}}", .{});
-            var parser = ziqlParser.init(&db_engine.file_engine, &db_engine.schema_engine);
-            try parser.parse(null_term_query_str);
+            db_engine.runQuery(null_term_query_str);
         }
         // Populate with random dummy value
         // Need some speed up, spended times to find that it is the parsonConditionValue that take time, the last switch to be exact, that parse str to value
         {
             std.debug.print("\n=====================================\n\n", .{});
             std.debug.print("Populating with {d} users.\n", .{users_count});
-
-            const allocator = std.heap.page_allocator;
 
             var prng = std.rand.DefaultPrng.init(0);
             const rng = prng.random();
@@ -77,8 +75,7 @@ pub fn main() !void {
             const null_term_query_str = try std.fmt.allocPrintZ(allocator, "{s}", .{array.items});
             defer allocator.free(null_term_query_str);
 
-            var parser = ziqlParser.init(&db_engine.file_engine, &db_engine.schema_engine);
-            try parser.parse(null_term_query_str);
+            db_engine.runQuery(null_term_query_str);
 
             const populate_end_time = std.time.nanoTimestamp();
             const populate_duration = @as(f64, @floatFromInt(populate_end_time - populate_start_time)) / 1e9;
@@ -118,8 +115,7 @@ pub fn main() !void {
 
                 // Execute the query here
                 const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "{s}", .{query});
-                var parser = ziqlParser.init(&db_engine.file_engine, &db_engine.schema_engine);
-                try parser.parse(null_term_query_str);
+                db_engine.runQuery(null_term_query_str);
 
                 const end_time = std.time.nanoTimestamp();
                 const duration = @as(f64, @floatFromInt(end_time - start_time)) / 1e6;

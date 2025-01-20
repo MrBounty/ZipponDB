@@ -2,6 +2,7 @@ const std = @import("std");
 const config = @import("config");
 const utils = @import("../utils.zig");
 const zid = @import("ZipponData");
+const updateData = @import("array.zig").updateData;
 const Allocator = std.mem.Allocator;
 const Self = @import("core.zig").Self;
 const ZipponError = @import("error").ZipponError;
@@ -14,6 +15,7 @@ const RelationMap = @import("../dataStructure/relationMap.zig");
 const JsonString = RelationMap.JsonString;
 const EntityWriter = @import("entityWriter.zig");
 const ThreadSyncContext = @import("../thread/context.zig");
+const ValueOrArray = @import("../ziql/parts/newData.zig").ValueOrArray;
 
 const dtype = @import("dtype");
 const s2t = dtype.s2t;
@@ -27,10 +29,10 @@ var path_buffer: [1024]u8 = undefined;
 pub fn addEntity(
     self: *Self,
     struct_name: []const u8,
-    maps: []std.StringHashMap(ConditionValue),
+    maps: []std.StringHashMap(ValueOrArray),
     writer: anytype,
 ) ZipponError!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -62,15 +64,17 @@ pub fn addEntity(
     data_writer.flush() catch return ZipponError.ZipponDataError;
 }
 
+const UpdatePosibility = enum { fix, vari, stay };
+
 pub fn updateEntities(
     self: *Self,
     struct_name: []const u8,
     filter: ?Filter,
-    map: std.StringHashMap(ConditionValue),
+    map: std.StringHashMap(ValueOrArray),
     writer: anytype,
     additional_data: *AdditionalData,
 ) ZipponError!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -91,21 +95,32 @@ pub fn updateEntities(
         list.* = std.ArrayList(u8).init(allocator);
     }
 
-    var new_data_buff = allocator.alloc(zid.Data, sstruct.members.len) catch return ZipponError.MemoryError;
+    var index_switch = std.ArrayList(UpdatePosibility).init(allocator);
+    defer index_switch.deinit();
 
-    // Convert the map to an array of ZipponData Data type, to be use with ZipponData writter
-    for (sstruct.members, 0..) |member, i| {
-        if (!map.contains(member)) continue;
-        new_data_buff[i] = try @import("utils.zig").string2Data(allocator, map.get(member).?);
+    // If the member name is not in the map, it stay
+    // Otherwise it need to be update. For that 2 scenarios:
+    // - Update all entities with a const .fix
+    // - Update entities base on themself .vari
+    // FIXME: I'm not sure that id is in the array, need to check, also need to check to prevent updating it
+    for (sstruct.members) |member| {
+        if (map.get(member)) |voa| {
+            switch (voa) {
+                .value => index_switch.append(.fix) catch return ZipponError.MemoryError,
+                .array => index_switch.append(.vari) catch return ZipponError.MemoryError,
+            }
+        } else {
+            index_switch.append(.stay) catch return ZipponError.MemoryError;
+        }
     }
 
     // Spawn threads for each file
     for (to_parse, 0..) |file_index, i| {
         self.thread_pool.spawn(updateEntitiesOneFile, .{
-            new_data_buff,
             sstruct,
             filter,
-            &map,
+            map,
+            index_switch.items,
             thread_writer_list[i].writer(),
             file_index,
             dir,
@@ -125,10 +140,10 @@ pub fn updateEntities(
 }
 
 fn updateEntitiesOneFile(
-    new_data_buff: []zid.Data,
     sstruct: SchemaStruct,
     filter: ?Filter,
-    map: *const std.StringHashMap(ConditionValue),
+    map: std.StringHashMap(ValueOrArray),
+    index_switch: []UpdatePosibility,
     writer: anytype,
     file_index: u64,
     dir: std.fs.Dir,
@@ -139,6 +154,20 @@ fn updateEntitiesOneFile(
     var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
     defer fa.reset();
     const allocator = fa.allocator();
+
+    var new_data_buff = allocator.alloc(zid.Data, index_switch.len) catch |err| {
+        sync_context.logError("Cant init new data buff", err);
+        return;
+    };
+
+    // First I fill the one that are updated by a const
+    for (index_switch, 0..) |is, i| switch (is) {
+        .fix => new_data_buff[i] = @import("utils.zig").string2Data(allocator, map.get(sstruct.members[i]).?.value) catch |err| {
+            sync_context.logError("Writting data", err);
+            return;
+        },
+        else => {},
+    };
 
     const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
         sync_context.logError("Error creating file path", err);
@@ -176,11 +205,18 @@ fn updateEntitiesOneFile(
     }) |row| {
         if (!finish_writing and (filter == null or filter.?.evaluate(row))) {
             // Add the unchanged Data in the new_data_buff
-            new_data_buff[0] = row[0];
-            for (sstruct.members, 0..) |member, i| {
-                if (map.contains(member)) continue;
-                new_data_buff[i] = row[i];
-            }
+            for (index_switch, 0..) |is, i| switch (is) {
+                .stay => new_data_buff[i] = row[i],
+                .vari => {
+                    const x = map.get(sstruct.members[i]).?.array;
+                    updateData(allocator, x.condition, &row[i], x.data) catch |err| {
+                        sync_context.logError("Error updating data", err);
+                        zid.deleteFile(new_path, dir) catch {};
+                        return;
+                    };
+                },
+                else => {},
+            };
 
             log.debug("{d} {any}\n\n", .{ new_data_buff.len, new_data_buff });
 
@@ -233,7 +269,7 @@ pub fn deleteEntities(
     writer: anytype,
     additional_data: *AdditionalData,
 ) ZipponError!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 

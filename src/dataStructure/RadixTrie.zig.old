@@ -2,7 +2,6 @@ const std = @import("std");
 const UUID = @import("dtype").UUID;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
-// TODO:
 // 1. Basic RadixTrie and Node - OK
 // 2. Add one UUID
 // 3. Get one file index using one UUID

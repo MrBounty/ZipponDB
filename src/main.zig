@@ -48,7 +48,10 @@ pub fn setLogPath(path: []const u8) void {
 }
 
 pub fn main() !void {
-    var cli = Cli.init(null, null);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var cli = Cli.init(arena.allocator(), null, null);
     defer cli.deinit();
 
     try cli.start();

@@ -20,16 +20,14 @@ const State = enum {
 
 const Self = @import("core.zig");
 
-var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-var allocator = arena.allocator();
-
 pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
     var toker = cliTokenizer.init(null_term_line_str);
     var token = toker.next();
     var state = State.expect_main_command;
 
-    defer _ = arena.reset(.free_all);
-    errdefer arena.deinit();
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    var allocator = arena.allocator();
+    defer arena.deinit();
 
     var last_token: cliToken = undefined;
 
@@ -137,7 +135,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
         .expect_path_to_db => switch (token.tag) {
             .identifier => {
                 self.deinit();
-                self.* = Self.init(toker.getTokenSlice(token), null);
+                self.* = Self.init(self.arena.child_allocator, toker.getTokenSlice(token), null);
                 state = .end;
             },
             else => {
@@ -196,7 +194,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
             .identifier => {
                 const main_path = try allocator.dupe(u8, self.file_engine.path_to_ZipponDB_dir);
                 self.deinit();
-                self.* = Self.init(main_path, toker.getTokenSlice(token));
+                self.* = Self.init(self.arena.child_allocator, main_path, toker.getTokenSlice(token));
                 try self.file_engine.writeSchemaFile(self.schema_engine.null_terminated);
                 state = .end;
             },

@@ -245,7 +245,6 @@ pub const Filter = struct {
         }
     }
 
-    // TODO: Use []Data and make it work
     pub fn evaluate(self: Filter, row: []Data) bool {
         return self.evaluateNode(self.root, row);
     }

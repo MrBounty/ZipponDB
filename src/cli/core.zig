@@ -9,38 +9,48 @@ const ziqlParser = @import("../ziql/parser.zig");
 const setLogPath = @import("../main.zig").setLogPath;
 const log = std.log.scoped(.cli);
 
-const DBEngineState = enum { MissingFileEngine, MissingSchemaEngine, Ok, Init };
+const DBEngineState = enum { MissingFileEngine, MissingSchemaEngine, MissingAllocator, MissingThreadEngine, Ok, Init };
 
 pub const Self = @This();
 
 var path_buffer: [1024]u8 = undefined;
 var line_buffer: [config.BUFFER_SIZE]u8 = undefined;
 var in_buffer: [config.BUFFER_SIZE]u8 = undefined;
-var out_buffer: [config.BUFFER_SIZE]u8 = undefined;
-
 var value_buffer: [1024]u8 = undefined;
-var buffer: [1024 * 1024]u8 = undefined; // For env var
-var fa = std.heap.FixedBufferAllocator.init(&buffer);
-const allocator = fa.allocator();
 
 usingnamespace @import("parser.zig");
 
+arena: *std.heap.ArenaAllocator = undefined,
+allocator: Allocator = undefined,
 state: DBEngineState = .Init,
 file_engine: FileEngine = undefined,
 schema_engine: SchemaEngine = undefined,
 thread_engine: ThreadEngine = undefined,
 
-pub fn init(potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) Self {
+pub fn init(parent_allocator: Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) Self {
     var self = Self{};
 
-    self.thread_engine = ThreadEngine.init();
+    const arena = parent_allocator.create(std.heap.ArenaAllocator) catch {
+        log.err("Error when init Engine DB allocator", .{});
+        self.state = .MissingAllocator;
+        return self;
+    };
+    arena.* = std.heap.ArenaAllocator.init(parent_allocator);
+    self.arena = arena;
+    self.allocator = arena.allocator();
 
-    const potential_main_path_or_environment_variable = potential_main_path orelse getEnvVariable("ZIPPONDB_PATH");
+    self.thread_engine = ThreadEngine.init(self.allocator) catch {
+        log.err("Error initializing thread engine", .{});
+        self.state = .MissingThreadEngine;
+        return self;
+    };
+
+    const potential_main_path_or_environment_variable = potential_main_path orelse getEnvVariable(self.allocator, "ZIPPONDB_PATH");
     if (potential_main_path_or_environment_variable) |main_path| {
         setLogPath(main_path);
 
         log.info("Found ZIPPONDB_PATH: {s}.", .{main_path});
-        self.file_engine = FileEngine.init(main_path, self.thread_engine.thread_pool) catch {
+        self.file_engine = FileEngine.init(self.allocator, main_path, self.thread_engine.thread_pool) catch {
             log.err("Error when init FileEngine", .{});
             self.state = .MissingFileEngine;
             return self;
@@ -65,7 +75,7 @@ pub fn init(potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8
         };
 
         log.info("Schema founded in the database directory.", .{});
-        self.schema_engine = SchemaEngine.init(schema_path, &self.file_engine) catch |err| {
+        self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
             log.err("Error when init SchemaEngine: {any}", .{err});
             self.state = .MissingSchemaEngine;
             return self;
@@ -84,10 +94,10 @@ pub fn init(potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8
     }
 
     log.info("Database don't have any schema yet, trying to add one.", .{});
-    const potential_schema_path_or_environment_variable = potential_schema_path orelse getEnvVariable("ZIPPONDB_SCHEMA");
+    const potential_schema_path_or_environment_variable = potential_schema_path orelse getEnvVariable(self.allocator, "ZIPPONDB_SCHEMA");
     if (potential_schema_path_or_environment_variable) |schema_path| {
         log.info("Found schema path {s}.", .{schema_path});
-        self.schema_engine = SchemaEngine.init(schema_path, &self.file_engine) catch |err| {
+        self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
             log.err("Error when init SchemaEngine: {any}", .{err});
             self.state = .MissingSchemaEngine;
             return self;
@@ -129,9 +139,7 @@ pub fn start(self: *Self) !void {
     }
 }
 
-pub fn getEnvVariable(variable: []const u8) ?[]const u8 {
-    fa.reset();
-
+pub fn getEnvVariable(allocator: Allocator, variable: []const u8) ?[]const u8 {
     var env_map = std.process.getEnvMap(allocator) catch return null;
 
     var iter = env_map.iterator();
@@ -150,4 +158,8 @@ pub fn runQuery(self: *Self, null_term_query_str: [:0]const u8) void {
 pub fn deinit(self: *Self) void {
     self.thread_engine.deinit();
     self.schema_engine.deinit();
+    self.file_engine.deinit();
+    const parent_allocator = self.arena.child_allocator;
+    self.arena.deinit();
+    parent_allocator.destroy(self.arena);
 }

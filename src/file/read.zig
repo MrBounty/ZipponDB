@@ -28,13 +28,9 @@ var path_buffer: [1024]u8 = undefined;
 /// Use a struct name to populate a list with all UUID of this struct
 /// TODO: Multi thread that too
 pub fn getNumberOfEntityAndFile(self: *Self, struct_name: []const u8) ZipponError!struct { entity: usize, file: usize } {
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
-    const to_parse = try self.allFileIndex(allocator, struct_name);
-    defer allocator.free(to_parse);
+    const to_parse = try self.allFileIndex(self.allocator, struct_name);
+    defer self.allocator.free(to_parse);
 
     return .{ .entity = sstruct.uuid_file_index.map.count(), .file = to_parse.len };
 }

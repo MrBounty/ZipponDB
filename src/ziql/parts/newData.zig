@@ -8,15 +8,34 @@ const ZipponError = @import("error").ZipponError;
 
 const Self = @import("../parser.zig");
 
+// Ok so now for array how do I do. Because the map will not work anymore.
+// I guess I change the map member_name -> ConditionValue. The ConditionValue can become an enum, either COnditionValue either a new struct
+// The new struct need to have the operation (append, clear, etc) and a piece of data. The data can either be a single ConditionValue or an array of it.
+// Or maybe just an array, it can be an array of 1 value.
+// Like that I just need do add some switch on the enum to make it work
+
+pub const ValueOrArray = union(enum) {
+    value: ConditionValue,
+    array: ArrayUpdate,
+};
+
+pub const ArrayCondition = enum { append, clear, pop, remove, removeat };
+
+pub const ArrayUpdate = struct {
+    condition: ArrayCondition,
+    data: []ConditionValue,
+};
+
 /// Take the tokenizer and return a map of the ADD action.
 /// Keys are the member name and value are the string of the value in the query. E.g. 'Adrien' or '10'
 /// Entry token need to be (
 pub fn parseNewData(
     self: Self,
     allocator: Allocator,
-    map: *std.StringHashMap(ConditionValue),
+    map: *std.StringHashMap(ValueOrArray),
     struct_name: []const u8,
     order: *std.ArrayList([]const u8),
+    for_update: bool,
 ) !void {
     var token = self.toker.next();
     var keep_next = false;
@@ -80,8 +99,43 @@ pub fn parseNewData(
         .expect_equal => switch (token.tag) {
             // TODO: Implement stuff to manipulate array like APPEND or REMOVE
             .equal => state = .expect_new_value,
+            .keyword_pop => if (for_update) {} else return printError(
+                "Error: Can only manipulate array with UPDATE.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+            .keyword_clear => if (for_update) {} else return printError(
+                "Error: Can only manipulate array with UPDATE.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+            .keyword_append => if (for_update) {} else return printError(
+                "Error: Can only manipulate array with UPDATE.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+            .keyword_remove => if (for_update) {} else return printError(
+                "Error: Can only manipulate array with UPDATE.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+            .keyword_remove_at => if (for_update) {} else return printError(
+                "Error: Can only manipulate array with UPDATE.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
             else => return printError(
-                "Error: Expected =",
+                "Error: Expected = or array manipulation keyword (APPEND, CLEAR, POP, REMOVE, REMOVEAT)",
                 ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
@@ -91,7 +145,10 @@ pub fn parseNewData(
 
         .expect_new_value => {
             const data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZipponError.StructNotFound;
-            map.put(member_name, try self.parseConditionValue(allocator, struct_name, member_name, data_type, &token)) catch return ZipponError.MemoryError;
+            map.put(
+                member_name,
+                ValueOrArray{ .value = try self.parseConditionValue(allocator, struct_name, member_name, data_type, &token) },
+            ) catch return ZipponError.MemoryError;
             if (data_type == .link or data_type == .link_array) {
                 token = self.toker.last_token;
                 keep_next = true;
