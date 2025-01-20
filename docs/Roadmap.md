@@ -18,18 +18,19 @@
 - [X] Logs
 - [X] Query multi threading
 - [ ] Arrays manipulation
+- [ ] Ordering
 
 #### v0.3 - QoL 
 - [X] Docs website
+- [ ] Dot operator
 - [ ] Schema migration   
 - [~] Dump/Bump data  
 - [ ] Recovery
 - [ ] Better CLI
 - [ ] Linked query  
 
-### Beta
 #### v0.4 - Usability  
-- [ ] Server  
+- [ ] Single file
 - [ ] Docker  
 - [ ] YAML config file
 - [ ] Python interface  
@@ -46,24 +47,12 @@
 - [ ] Index
 
 #### v0.7 - Safety  
-- [ ] Auth  
 - [ ] Metrics
 - [ ] Durability
 
-### Gold
-#### v0.8 - Advanced  
-- [ ] Query optimizer  
-- [ ] Single file
-
-#### v0.9 - Docs  
+#### v0.8 - Docs  
 - [ ] ZiQL tuto  
 - [ ] Deployment tuto  
 - [ ] Code docs  
 - [ ] CLI help
-
-#### v1.0 - Web interface  
-- [ ] Query builder  
-- [ ] Tables  
-- [ ] Schema visualization  
-- [ ] Dashboard metrics  
 

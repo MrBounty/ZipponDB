@@ -35,8 +35,9 @@ Currently, there will be four keywords for manipulating lists:
 - `REMOVE`: Checks the list, and if the value is found, deletes it.
 - `REMOVEAT`: Deletes the value at a specific index.
 - `CLEAR`: Removes all values from the array.
+- `POP`: Remove the last value.
 
-Except for `CLEAR`, which takes no value, each keyword can use one value or an array of values. If you choose an array, it will perform the operation on all values in the array.
+Except for `CLEAR` and `POP`, which takes no value, each keyword can use one value or an array of values. If you choose an array, it will perform the operation on all values in the array.
 
 For relationships, you can use filters:
 ```js

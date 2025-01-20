@@ -183,7 +183,11 @@ The only shared atomic values between threads are the number of found structs an
 
 ### AdditionalData
 
-TODO: Explain the data strucutre and how it works.
+AdditionalData keep what is between `[]`. It is composed of 2 struct `AdditionalData` and `AdditionalDataMember`.
+
+`AdditionalDataMember` have the name of the member, it's position in the schema file and an `AdditionalData`.
+
+`AdditionalData` have a limit (the first part `[100]`), and a list of `AdditionalDataMember`.
 
 ### Filters
 
@@ -222,7 +226,16 @@ I transform ConditionValue into Zid Data. Maybe I can directly do a map member n
 
 ### RelationMap
 
-TODO: Explain.
+A `RelationMap` is use when I need to return relationship. Let's say we have this query `GRAB User [orders [date]]`.
+
+The `RelationMap` have a struct_name, here Order. A member name, here orders. A map with UUID as key and a string as value.
+
+When I first init the map, I am parsing the first struct (here User). So it populate the map with empty string for entities that I want to return.
+Here it will be UUID of Order. 
+
+Then I parse Order file and add the string to the right UUID, skipping UUID that are not in the map.
+Once that done, I parse the JSON response that I generated when parsing User. Where a relationship should be, there is `{<|[16]u8|>}`, where `[16]u8` is the UUID of the entity that shoud be here.
+So now I can just replace it by the right key in the map.
 
 ## EntityWriter
 
