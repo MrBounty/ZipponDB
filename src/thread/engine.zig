@@ -17,10 +17,13 @@ pub fn init(allocator: std.mem.Allocator) !ThreadEngine {
         .child_allocator = allocator,
     };
 
+    const cpu_core = if (CPU_CORE == 0) try std.Thread.getCpuCount() else CPU_CORE;
+    log.info("Using {d} cpu core", .{cpu_core});
+
     const thread_pool = try allocator.create(std.Thread.Pool);
     thread_pool.init(std.Thread.Pool.Options{
         .allocator = thread_arena.allocator(),
-        .n_jobs = CPU_CORE,
+        .n_jobs = cpu_core,
     }) catch @panic("=(");
 
     return ThreadEngine{
