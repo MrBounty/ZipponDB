@@ -240,7 +240,6 @@ pub fn parseEntities(
     const allocator = arena.allocator();
 
     var buff = std.ArrayList(u8).init(entry_allocator);
-    defer buff.deinit();
     const writer = buff.writer();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
@@ -268,30 +267,35 @@ pub fn parseEntities(
     // But at the end, only the number of use CPU/Thread will use list simultanously
     // So I could pass list from a thread to another technicly
     var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
+    const data_types = try self.schema_engine.structName2DataType(struct_name);
 
     // Start parsing all file in multiple thread
+    var wg: std.Thread.WaitGroup = .{};
     for (to_parse, 0..) |file_index, i| {
         thread_writer_list[file_index] = std.ArrayList(u8).init(allocator);
 
-        self.thread_pool.spawn(parseEntitiesOneFile, .{
-            thread_writer_list[i].writer(),
-            file_index,
-            dir,
-            sstruct.zid_schema,
-            filter,
-            additional_data.*,
-            try self.schema_engine.structName2DataType(struct_name),
-            &sync_context,
-        }) catch return ZipponError.ThreadError;
+        self.thread_pool.spawnWg(
+            &wg,
+            parseEntitiesOneFile,
+            .{
+                thread_writer_list[i].writer(),
+                file_index,
+                dir,
+                sstruct.zid_schema,
+                filter,
+                additional_data.*,
+                data_types,
+                &sync_context,
+            },
+        );
     }
-
-    // Wait for all thread to either finish or return an error
-    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
+    wg.wait();
 
     // Append all writer to each other
     writer.writeByte('[') catch return ZipponError.WriteError;
     for (thread_writer_list) |list| writer.writeAll(list.items) catch return ZipponError.WriteError;
     writer.writeByte(']') catch return ZipponError.WriteError;
+    for (thread_writer_list) |list| list.deinit();
 
     // Now I need to do the relation stuff, meaning parsing new files to get the relationship value
     // Without relationship to return, this function is basically finish here
@@ -321,21 +325,12 @@ fn parseEntitiesOneFile(
     defer fa.reset();
     const allocator = fa.allocator();
 
-    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
-        sync_context.logError("Error creating file path", err);
-        return;
-    };
+    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return;
+    var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch return;
 
-    var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch |err| {
-        sync_context.logError("Error initializing DataIterator", err);
-        return;
-    };
-
-    while (iter.next() catch |err| {
-        sync_context.logError("Error in iter next", err);
-        return;
-    }) |row| {
-        if (sync_context.checkStructLimit()) break;
+    while (iter.next() catch return) |row| {
+        fa.reset();
+        if (sync_context.checkStructLimit()) return;
         if (filter) |f| if (!f.evaluate(row)) continue;
 
         EntityWriter.writeEntityJSON(
@@ -343,14 +338,10 @@ fn parseEntitiesOneFile(
             row,
             additional_data,
             data_types,
-        ) catch |err| {
-            sync_context.logError("Error writing entity", err);
-            return;
-        };
-        if (sync_context.incrementAndCheckStructLimit()) break;
-    }
+        ) catch return;
 
-    _ = sync_context.completeThread();
+        if (sync_context.incrementAndCheckStructLimit()) return;
+    }
 }
 
 // Receive a map of UUID -> empty JsonString
@@ -410,22 +401,25 @@ pub fn parseEntitiesRelationMap(
     ) catch return ZipponError.MemoryError;
 
     // Start parsing all file in multiple thread
+    var wg: std.Thread.WaitGroup = .{};
     for (to_parse, 0..) |file_index, i| {
         thread_map_list[i] = relation_map.map.cloneWithAllocator(allocator) catch return ZipponError.MemoryError;
 
-        self.thread_pool.spawn(parseEntitiesRelationMapOneFile, .{
-            &thread_map_list[i],
-            file_index,
-            dir,
-            sstruct.zid_schema,
-            relation_map.additional_data,
-            try self.schema_engine.structName2DataType(struct_name),
-            &sync_context,
-        }) catch return ZipponError.ThreadError;
+        self.thread_pool.spawnWg(
+            &wg,
+            parseEntitiesRelationMapOneFile,
+            .{
+                &thread_map_list[i],
+                file_index,
+                dir,
+                sstruct.zid_schema,
+                relation_map.additional_data,
+                try self.schema_engine.structName2DataType(struct_name),
+                &sync_context,
+            },
+        );
     }
-
-    // Wait for all thread to either finish or return an error
-    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
+    wg.wait();
 
     // Now here I should have a list of copy of the map with all UUID a bit everywhere
 
@@ -470,21 +464,11 @@ fn parseEntitiesRelationMapOneFile(
     var string_list = std.ArrayList(u8).init(allocator);
     const writer = string_list.writer();
 
-    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
-        sync_context.logError("Error creating file path", err);
-        return;
-    };
+    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return;
+    var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch return;
 
-    var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch |err| {
-        sync_context.logError("Error initializing DataIterator", err);
-        return;
-    };
-
-    while (iter.next() catch |err| {
-        sync_context.logError("Error in iter next", err);
-        return;
-    }) |row| {
-        if (sync_context.checkStructLimit()) break;
+    while (iter.next() catch return) |row| {
+        if (sync_context.checkStructLimit()) return;
         if (!map.contains(row[0].UUID)) continue;
         defer string_list.clearRetainingCapacity();
 
@@ -493,23 +477,12 @@ fn parseEntitiesRelationMapOneFile(
             row,
             additional_data,
             data_types,
-        ) catch |err| {
-            sync_context.logError("Error writing entity", err);
-            return;
-        };
+        ) catch return;
+
         map.put(row[0].UUID, JsonString{
-            .slice = parent_alloc.dupe(u8, string_list.items) catch |err| {
-                sync_context.logError("Error duping data", err);
-                return;
-            },
+            .slice = parent_alloc.dupe(u8, string_list.items) catch return,
             .init = true,
-        }) catch |err| {
-            sync_context.logError("Error writing entity", err);
-            return;
-        };
-
-        if (sync_context.incrementAndCheckStructLimit()) break;
+        }) catch return;
+        if (sync_context.incrementAndCheckStructLimit()) return;
     }
-
-    _ = sync_context.completeThread();
 }

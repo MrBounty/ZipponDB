@@ -11,13 +11,14 @@ var date_buffer: [64]u8 = undefined;
 var date_fa = std.heap.FixedBufferAllocator.init(&date_buffer);
 const date_allocator = date_fa.allocator();
 
-pub const std_options = .{
+pub const std_options = std.Options{
+    .log_level = .info,
     .logFn = myLog,
 };
 
 pub fn myLog(
     comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
+    comptime scope: @Type(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) void {
@@ -48,10 +49,17 @@ pub fn setLogPath(path: []const u8) void {
 }
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true }){};
+    const allocator = gpa.allocator();
+    defer {
+        const deinit_status = gpa.deinit();
+        switch (deinit_status) {
+            .leak => std.debug.print("Leak...\n", .{}),
+            .ok => {},
+        }
+    }
 
-    var cli = Cli.init(arena.allocator(), null, null);
+    var cli = Cli.init(allocator, null, null);
     defer cli.deinit();
 
     try cli.start();

@@ -8,6 +8,8 @@ const DataType = dtype.DataType;
 const DateTime = dtype.DateTime;
 const UUID = dtype.UUID;
 
+// TODO: Move this from FileEngine
+
 const ZipponError = @import("error").ZipponError;
 
 pub fn writeEntityTable(

@@ -80,8 +80,8 @@ pub fn init(file_engine: *FileEngine, schema_engine: *SchemaEngine) Self {
     };
 }
 
-pub fn parse(self: *Self, buffer: [:0]const u8) ZipponError!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+pub fn parse(self: *Self, parent_allocator: Allocator, buffer: [:0]const u8) ZipponError!void {
+    var arena = std.heap.ArenaAllocator.init(parent_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 

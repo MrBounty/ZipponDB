@@ -27,15 +27,15 @@ file_engine: FileEngine = undefined,
 schema_engine: SchemaEngine = undefined,
 thread_engine: ThreadEngine = undefined,
 
-pub fn init(parent_allocator: Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) Self {
+pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) Self {
     var self = Self{};
 
-    const arena = parent_allocator.create(std.heap.ArenaAllocator) catch {
+    const arena = allocator.create(std.heap.ArenaAllocator) catch {
         log.err("Error when init Engine DB allocator", .{});
         self.state = .MissingAllocator;
         return self;
     };
-    arena.* = std.heap.ArenaAllocator.init(parent_allocator);
+    arena.* = std.heap.ArenaAllocator.init(allocator);
     self.arena = arena;
     self.allocator = arena.allocator();
 
@@ -152,7 +152,7 @@ pub fn getEnvVariable(allocator: Allocator, variable: []const u8) ?[]const u8 {
 
 pub fn runQuery(self: *Self, null_term_query_str: [:0]const u8) void {
     var parser = ziqlParser.init(&self.file_engine, &self.schema_engine);
-    parser.parse(null_term_query_str) catch |err| log.err("Error parsing: {any}", .{err});
+    parser.parse(self.allocator, null_term_query_str) catch |err| log.err("Error parsing: {any}", .{err});
 }
 
 pub fn deinit(self: *Self) void {

@@ -745,7 +745,7 @@ test "Write and Read" {
     try std.fs.cwd().deleteDir("tmp");
 }
 
-test "Benchmark Write and Read" {
+test "Benchmark Write and Read All" {
     const schema = &[_]DType{
         .Int,
         .Float,
@@ -762,6 +762,20 @@ test "Benchmark Write and Read" {
         Data.initStr("Hello world"),
         Data.initBool(true),
         Data.initUnix(2021),
+    };
+
+    try benchmark(schema, data);
+}
+
+test "Benchmark Write and Read Simple User" {
+    const schema = &[_]DType{
+        .Int,
+        .Str,
+    };
+
+    const data = &[_]Data{
+        Data.initInt(1),
+        Data.initStr("Bob"),
     };
 
     try benchmark(schema, data);

@@ -10,43 +10,81 @@ const times = [_][]const u8{ "12:04", "20:45:11", "03:11:13", "03:00:01.0152" };
 const datetimes = [_][]const u8{ "2000/01/01-12:04", "1954/04/02-20:45:11", "1998/01/21-03:11:13", "1977/12/31-03:00:01.0153" };
 const scores = [_]i32{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
 
-pub const std_options = .{
+pub const std_options = std.Options{
+    .log_level = .info,
     .logFn = myLog,
 };
 
+var date_buffer: [64]u8 = undefined;
+var date_fa = std.heap.FixedBufferAllocator.init(&date_buffer);
+const date_allocator = date_fa.allocator();
+
 pub fn myLog(
     comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
+    comptime scope: @Type(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) void {
-    if (true) return;
-    _ = message_level;
-    _ = scope;
-    _ = format;
-    _ = args;
+    const level_txt = comptime message_level.asText();
+    const prefix = if (scope == .default) " - " else "(" ++ @tagName(scope) ++ ") - ";
+
+    const potential_file: ?std.fs.File = std.fs.cwd().openFile("benchmarkDB/LOG/log", .{ .mode = .write_only }) catch null;
+
+    if (potential_file) |file| {
+        date_fa.reset();
+        const now = @import("dtype").DateTime.now();
+        var date_format_buffer = std.ArrayList(u8).init(date_allocator);
+        defer date_format_buffer.deinit();
+        now.format("YYYY/MM/DD-HH:mm:ss.SSSS", date_format_buffer.writer()) catch return;
+
+        file.seekFromEnd(0) catch return;
+        const writer = file.writer();
+
+        writer.print("{s}{s}Time: {s} - ", .{ level_txt, prefix, date_format_buffer.items }) catch return;
+        writer.print(format, args) catch return;
+        writer.writeByte('\n') catch return;
+        file.close();
+    }
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true }){};
+    defer {
+        const deinit_status = gpa.deinit();
+        switch (deinit_status) {
+            .leak => @panic("Oupsy"),
+            .ok => {},
+        }
+    }
+
+    try benchmark(gpa.allocator());
+}
+
+test "benchmark" {
+    const allocator = std.testing.allocator;
+    try benchmark(allocator);
 }
 
 // Maybe I can make it a test to use the testing alloc
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
-    const to_test = [_]usize{ 500, 50_000, 1_000_000 };
+pub fn benchmark(allocator: std.mem.Allocator) !void {
+    const to_test = [_]usize{ 5, 50, 500, 5_000, 50_000, 500_000, 5_000_000 };
     var line_buffer: [1024 * 1024]u8 = undefined;
     for (to_test) |users_count| {
         var db_engine = DBEngine.init(allocator, "benchmarkDB", "schema/benchmark");
         defer db_engine.deinit();
 
+        // Empty db
         {
             const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE User {{}}", .{});
             db_engine.runQuery(null_term_query_str);
         }
+
         // Populate with random dummy value
-        // Need some speed up, spended times to find that it is the parsonConditionValue that take time, the last switch to be exact, that parse str to value
         {
             std.debug.print("\n=====================================\n\n", .{});
             std.debug.print("Populating with {d} users.\n", .{users_count});
 
-            var prng = std.rand.DefaultPrng.init(0);
+            var prng = std.Random.DefaultPrng.init(0);
             const rng = prng.random();
             const populate_start_time = std.time.nanoTimestamp();
 
@@ -62,7 +100,7 @@ pub fn main() !void {
                 },
             );
 
-            for (users_count - 1) |_| {
+            for (0..users_count - 1) |_| {
                 try writer.print(
                     "('{s}', '{s}', none)",
                     .{
@@ -82,7 +120,7 @@ pub fn main() !void {
 
             std.debug.print("Populate duration: {d:.6} seconds\n\n", .{populate_duration});
 
-            var buffer = std.ArrayList(u8).init(std.heap.page_allocator);
+            var buffer = std.ArrayList(u8).init(allocator);
             defer buffer.deinit();
             try db_engine.file_engine.writeDbMetrics(&buffer);
             std.debug.print("{s}\n", .{buffer.items});
@@ -99,10 +137,11 @@ pub fn main() !void {
         //    }
         //}
 
-        // Define your benchmark queries
+        // Run query
         {
             const queries = [_][]const u8{
                 "GRAB User {}",
+                "GRAB User {name='asd'}",
                 "GRAB User [1] {}",
                 "GRAB User [name] {}",
                 "GRAB User {name = 'Charlie'}",
@@ -122,8 +161,7 @@ pub fn main() !void {
 
                 std.debug.print("Query: \t\t{s}\nDuration: \t{d:.6} ms\n\n", .{ query, duration });
             }
-
-            std.debug.print("=====================================\n\n", .{});
         }
     }
+    std.debug.print("=====================================\n\n", .{});
 }

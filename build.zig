@@ -103,6 +103,22 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_tests6.step);
     }
 
+    // Test
+    // -----------------------------------------------
+    {
+        const tests1 = b.addTest(.{
+            .root_source_file = b.path("lib/zid.zig"),
+            .target = target,
+            .optimize = optimize,
+            .name = "File parsing",
+            .test_runner = b.path("test_runner.zig"),
+        });
+        const run_tests1 = b.addRunArtifact(tests1);
+
+        const test_step = b.step("benchmark-parsing", "Run the benchmark of ZipponData (Single thread).");
+        test_step.dependOn(&run_tests1.step);
+    }
+
     // Benchmark
     // -----------------------------------------------
     {
@@ -152,7 +168,7 @@ pub fn build(b: *std.Build) void {
                 .name = exe_name,
                 .root_source_file = b.path("src/main.zig"),
                 .target = tar,
-                .optimize = .ReleaseSafe,
+                .optimize = .ReleaseFast,
             });
 
             // Add the same imports as your main executable
