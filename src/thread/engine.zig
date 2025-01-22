@@ -17,14 +17,15 @@ pub fn init(allocator: std.mem.Allocator) !ThreadEngine {
         .child_allocator = allocator,
     };
 
-    const cpu_core = if (CPU_CORE == 0) try std.Thread.getCpuCount() else CPU_CORE;
+    const cpu_core = if (CPU_CORE == 0) std.Thread.getCpuCount() catch 1 else CPU_CORE;
     log.info("Using {d} cpu core", .{cpu_core});
+    log.info("Using {d}Mb stack size", .{std.Thread.SpawnConfig.default_stack_size / 1024 / 1024});
 
     const thread_pool = try allocator.create(std.Thread.Pool);
-    thread_pool.init(std.Thread.Pool.Options{
+    try thread_pool.init(std.Thread.Pool.Options{
         .allocator = thread_arena.allocator(),
         .n_jobs = cpu_core,
-    }) catch @panic("=(");
+    });
 
     return ThreadEngine{
         .thread_pool = thread_pool,

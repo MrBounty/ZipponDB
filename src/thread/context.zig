@@ -10,17 +10,11 @@ processed_struct: U64 = U64.init(0),
 error_file: U64 = U64.init(0),
 completed_file: U64 = U64.init(0),
 max_struct: u64,
-max_file: u64,
 
-pub fn init(max_struct: u64, max_file: u64) Self {
+pub fn init(max_struct: u64) Self {
     return Self{
         .max_struct = max_struct,
-        .max_file = max_file,
     };
-}
-
-pub fn isComplete(self: *Self) bool {
-    return (self.completed_file.load(.acquire) + self.error_file.load(.acquire)) >= self.max_file;
 }
 
 pub fn completeThread(self: *Self) void {

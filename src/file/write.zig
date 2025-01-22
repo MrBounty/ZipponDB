@@ -84,10 +84,7 @@ pub fn updateEntities(
     const to_parse = try self.allFileIndex(allocator, struct_name);
 
     // Multi-threading setup
-    var sync_context = ThreadSyncContext.init(
-        additional_data.limit,
-        to_parse.len,
-    );
+    var sync_context = ThreadSyncContext.init(additional_data.limit);
 
     // Create a thread-safe writer for each file
     var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
@@ -115,8 +112,11 @@ pub fn updateEntities(
     }
 
     // Spawn threads for each file
-    for (to_parse, 0..) |file_index, i| {
-        self.thread_pool.spawn(updateEntitiesOneFile, .{
+    var wg: std.Thread.WaitGroup = .{};
+    for (to_parse, 0..) |file_index, i| self.thread_pool.spawnWg(
+        &wg,
+        updateEntitiesOneFile,
+        .{
             sstruct,
             filter,
             map,
@@ -125,11 +125,9 @@ pub fn updateEntities(
             file_index,
             dir,
             &sync_context,
-        }) catch return ZipponError.ThreadError;
-    }
-
-    // Wait for all threads to complete
-    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
+        },
+    );
+    wg.wait();
 
     // Combine results
     writer.writeByte('[') catch return ZipponError.WriteError;
@@ -162,55 +160,35 @@ fn updateEntitiesOneFile(
 
     // First I fill the one that are updated by a const
     for (index_switch, 0..) |is, i| switch (is) {
-        .fix => new_data_buff[i] = @import("utils.zig").string2Data(allocator, map.get(sstruct.members[i]).?.value) catch |err| {
-            sync_context.logError("Writting data", err);
-            return;
-        },
+        .fix => new_data_buff[i] = @import("utils.zig").string2Data(allocator, map.get(sstruct.members[i]).?.value) catch return,
         else => {},
     };
 
-    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
-        sync_context.logError("Error creating file path", err);
-        return;
-    };
+    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return;
 
-    var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch |err| {
-        sync_context.logError("Error initializing DataIterator", err);
-        return;
-    };
+    var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch return;
     defer iter.deinit();
 
-    const new_path = std.fmt.allocPrint(allocator, "{d}.zid.new", .{file_index}) catch |err| {
-        sync_context.logError("Error creating new file path", err);
-        return;
-    };
+    const new_path = std.fmt.allocPrint(allocator, "{d}.zid.new", .{file_index}) catch return;
     defer allocator.free(new_path);
 
-    zid.createFile(new_path, dir) catch |err| {
-        sync_context.logError("Error creating new file", err);
-        return;
-    };
+    zid.createFile(new_path, dir) catch return;
 
-    var new_writer = zid.DataWriter.init(new_path, dir) catch |err| {
-        sync_context.logError("Error initializing DataWriter", err);
+    var new_writer = zid.DataWriter.init(new_path, dir) catch {
         zid.deleteFile(new_path, dir) catch {};
         return;
     };
     defer new_writer.deinit();
 
     var finish_writing = false;
-    while (iter.next() catch |err| {
-        sync_context.logError("Parsing files", err);
-        return;
-    }) |row| {
+    while (iter.next() catch return) |row| {
         if (!finish_writing and (filter == null or filter.?.evaluate(row))) {
             // Add the unchanged Data in the new_data_buff
             for (index_switch, 0..) |is, i| switch (is) {
                 .stay => new_data_buff[i] = row[i],
                 .vari => {
                     const x = map.get(sstruct.members[i]).?.array;
-                    updateData(allocator, x.condition, &row[i], x.data) catch |err| {
-                        sync_context.logError("Error updating data", err);
+                    updateData(allocator, x.condition, &row[i], x.data) catch {
                         zid.deleteFile(new_path, dir) catch {};
                         return;
                     };
@@ -220,45 +198,28 @@ fn updateEntitiesOneFile(
 
             log.debug("{d} {any}\n\n", .{ new_data_buff.len, new_data_buff });
 
-            new_writer.write(new_data_buff) catch |err| {
-                sync_context.logError("Error initializing DataWriter", err);
+            new_writer.write(new_data_buff) catch {
                 zid.deleteFile(new_path, dir) catch {};
                 return;
             };
 
-            writer.print("\"{s}\",", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
-                sync_context.logError("Error initializing DataWriter", err);
+            writer.print("\"{s}\",", .{UUID.format_bytes(row[0].UUID)}) catch {
                 zid.deleteFile(new_path, dir) catch {};
                 return;
             };
 
             finish_writing = sync_context.incrementAndCheckStructLimit();
         } else {
-            new_writer.write(row) catch |err| {
-                sync_context.logError("Error initializing DataWriter", err);
+            new_writer.write(row) catch {
                 zid.deleteFile(new_path, dir) catch {};
                 return;
             };
         }
     }
 
-    new_writer.flush() catch |err| {
-        sync_context.logError("Error initializing DataWriter", err);
-        zid.deleteFile(new_path, dir) catch {};
-        return;
-    };
-
-    dir.deleteFile(path) catch |err| {
-        sync_context.logError("Error deleting old file", err);
-        return;
-    };
-
-    dir.rename(new_path, path) catch |err| {
-        sync_context.logError("Error initializing DataWriter", err);
-        return;
-    };
-
-    _ = sync_context.completeThread();
+    new_writer.flush() catch return;
+    dir.deleteFile(path) catch return;
+    dir.rename(new_path, path) catch return;
 }
 
 /// Delete all entity based on the filter. Will also write a JSON format list of all UUID deleted into the buffer
@@ -279,10 +240,7 @@ pub fn deleteEntities(
     const to_parse = try self.allFileIndex(allocator, struct_name);
 
     // Multi-threading setup
-    var sync_context = ThreadSyncContext.init(
-        additional_data.limit,
-        to_parse.len,
-    );
+    var sync_context = ThreadSyncContext.init(additional_data.limit);
 
     // Create a thread-safe writer for each file
     var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
@@ -291,19 +249,20 @@ pub fn deleteEntities(
     }
 
     // Spawn threads for each file
-    for (to_parse, 0..) |file_index, i| {
-        self.thread_pool.spawn(deleteEntitiesOneFile, .{
+    var wg: std.Thread.WaitGroup = .{};
+    for (to_parse, 0..) |file_index, i| self.thread_pool.spawnWg(
+        &wg,
+        deleteEntitiesOneFile,
+        .{
             sstruct,
             filter,
             thread_writer_list[i].writer(),
             file_index,
             dir,
             &sync_context,
-        }) catch return ZipponError.ThreadError;
-    }
-
-    // Wait for all threads to complete
-    while (!sync_context.isComplete()) std.time.sleep(100_000); // Check every 0.1ms
+        },
+    );
+    wg.wait();
 
     // Combine results
     writer.writeByte('[') catch return ZipponError.WriteError;

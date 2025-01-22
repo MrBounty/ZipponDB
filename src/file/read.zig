@@ -23,8 +23,6 @@ const log = std.log.scoped(.fileEngine);
 
 const Self = @import("core.zig").Self;
 
-var path_buffer: [1024]u8 = undefined;
-
 /// Use a struct name to populate a list with all UUID of this struct
 /// TODO: Multi thread that too
 pub fn getNumberOfEntityAndFile(self: *Self, struct_name: []const u8) ZipponError!struct { entity: usize, file: usize } {
@@ -49,12 +47,6 @@ pub fn populateFileIndexUUIDMap(
     const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
     const to_parse = try self.allFileIndex(allocator, sstruct.name);
 
-    // Multi-threading setup
-    var sync_context = ThreadSyncContext.init(
-        0,
-        to_parse.len,
-    );
-
     // Create a thread-safe writer for each file
     var thread_writer_list = allocator.alloc(std.ArrayList(UUID), to_parse.len) catch return ZipponError.MemoryError;
     defer {
@@ -67,18 +59,14 @@ pub fn populateFileIndexUUIDMap(
     }
 
     // Spawn threads for each file
-    for (to_parse, 0..) |file_index, i| {
-        self.thread_pool.spawn(populateFileIndexUUIDMapOneFile, .{
-            sstruct,
-            &thread_writer_list[i],
-            file_index,
-            dir,
-            &sync_context,
-        }) catch return ZipponError.ThreadError;
-    }
-
-    // Wait for all threads to complete
-    while (!sync_context.isComplete()) std.time.sleep(10_000_000);
+    var wg: std.Thread.WaitGroup = .{};
+    for (to_parse, 0..) |file_index, i| self.thread_pool.spawnWg(&wg, populateFileIndexUUIDMapOneFile, .{
+        sstruct,
+        &thread_writer_list[i],
+        file_index,
+        dir,
+    });
+    wg.wait();
 
     // Combine results
     for (thread_writer_list, 0..) |list, file_index| {
@@ -91,35 +79,20 @@ fn populateFileIndexUUIDMapOneFile(
     list: *std.ArrayList(UUID),
     file_index: u64,
     dir: std.fs.Dir,
-    sync_context: *ThreadSyncContext,
 ) void {
+    var path_buffer: [1024 * 10]u8 = undefined;
     var data_buffer: [config.BUFFER_SIZE]u8 = undefined;
     var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
     defer fa.reset();
     const allocator = fa.allocator();
 
-    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
-        sync_context.logError("Error creating file path", err);
-        return;
-    };
-
-    var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch |err| {
-        sync_context.logError("Error initializing DataIterator", err);
-        return;
-    };
+    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return;
+    var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch return;
     defer iter.deinit();
 
-    while (iter.next() catch |err| {
-        sync_context.logError("Error initializing DataIterator", err);
-        return;
-    }) |row| {
-        list.*.append(UUID{ .bytes = row[0].UUID }) catch |err| {
-            sync_context.logError("Error initializing DataIterator", err);
-            return;
-        };
+    while (iter.next() catch return) |row| {
+        list.*.append(UUID{ .bytes = row[0].UUID }) catch return;
     }
-
-    _ = sync_context.completeThread();
 }
 
 /// Use a struct name and filter to populate a map with all UUID bytes as key and void as value
@@ -141,10 +114,7 @@ pub fn populateVoidUUIDMap(
     const to_parse = try self.allFileIndex(allocator, sstruct.name);
 
     // Multi-threading setup
-    var sync_context = ThreadSyncContext.init(
-        additional_data.limit,
-        to_parse.len,
-    );
+    var sync_context = ThreadSyncContext.init(additional_data.limit);
 
     // Create a thread-safe writer for each file
     var thread_writer_list = allocator.alloc(std.ArrayList(UUID), to_parse.len + 1) catch return ZipponError.MemoryError;
@@ -154,19 +124,20 @@ pub fn populateVoidUUIDMap(
     }
 
     // Spawn threads for each file
-    for (to_parse, 0..) |file_index, i| {
-        self.thread_pool.spawn(populateVoidUUIDMapOneFile, .{
+    var wg: std.Thread.WaitGroup = .{};
+    for (to_parse, 0..) |file_index, i| self.thread_pool.spawnWg(
+        &wg,
+        populateVoidUUIDMapOneFile,
+        .{
             sstruct,
             filter,
             &thread_writer_list[i],
             file_index,
             dir,
             &sync_context,
-        }) catch return ZipponError.ThreadError;
-    }
-
-    // Wait for all threads to complete
-    while (!sync_context.isComplete()) std.time.sleep(10_000_000);
+        },
+    );
+    wg.wait();
 
     // Combine results
     for (thread_writer_list) |list| {
@@ -192,6 +163,7 @@ fn populateVoidUUIDMapOneFile(
     dir: std.fs.Dir,
     sync_context: *ThreadSyncContext,
 ) void {
+    var path_buffer: [1024 * 10]u8 = undefined;
     var data_buffer: [config.BUFFER_SIZE]u8 = undefined;
     var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
     defer fa.reset();
@@ -222,8 +194,6 @@ fn populateVoidUUIDMapOneFile(
             if (sync_context.incrementAndCheckStructLimit()) break;
         }
     }
-
-    _ = sync_context.completeThread();
 }
 
 /// Take a filter, parse all file and if one struct if validate by the filter, write it in a JSON format to the writer
@@ -257,23 +227,16 @@ pub fn parseEntities(
     const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{ .access_sub_paths = false });
 
     // Multi thread stuffs
-    var sync_context = ThreadSyncContext.init(
-        additional_data.limit,
-        to_parse.len,
-    );
+    var sync_context = ThreadSyncContext.init(additional_data.limit);
 
     // Do an array of writer for each thread
-    // Could I create just the number of max cpu ? Because if I have 1000 files, I do 1000 list
-    // But at the end, only the number of use CPU/Thread will use list simultanously
-    // So I could pass list from a thread to another technicly
     var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
     const data_types = try self.schema_engine.structName2DataType(struct_name);
 
     // Start parsing all file in multiple thread
     var wg: std.Thread.WaitGroup = .{};
     for (to_parse, 0..) |file_index, i| {
-        thread_writer_list[file_index] = std.ArrayList(u8).init(allocator);
-
+        thread_writer_list[i] = std.ArrayList(u8).init(allocator);
         self.thread_pool.spawnWg(
             &wg,
             parseEntitiesOneFile,
@@ -320,6 +283,7 @@ fn parseEntitiesOneFile(
     data_types: []const DataType,
     sync_context: *ThreadSyncContext,
 ) void {
+    var path_buffer: [1024 * 10]u8 = undefined;
     var data_buffer: [config.BUFFER_SIZE]u8 = undefined;
     var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
     defer fa.reset();
@@ -389,10 +353,7 @@ pub fn parseEntitiesRelationMap(
     );
 
     // Multi thread stuffs
-    var sync_context = ThreadSyncContext.init(
-        relation_map.additional_data.limit,
-        to_parse.len,
-    );
+    var sync_context = ThreadSyncContext.init(relation_map.additional_data.limit);
 
     // Do one writer for each thread otherwise it create error by writing at the same time
     var thread_map_list = allocator.alloc(
@@ -404,7 +365,6 @@ pub fn parseEntitiesRelationMap(
     var wg: std.Thread.WaitGroup = .{};
     for (to_parse, 0..) |file_index, i| {
         thread_map_list[i] = relation_map.map.cloneWithAllocator(allocator) catch return ZipponError.MemoryError;
-
         self.thread_pool.spawnWg(
             &wg,
             parseEntitiesRelationMapOneFile,
@@ -455,6 +415,7 @@ fn parseEntitiesRelationMapOneFile(
     data_types: []const DataType,
     sync_context: *ThreadSyncContext,
 ) void {
+    var path_buffer: [1024 * 10]u8 = undefined;
     var data_buffer: [config.BUFFER_SIZE]u8 = undefined;
     var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
     defer fa.reset();

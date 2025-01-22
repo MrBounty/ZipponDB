@@ -7,7 +7,6 @@ const ZipponError = @import("error").ZipponError;
 const log = std.log.scoped(.fileEngine);
 
 var path_to_ZipponDB_dir_buffer: [1024]u8 = undefined;
-pub var data_buffer: [config.BUFFER_SIZE]u8 = undefined;
 
 /// Manage everything that is relate to read or write in files
 /// Or even get stats, whatever. If it touch files, it's here
