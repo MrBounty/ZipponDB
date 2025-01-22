@@ -153,10 +153,7 @@ fn updateEntitiesOneFile(
     defer fa.reset();
     const allocator = fa.allocator();
 
-    var new_data_buff = allocator.alloc(zid.Data, index_switch.len) catch |err| {
-        sync_context.logError("Cant init new data buff", err);
-        return;
-    };
+    var new_data_buff = allocator.alloc(zid.Data, index_switch.len) catch return;
 
     // First I fill the one that are updated by a const
     for (index_switch, 0..) |is, i| switch (is) {
@@ -232,7 +229,8 @@ pub fn deleteEntities(
 ) ZipponError!void {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = self.allocator };
+    const allocator = safe_allocator.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
 
@@ -244,24 +242,24 @@ pub fn deleteEntities(
 
     // Create a thread-safe writer for each file
     var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
-    for (thread_writer_list) |*list| {
-        list.* = std.ArrayList(u8).init(allocator);
-    }
 
     // Spawn threads for each file
     var wg: std.Thread.WaitGroup = .{};
-    for (to_parse, 0..) |file_index, i| self.thread_pool.spawnWg(
-        &wg,
-        deleteEntitiesOneFile,
-        .{
-            sstruct,
-            filter,
-            thread_writer_list[i].writer(),
-            file_index,
-            dir,
-            &sync_context,
-        },
-    );
+    for (to_parse, 0..) |file_index, i| {
+        thread_writer_list[i] = std.ArrayList(u8).init(allocator);
+        self.thread_pool.spawnWg(
+            &wg,
+            deleteEntitiesOneFile,
+            .{
+                thread_writer_list[i].writer(),
+                file_index,
+                dir,
+                sstruct.zid_schema,
+                filter,
+                &sync_context,
+            },
+        );
+    }
     wg.wait();
 
     // Combine results
@@ -274,16 +272,16 @@ pub fn deleteEntities(
     //  FIXME: Stop doing that and just remove UUID from the map itself instead of reparsing everything at the end
     //  It's just that I can't do it in deleteEntitiesOneFile itself
     sstruct.uuid_file_index.map.clearRetainingCapacity();
-    _ = sstruct.uuid_file_index.arena.reset(.free_all);
+    _ = sstruct.uuid_file_index.reset();
     try self.populateFileIndexUUIDMap(sstruct, sstruct.uuid_file_index);
 }
 
 fn deleteEntitiesOneFile(
-    sstruct: SchemaStruct,
-    filter: ?Filter,
     writer: anytype,
     file_index: u64,
     dir: std.fs.Dir,
+    zid_schema: []zid.DType,
+    filter: ?Filter,
     sync_context: *ThreadSyncContext,
 ) void {
     var data_buffer: [config.BUFFER_SIZE]u8 = undefined;
@@ -291,77 +289,36 @@ fn deleteEntitiesOneFile(
     defer fa.reset();
     const allocator = fa.allocator();
 
-    const path = std.fmt.allocPrint(allocator, "{d}.zid", .{file_index}) catch |err| {
-        sync_context.logError("Error creating file path", err);
-        return;
-    };
+    const path = std.fmt.allocPrint(allocator, "{d}.zid", .{file_index}) catch return;
 
-    var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch |err| {
-        sync_context.logError("Error initializing DataIterator", err);
-        return;
-    };
+    var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch return;
     defer iter.deinit();
 
-    const new_path = std.fmt.allocPrint(allocator, "{d}.zid.new", .{file_index}) catch |err| {
-        sync_context.logError("Error creating file path", err);
-        return;
-    };
+    const new_path = std.fmt.allocPrint(allocator, "{d}.zid.new", .{file_index}) catch return;
+    zid.createFile(new_path, dir) catch return;
 
-    zid.createFile(new_path, dir) catch |err| {
-        sync_context.logError("Error creating new file", err);
-        return;
-    };
-
-    var new_writer = zid.DataWriter.init(new_path, dir) catch |err| {
-        sync_context.logError("Error initializing DataWriter", err);
-        return;
-    };
+    var new_writer = zid.DataWriter.init(new_path, dir) catch return;
     errdefer new_writer.deinit();
 
     var finish_writing = false;
-    while (iter.next() catch |err| {
-        sync_context.logError("Error during iter", err);
-        return;
-    }) |row| {
+    while (iter.next() catch return) |row| {
         if (!finish_writing and (filter == null or filter.?.evaluate(row))) {
-            writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch |err| {
-                sync_context.logError("Error writting", err);
-                return;
-            };
-
+            writer.print("{{\"{s}\"}},", .{UUID.format_bytes(row[0].UUID)}) catch return;
             finish_writing = sync_context.incrementAndCheckStructLimit();
         } else {
-            new_writer.write(row) catch |err| {
-                sync_context.logError("Error writing unchanged data", err);
-                return;
-            };
+            new_writer.write(row) catch return;
         }
     }
 
-    new_writer.flush() catch |err| {
-        sync_context.logError("Error flushing new writer", err);
-        return;
-    };
+    new_writer.flush() catch return;
 
-    dir.deleteFile(path) catch |err| {
-        sync_context.logError("Error deleting old file", err);
-        return;
-    };
+    dir.deleteFile(path) catch return;
 
-    const file_stat = new_writer.fileStat() catch |err| {
-        sync_context.logError("Error getting new file stat", err);
-        return;
-    };
+    const file_stat = new_writer.fileStat() catch return;
     new_writer.deinit();
-    if (file_index != 0 and file_stat.size == 0) dir.deleteFile(new_path) catch |err| {
-        sync_context.logError("Error deleting empty new file", err);
-        return;
+    if (file_index != 0 and file_stat.size == 0) {
+        dir.deleteFile(new_path) catch return;
     } else {
-        dir.rename(new_path, path) catch |err| {
-            sync_context.logError("Error renaming new file", err);
-            return;
-        };
+        dir.rename(new_path, path) catch return;
     }
-
-    sync_context.completeThread();
 }

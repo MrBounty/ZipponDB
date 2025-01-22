@@ -17,10 +17,6 @@ pub fn init(max_struct: u64) Self {
     };
 }
 
-pub fn completeThread(self: *Self) void {
-    _ = self.completed_file.fetchAdd(1, .release);
-}
-
 pub fn incrementAndCheckStructLimit(self: *Self) bool {
     if (self.max_struct == 0) return false;
     const new_count = self.processed_struct.fetchAdd(1, .acquire);
@@ -31,9 +27,4 @@ pub fn checkStructLimit(self: *Self) bool {
     if (self.max_struct == 0) return false;
     const count = self.processed_struct.load(.acquire);
     return (count) >= self.max_struct;
-}
-
-pub fn logError(self: *Self, message: []const u8, err: anyerror) void {
-    log.err("{s}: {any}", .{ message, err });
-    _ = self.error_file.fetchAdd(1, .acquire);
 }

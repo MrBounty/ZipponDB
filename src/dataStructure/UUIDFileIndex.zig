@@ -39,6 +39,10 @@ pub fn get(self: UUIDIndexMap, uuid: UUID) ?usize {
     return self.map.get(uuid);
 }
 
+pub fn reset(self: *UUIDIndexMap) void {
+    _ = self.arena.reset(.free_all);
+}
+
 test "Create empty UUIDIndexMap" {
     const allocator = std.testing.allocator;
 

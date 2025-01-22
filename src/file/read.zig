@@ -169,27 +169,15 @@ fn populateVoidUUIDMapOneFile(
     defer fa.reset();
     const allocator = fa.allocator();
 
-    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch |err| {
-        sync_context.logError("Error creating file path", err);
-        return;
-    };
+    const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return;
 
-    var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch |err| {
-        sync_context.logError("Error initializing DataIterator", err);
-        return;
-    };
+    var iter = zid.DataIterator.init(allocator, path, dir, sstruct.zid_schema) catch return;
     defer iter.deinit();
 
-    while (iter.next() catch |err| {
-        sync_context.logError("Error in iter next", err);
-        return;
-    }) |row| {
+    while (iter.next() catch return) |row| {
         if (sync_context.checkStructLimit()) break;
         if (filter == null or filter.?.evaluate(row)) {
-            list.*.append(UUID{ .bytes = row[0].UUID }) catch |err| {
-                sync_context.logError("Error initializing DataIterator", err);
-                return;
-            };
+            list.*.append(UUID{ .bytes = row[0].UUID }) catch return;
 
             if (sync_context.incrementAndCheckStructLimit()) break;
         }
@@ -207,7 +195,8 @@ pub fn parseEntities(
 ) ZipponError![]const u8 {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = self.allocator };
+    const allocator = safe_allocator.allocator();
 
     var buff = std.ArrayList(u8).init(entry_allocator);
     const writer = buff.writer();
@@ -231,7 +220,6 @@ pub fn parseEntities(
 
     // Do an array of writer for each thread
     var thread_writer_list = allocator.alloc(std.ArrayList(u8), to_parse.len) catch return ZipponError.MemoryError;
-    const data_types = try self.schema_engine.structName2DataType(struct_name);
 
     // Start parsing all file in multiple thread
     var wg: std.Thread.WaitGroup = .{};
@@ -247,7 +235,7 @@ pub fn parseEntities(
                 sstruct.zid_schema,
                 filter,
                 additional_data.*,
-                data_types,
+                sstruct.types,
                 &sync_context,
             },
         );
@@ -289,16 +277,17 @@ fn parseEntitiesOneFile(
     defer fa.reset();
     const allocator = fa.allocator();
 
+    var buffered_writer = std.io.bufferedWriter(writer);
+
     const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return;
     var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch return;
 
     while (iter.next() catch return) |row| {
-        fa.reset();
         if (sync_context.checkStructLimit()) return;
         if (filter) |f| if (!f.evaluate(row)) continue;
 
         EntityWriter.writeEntityJSON(
-            writer,
+            buffered_writer.writer(),
             row,
             additional_data,
             data_types,
@@ -306,6 +295,7 @@ fn parseEntitiesOneFile(
 
         if (sync_context.incrementAndCheckStructLimit()) return;
     }
+    buffered_writer.flush() catch return;
 }
 
 // Receive a map of UUID -> empty JsonString

@@ -67,7 +67,7 @@ test "benchmark" {
 
 // Maybe I can make it a test to use the testing alloc
 pub fn benchmark(allocator: std.mem.Allocator) !void {
-    const to_test = [_]usize{ 5, 50, 500, 5_000, 50_000, 500_000, 5_000_000 };
+    const to_test = [_]usize{ 5, 50, 500, 5_000, 50_000, 500_000, 5_000_000, 10_000_000 };
     var line_buffer: [1024 * 1024]u8 = undefined;
     for (to_test) |users_count| {
         var db_engine = DBEngine.init(allocator, "benchmarkDB", "schema/benchmark");
