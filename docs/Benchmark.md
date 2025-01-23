@@ -53,7 +53,15 @@ Duration:       93.530622 ms
 =====================================
 ```
 
+## Cloud
+
+I started to benchmark using fly.io
+
+Using a 1x shared cpu I get around 40ms to parse and write 5000 users, not bad.
+
 ## File Parsing
+
+The majority of time taken by query come more from writting the response rather than parsing files.
 
 In this example I create a random dataset of Users using this schema:
 ```lua
