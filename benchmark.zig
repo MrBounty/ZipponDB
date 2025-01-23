@@ -67,7 +67,7 @@ test "benchmark" {
 
 // Maybe I can make it a test to use the testing alloc
 pub fn benchmark(allocator: std.mem.Allocator) !void {
-    const to_test = [_]usize{ 5, 50, 500, 5_000, 50_000, 500_000, 5_000_000, 10_000_000 };
+    const to_test = [_]usize{ 5_000, 100_000, 1_000_000, 10_000_000 };
     var line_buffer: [1024 * 1024]u8 = undefined;
     for (to_test) |users_count| {
         var db_engine = DBEngine.init(allocator, "benchmarkDB", "schema/benchmark");
@@ -75,50 +75,114 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
 
         // Empty db
         {
-            const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE User {{}}", .{});
+            var null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE User {{}}", .{});
+            db_engine.runQuery(null_term_query_str);
+
+            null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE Category {{}}", .{});
+            db_engine.runQuery(null_term_query_str);
+
+            null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE Item {{}}", .{});
+            db_engine.runQuery(null_term_query_str);
+
+            null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "DELETE Order {{}}", .{});
             db_engine.runQuery(null_term_query_str);
         }
 
         // Populate with random dummy value
         {
             std.debug.print("\n=====================================\n\n", .{});
-            std.debug.print("Populating with {d} users.\n", .{users_count});
-
             var prng = std.Random.DefaultPrng.init(0);
             const rng = prng.random();
-            const populate_start_time = std.time.nanoTimestamp();
 
-            var array = std.ArrayList(u8).init(allocator);
-            defer array.deinit();
-            var writer = array.writer();
+            // Category
+            {
+                const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "ADD Category (name = 'Book') ('Food') ('Toy') ('Other')", .{});
+                db_engine.runQuery(null_term_query_str);
+            }
 
-            try writer.print(
-                "ADD User (name = '{s}', email='{s}', orders=none)",
-                .{
-                    names[rng.uintAtMost(usize, names.len - 1)],
-                    emails[rng.uintAtMost(usize, emails.len - 1)],
-                },
-            );
+            // Item
+            {
+                // TODO: Cache some filter. Here I end up parse Category everytime
+                const null_term_query_str = try std.fmt.bufPrintZ(
+                    &line_buffer, // I dont like 'category = {name='Book'}'. Maybe att a IS keyword ?
+                    \\ADD Item
+                    \\(name='Book1', price=12.45, category = {{name='Book'}})
+                    \\(name='Book2', price=10.45, category = {{name='Book'}})
+                    \\(name='Book3', price=12.45, category = {{name='Book'}})
+                    \\(name='Book4', price=2.00, category = {{name='Book'}})
+                    \\(name='Book5', price=59.99, category = {{name='Book'}})
+                    \\(name='Book6', price=10.45, category = {{name='Book'}})
+                    \\(name='Book7', price=10.45, category = {{name='Book'}})
+                    \\
+                    \\(name='Food1', price=1.45, category = {{name='Food'}})
+                    \\(name='Food2', price=1.45, category = {{name='Food'}})
+                    \\(name='Food3', price=1.45, category = {{name='Food'}})
+                    \\(name='Food4', price=1.45, category = {{name='Food'}})
+                    \\(name='Food6', price=1.45, category = {{name='Food'}})
+                    \\(name='Food7', price=1.45, category = {{name='Food'}})
+                    \\(name='Food8', price=1.45, category = {{name='Food'}})
+                    \\
+                    \\(name='Toy1', price=10.45, category = {{name='Toy'}})
+                    \\(name='Toy2', price=4.45, category = {{name='Toy'}})
+                    \\(name='Toy3', price=6.45, category = {{name='Toy'}})
+                    \\(name='Toy4', price=1.45, category = {{name='Toy'}})
+                    \\
+                    \\(name='Other', price=0.99, category = {{name='Other'}})
+                ,
+                    .{},
+                );
+                db_engine.runQuery(null_term_query_str);
+            }
 
-            for (0..users_count - 1) |_| {
+            // User
+            {
+                std.debug.print("Populating with {d} users.\n", .{users_count});
+                const populate_start_time = std.time.nanoTimestamp();
+
+                var array = std.ArrayList(u8).init(allocator);
+                defer array.deinit();
+                var writer = array.writer();
+
                 try writer.print(
-                    "('{s}', '{s}', none)",
+                    "ADD User (name = '{s}', email='{s}', orders=none)",
                     .{
                         names[rng.uintAtMost(usize, names.len - 1)],
                         emails[rng.uintAtMost(usize, emails.len - 1)],
                     },
                 );
+
+                for (0..users_count - 1) |_| {
+                    try writer.print(
+                        "('{s}', '{s}', none)",
+                        .{
+                            names[rng.uintAtMost(usize, names.len - 1)],
+                            emails[rng.uintAtMost(usize, emails.len - 1)],
+                        },
+                    );
+                }
+
+                const null_term_query_str = try std.fmt.allocPrintZ(allocator, "{s}", .{array.items});
+                defer allocator.free(null_term_query_str);
+
+                db_engine.runQuery(null_term_query_str);
+
+                const populate_end_time = std.time.nanoTimestamp();
+                const populate_duration = @as(f64, @floatFromInt(populate_end_time - populate_start_time)) / 1e9;
+
+                std.debug.print("Populate duration: {d:.6} seconds\n\n", .{populate_duration});
             }
 
-            const null_term_query_str = try std.fmt.allocPrintZ(allocator, "{s}", .{array.items});
-            defer allocator.free(null_term_query_str);
-
-            db_engine.runQuery(null_term_query_str);
-
-            const populate_end_time = std.time.nanoTimestamp();
-            const populate_duration = @as(f64, @floatFromInt(populate_end_time - populate_start_time)) / 1e9;
-
-            std.debug.print("Populate duration: {d:.6} seconds\n\n", .{populate_duration});
+            // Order
+            {
+                // Linked array not yet implemented and array manipulation not tested
+                const null_term_query_str = try std.fmt.bufPrintZ(
+                    &line_buffer, // I dont like 'category = {name='Book'}'. Maybe att a IS keyword ?
+                    \\ADD Order (from={{}}, at=NOW, items={{name IN ['Food1', 'Food2']}}, quantity=[5 22])
+                ,
+                    .{},
+                );
+                db_engine.runQuery(null_term_query_str);
+            }
 
             var buffer = std.ArrayList(u8).init(allocator);
             defer buffer.deinit();
@@ -127,15 +191,15 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
             std.debug.print("--------------------------------------\n\n", .{});
         }
 
-        //{
-        //    for (db_engine.schema_engine.struct_array) |sstruct| {
-        //        const mb: f64 = @as(f64, @floatFromInt(sstruct.uuid_file_index.arena.queryCapacity())) / 1024.0 / 1024.0;
-        //        std.debug.print("Sstruct: {s}\n", .{sstruct.name});
-        //        std.debug.print("Memory: {d:.2}Mb\n", .{mb});
-        //        std.debug.print("Count: {d}\n\n", .{sstruct.uuid_file_index.map.count()});
-        //        std.debug.print("--------------------------------------\n\n", .{});
-        //    }
-        //}
+        if (false) {
+            for (db_engine.schema_engine.struct_array) |sstruct| {
+                const mb: f64 = @as(f64, @floatFromInt(sstruct.uuid_file_index.arena.queryCapacity())) / 1024.0 / 1024.0;
+                std.debug.print("Sstruct: {s}\n", .{sstruct.name});
+                std.debug.print("Memory: {d:.2}Mb\n", .{mb});
+                std.debug.print("Count: {d}\n\n", .{sstruct.uuid_file_index.map.count()});
+                std.debug.print("--------------------------------------\n\n", .{});
+            }
+        }
 
         // Run query
         {
@@ -145,6 +209,10 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
                 "GRAB User [1] {}",
                 "GRAB User [name] {}",
                 "GRAB User {name = 'Charlie'}",
+                "GRAB Category {}",
+                "GRAB Item {}",
+                "GRAB Order {}",
+                "GRAB Order [from, items, quantity, at] {at > 2024}",
                 "DELETE User {}",
             };
 

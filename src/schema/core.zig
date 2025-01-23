@@ -34,11 +34,11 @@ pub fn init(parent_allocator: Allocator, path: []const u8, file_engine: *FileEng
     const null_terminated = std.fmt.bufPrintZ(&schema_buffer, "{s}", .{buffer[0..len]}) catch return ZipponError.MemoryError;
 
     var toker = Tokenizer.init(null_terminated);
-    var parser = Parser.init(&toker, allocator);
+    var parser = Parser.init(&toker);
 
     var struct_array = std.ArrayList(SchemaStruct).init(allocator);
     errdefer struct_array.deinit();
-    parser.parse(&struct_array) catch return ZipponError.SchemaNotConform;
+    parser.parse(allocator, &struct_array) catch return ZipponError.SchemaNotConform;
 
     log.debug("SchemaEngine init with {d} SchemaStruct.", .{struct_array.items.len});
 

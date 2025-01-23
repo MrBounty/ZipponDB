@@ -20,25 +20,18 @@ pub usingnamespace @import("read.zig");
 pub usingnamespace @import("write.zig");
 pub usingnamespace @import("dump.zig");
 
-arena: *std.heap.ArenaAllocator,
 allocator: std.mem.Allocator,
 path_to_ZipponDB_dir: []const u8,
 thread_pool: *Pool, // same pool as the ThreadEngine
 schema_engine: SchemaEngine = undefined, // This is init after the FileEngine and I attach after. Do I need to init after tho ?
 
 pub fn init(allocator: std.mem.Allocator, path: []const u8, thread_pool: *Pool) ZipponError!Self {
-    const arena = allocator.create(std.heap.ArenaAllocator) catch return ZipponError.MemoryError;
-    arena.* = std.heap.ArenaAllocator.init(allocator);
     return Self{
-        .arena = arena,
-        .allocator = arena.allocator(),
+        .allocator = allocator,
         .path_to_ZipponDB_dir = std.fmt.bufPrint(&path_to_ZipponDB_dir_buffer, "{s}", .{path}) catch return ZipponError.MemoryError,
         .thread_pool = thread_pool,
     };
 }
 
-pub fn deinit(self: *Self) void {
-    const parent_allocator = self.arena.child_allocator;
-    self.arena.deinit();
-    parent_allocator.destroy(self.arena);
-}
+// The allocator is only use to make arena when parsing and everything is deinit after parsing
+pub fn deinit(_: *Self) void {}

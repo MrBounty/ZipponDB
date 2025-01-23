@@ -42,7 +42,8 @@ pub fn populateFileIndexUUIDMap(
 ) ZipponError!void {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
+    const allocator = safe_allocator.allocator();
 
     const dir = try self.printOpenDir("{s}/DATA/{s}", .{ self.path_to_ZipponDB_dir, sstruct.name }, .{});
     const to_parse = try self.allFileIndex(allocator, sstruct.name);
@@ -106,7 +107,8 @@ pub fn populateVoidUUIDMap(
 ) ZipponError!void {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
+    const allocator = safe_allocator.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
 
@@ -195,7 +197,7 @@ pub fn parseEntities(
 ) ZipponError![]const u8 {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = self.allocator };
+    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
     const allocator = safe_allocator.allocator();
 
     var buff = std.ArrayList(u8).init(entry_allocator);

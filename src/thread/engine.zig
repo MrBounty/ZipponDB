@@ -39,3 +39,12 @@ pub fn deinit(self: *ThreadEngine) void {
     parent_allocator.destroy(self.thread_arena);
     parent_allocator.destroy(self.thread_pool);
 }
+
+// Not tested, for later when config is runtime
+pub fn setCpuCore(self: *ThreadEngine, cpu_core: usize) void {
+    self.thread_pool.deinit();
+    self.thread_pool.init(std.Thread.Pool.Options{
+        .allocator = self.thread_arena.allocator(),
+        .n_jobs = cpu_core,
+    });
+}

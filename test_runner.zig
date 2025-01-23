@@ -6,13 +6,13 @@ const Allocator = std.mem.Allocator;
 const BORDER = "=" ** 80;
 
 const log = std.log.scoped(.cli);
-pub const std_options = .{
+pub const std_options = std.Options{
     .logFn = myLog,
 };
 
 pub fn myLog(
     comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
+    comptime scope: @Type(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) void {

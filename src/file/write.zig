@@ -71,12 +71,13 @@ pub fn updateEntities(
     struct_name: []const u8,
     filter: ?Filter,
     map: std.StringHashMap(ValueOrArray),
-    writer: anytype,
+    writer: anytype, // TODO: Stop using writer and use an allocator + toOwnedSlice like parseEntities
     additional_data: *AdditionalData,
 ) ZipponError!void {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
+    const allocator = safe_allocator.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
 
@@ -229,7 +230,7 @@ pub fn deleteEntities(
 ) ZipponError!void {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = self.allocator };
+    var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
     const allocator = safe_allocator.allocator();
 
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);

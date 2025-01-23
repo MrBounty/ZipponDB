@@ -6,7 +6,6 @@ const DataType = @import("dtype").DataType;
 const UUID = @import("dtype").UUID;
 const Toker = @import("tokenizer.zig").Tokenizer;
 const Token = @import("tokenizer.zig").Token;
-const Loc = @import("../dataStructure/loc.zig");
 const send = @import("../utils.zig").send;
 const printError = @import("../utils.zig").printError;
 
@@ -29,27 +28,23 @@ const State = enum {
 pub const Parser = @This();
 
 toker: *Toker,
-allocator: Allocator,
 
-pub fn init(toker: *Toker, allocator: Allocator) Parser {
-    return .{
-        .allocator = allocator,
-        .toker = toker,
-    };
+pub fn init(toker: *Toker) Parser {
+    return .{ .toker = toker };
 }
 
-pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
+pub fn parse(self: *Parser, allocator: Allocator, struct_array: *std.ArrayList(SchemaStruct)) !void {
     var state: State = .expect_struct_name_OR_end;
     var keep_next = false;
 
     var member_token: Token = undefined;
 
     var name: []const u8 = undefined;
-    var member_list = std.ArrayList([]const u8).init(self.allocator);
+    var member_list = std.ArrayList([]const u8).init(allocator);
     defer member_list.deinit();
-    var type_list = std.ArrayList(DataType).init(self.allocator);
+    var type_list = std.ArrayList(DataType).init(allocator);
     defer type_list.deinit();
-    var links = std.StringHashMap([]const u8).init(self.allocator);
+    var links = std.StringHashMap([]const u8).init(allocator);
     defer links.deinit();
 
     var token = self.toker.next();
@@ -105,18 +100,17 @@ pub fn parse(self: *Parser, struct_array: *std.ArrayList(SchemaStruct)) !void {
 
         .add_struct => {
             struct_array.append(try SchemaStruct.init(
-                struct_array.allocator,
+                allocator,
                 name,
                 member_list.toOwnedSlice() catch return ZipponError.MemoryError,
                 type_list.toOwnedSlice() catch return ZipponError.MemoryError,
                 try links.clone(),
             )) catch return ZipponError.MemoryError;
 
-            links.deinit();
-            links = std.StringHashMap([]const u8).init(self.allocator);
+            links.clearRetainingCapacity();
 
-            member_list = std.ArrayList([]const u8).init(self.allocator);
-            type_list = std.ArrayList(DataType).init(self.allocator);
+            member_list = std.ArrayList([]const u8).init(allocator);
+            type_list = std.ArrayList(DataType).init(allocator);
 
             state = .expect_struct_name_OR_end;
             keep_next = true;

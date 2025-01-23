@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
+    const optimize = b.standardOptimizeOption(.{});
 
     // Run
     // -----------------------------------------------
@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) void {
         const run_tests1 = b.addRunArtifact(tests1);
 
         const tests2 = b.addTest(.{
-            .root_source_file = b.path("src/tokenizers/cli.zig"),
+            .root_source_file = b.path("src/cli/tokenizer.zig"),
             .target = target,
             .optimize = optimize,
             .name = "CLI tokenizer",
@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
         const run_tests2 = b.addRunArtifact(tests2);
 
         const tests3 = b.addTest(.{
-            .root_source_file = b.path("src/tokenizers/ziql.zig"),
+            .root_source_file = b.path("src/ziql/tokenizer.zig"),
             .target = target,
             .optimize = optimize,
             .name = "ZiQL tokenizer",
@@ -58,7 +58,7 @@ pub fn build(b: *std.Build) void {
         const run_tests3 = b.addRunArtifact(tests3);
 
         const tests4 = b.addTest(.{
-            .root_source_file = b.path("src/tokenizers/schema.zig"),
+            .root_source_file = b.path("src/schema/tokenizer.zig"),
             .target = target,
             .optimize = optimize,
             .name = "Schema tokenizer",
@@ -103,7 +103,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_tests6.step);
     }
 
-    // Test
+    // Test zid
     // -----------------------------------------------
     {
         const tests1 = b.addTest(.{
@@ -142,7 +142,6 @@ pub fn build(b: *std.Build) void {
     }
 
     // Release
-    // TODO: Make a small, fast and safe release
     // -----------------------------------------------
     {
         const release_step = b.step("release", "Create release binaries for multiple platforms");
@@ -159,7 +158,7 @@ pub fn build(b: *std.Build) void {
         };
 
         for (targets) |tar| {
-            const exe_name = b.fmt("ZipponDB-{s}-{s}", .{
+            const exe_name = b.fmt("zippondb-{s}-{s}", .{
                 @tagName(tar.query.cpu_arch.?),
                 @tagName(tar.query.os_tag.?),
             });

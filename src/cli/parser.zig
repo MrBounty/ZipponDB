@@ -135,7 +135,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
         .expect_path_to_db => switch (token.tag) {
             .identifier => {
                 self.deinit();
-                self.* = Self.init(self.arena.child_allocator, toker.getTokenSlice(token), null);
+                self.* = Self.init(self.allocator, toker.getTokenSlice(token), null);
                 state = .end;
             },
             else => {
@@ -194,7 +194,7 @@ pub fn parse(self: *Self, null_term_line_str: [:0]const u8) !bool {
             .identifier => {
                 const main_path = try allocator.dupe(u8, self.file_engine.path_to_ZipponDB_dir);
                 self.deinit();
-                self.* = Self.init(self.arena.child_allocator, main_path, toker.getTokenSlice(token));
+                self.* = Self.init(self.allocator, main_path, toker.getTokenSlice(token));
                 try self.file_engine.writeSchemaFile(self.schema_engine.null_terminated);
                 state = .end;
             },

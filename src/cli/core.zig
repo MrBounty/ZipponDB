@@ -20,7 +20,6 @@ var value_buffer: [1024]u8 = undefined;
 
 usingnamespace @import("parser.zig");
 
-arena: *std.heap.ArenaAllocator = undefined,
 allocator: Allocator = undefined,
 state: DBEngineState = .Init,
 file_engine: FileEngine = undefined,
@@ -28,16 +27,7 @@ schema_engine: SchemaEngine = undefined,
 thread_engine: ThreadEngine = undefined,
 
 pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) Self {
-    var self = Self{};
-
-    const arena = allocator.create(std.heap.ArenaAllocator) catch {
-        log.err("Error when init Engine DB allocator", .{});
-        self.state = .MissingAllocator;
-        return self;
-    };
-    arena.* = std.heap.ArenaAllocator.init(allocator);
-    self.arena = arena;
-    self.allocator = arena.allocator();
+    var self = Self{ .allocator = allocator };
 
     self.thread_engine = ThreadEngine.init(self.allocator) catch {
         log.err("Error initializing thread engine", .{});
@@ -159,7 +149,4 @@ pub fn deinit(self: *Self) void {
     self.thread_engine.deinit();
     self.schema_engine.deinit();
     self.file_engine.deinit();
-    const parent_allocator = self.arena.child_allocator;
-    self.arena.deinit();
-    parent_allocator.destroy(self.arena);
 }

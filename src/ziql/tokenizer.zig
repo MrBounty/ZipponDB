@@ -1,6 +1,10 @@
 // From https://github.com/ziglang/zig/blob/master/lib/std/zig/tokenizer.zig
 const std = @import("std");
-const Loc = @import("../dataStructure/loc.zig");
+
+const Loc = struct {
+    start: usize,
+    end: usize,
+};
 
 pub const Token = struct {
     tag: Tag,
