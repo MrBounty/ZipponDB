@@ -1,12 +1,13 @@
 User (
   name: str,
   email: str,
-  orders: []Order,
 )
 
 Order (
   items: []Item,
+  quantity: []int,
   at: datetime,
+  from: User,
 )
 
 Item (

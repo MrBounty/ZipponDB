@@ -1,5 +1,5 @@
 pub const BUFFER_SIZE = 1024 * 1024; // Used a bit everywhere. The size for the schema for example. 10kB
-pub const MAX_FILE_SIZE = 1024 * 1024; // 1MB
+pub const MAX_FILE_SIZE = 1024 * 1024 * 5; // Tried multiple MAX_FILE_SIZE and found 5Mb is good
 pub const CPU_CORE = 16;
 
 // Debug
@@ -17,7 +17,7 @@ pub const HELP_MESSAGE = struct {
         \\run       To run a query.
         \\db        Create or chose a database.
         \\schema    Initialize the database schema.
-        \\dump      To export data in other format and backup.
+        \\dump      To export data in other format and backup. (experimental)
         \\quit      Stop the CLI with memory safety.
         \\
         \\For more informations: https://mrbounty.github.io/ZipponDB/cli

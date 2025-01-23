@@ -1,6 +1,6 @@
 pub const BUFFER_SIZE = 1024 * 10; // Used a bit everywhere. The size for the schema for example. 10kB
-pub const MAX_FILE_SIZE = 1024 * 1024; // 1MB
-pub const CPU_CORE = 0;
+pub const MAX_FILE_SIZE = 1024 * 1024 * 5; // Tried multiple MAX_FILE_SIZE and found 5Mb is good
+pub const CPU_CORE = 0; // If 0, take maximum using std.Thread.getCpuCount()
 
 // Debug
 pub const PRINT_STATE = false;

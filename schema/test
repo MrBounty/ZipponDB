@@ -1,0 +1,11 @@
+User (
+  name: str,
+  age: int,
+  email: str,
+  bday: date,
+  last_order: datetime,
+  a_time: time,
+  scores: []int,
+  best_friend: User,
+  friends: []User,
+)

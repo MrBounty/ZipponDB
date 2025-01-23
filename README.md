@@ -1,6 +1,6 @@
 ![alt text](https://github.com/MrBounty/ZipponDB/blob/main/docs/images/banner.png)
 
-ZipponDB is a relational database written entirely in Zig from scratch with 0 dependencies.
+ZipponDB is a database written entirely in Zig from scratch with 0 dependencies.
 
 ZipponDB's goal is to be ACID, light, simple, and high-performance. It aims at small to medium applications that don't need fancy features but a simple and reliable database.
 

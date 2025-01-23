@@ -8,3 +8,6 @@ engine.o
 zig-out
 test1
 test2
+fly.toml
+dockerfile
+.dockerignore
