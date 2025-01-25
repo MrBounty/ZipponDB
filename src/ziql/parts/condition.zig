@@ -71,11 +71,21 @@ pub fn parseCondition(
 
         .expect_operation => {
             condition.operation = try self.parseComparisonOperator(token);
+            if (condition.operation == .in) condition.data_type = switch (condition.data_type) {
+                .int => .int_array,
+                .float => .float_array,
+                .str => .str_array,
+                .bool => .bool_array,
+                .date => .date_array,
+                .time => .time_array,
+                .datetime => .datetime_array,
+                else => condition.data_type,
+            };
+            log.debug("Condition operation {any}\n", .{condition.operation});
             state = .expect_value;
         },
 
         .expect_value => {
-            log.debug("Parse condition value of member {s}", .{member_name});
             condition.value = try self.parseConditionValue(allocator, struct_name, member_name, condition.data_type, &token);
             state = .end;
         },
@@ -86,4 +96,88 @@ pub fn parseCondition(
     try self.checkConditionValidity(condition, token);
 
     return condition;
+}
+
+pub fn checkConditionValidity(
+    self: Self,
+    condition: Condition,
+    token: Token,
+) ZipponError!void {
+    switch (condition.operation) {
+        .equal => switch (condition.data_type) {
+            .int, .float, .str, .bool, .date, .time, .datetime => {},
+            else => return printError(
+                "Error: Only int, float, str, bool, date, time, datetime can be compare with =",
+                ZipponError.ConditionError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+        },
+
+        .different => switch (condition.data_type) {
+            .int, .float, .str, .bool, .date, .time, .datetime => {},
+            else => return printError(
+                "Error: Only int, float, str, bool, date, time, datetime can be compare with !=",
+                ZipponError.ConditionError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+        },
+
+        .superior_or_equal => switch (condition.data_type) {
+            .int, .float, .date, .time, .datetime => {},
+            else => return printError(
+                "Error: Only int, float, date, time, datetime can be compare with >=",
+                ZipponError.ConditionError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+        },
+
+        .superior => switch (condition.data_type) {
+            .int, .float, .date, .time, .datetime => {},
+            else => return printError(
+                "Error: Only int, float, date, time, datetime can be compare with >",
+                ZipponError.ConditionError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+        },
+
+        .inferior_or_equal => switch (condition.data_type) {
+            .int, .float, .date, .time, .datetime => {},
+            else => return printError(
+                "Error: Only int, float, date, time, datetime can be compare with <=",
+                ZipponError.ConditionError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+        },
+
+        .inferior => switch (condition.data_type) {
+            .int, .float, .date, .time, .datetime => {},
+            else => return printError(
+                "Error: Only int, float, date, time, datetime can be compare with <",
+                ZipponError.ConditionError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            ),
+        },
+
+        .in => switch (condition.data_type) {
+            .link, .int_array, .float_array, .str_array, .bool_array, .time_array, .date_array, .datetime_array => {},
+            else => unreachable,
+        },
+
+        .not_in => switch (condition.data_type) {
+            .link, .int_array, .float_array, .str_array, .bool_array, .time_array, .date_array, .datetime_array => {},
+            else => unreachable,
+        },
+    }
 }

@@ -61,7 +61,6 @@ pub fn parse(self: *Parser, allocator: Allocator, struct_array: *std.ArrayList(S
             },
             .eof => state = .end,
             else => {
-                std.debug.print("{s}\n", .{self.toker.getTokenSlice(token)});
                 return printError(
                     "Error parsing schema: Expected a struct name",
                     ZipponError.SynthaxError,

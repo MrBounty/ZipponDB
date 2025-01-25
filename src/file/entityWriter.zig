@@ -8,7 +8,7 @@ const DataType = dtype.DataType;
 const DateTime = dtype.DateTime;
 const UUID = dtype.UUID;
 
-// TODO: Move this from FileEngine
+// TODO: Move this outside of FileEngine and make it faster
 
 const ZipponError = @import("error").ZipponError;
 

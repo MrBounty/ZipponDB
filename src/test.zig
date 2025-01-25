@@ -1,8 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Parser = @import("src/ziql/parser.zig");
-const Tokenizer = @import("src/ziql/tokenizer.zig").Tokenizer;
-const DBEngine = @import("src/cli/core.zig");
+const Parser = @import("ziql/parser.zig");
+const Tokenizer = @import("ziql/tokenizer.zig").Tokenizer;
+const DBEngine = @import("cli/core.zig");
 const ZipponError = @import("error").ZipponError;
 
 const DB = struct {
@@ -124,6 +124,11 @@ test "GRAB Relationship AdditionalData Filtered" {
     try testParsing(db, "GRAB User [2; name, best_friend] {best_friend !IN {}}");
 }
 
+test "GRAB name IN" {
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "GRAB User {name IN ['Bob' 'Bobinou']}");
+}
+
 test "GRAB Relationship dot" {
     // DO I add this ? I'm not sure about this feature
     const db = DB{ .path = "test1", .schema = "schema/test" };
@@ -174,7 +179,9 @@ fn testParsing(db: DB, source: [:0]const u8) !void {
         &db_engine.schema_engine,
     );
 
+    std.debug.print("Running: {s}\n", .{source});
     try parser.parse(allocator, source);
+    std.debug.print("\n\n-------------------------------\n\n", .{});
 }
 
 fn expectParsingError(db: DB, source: [:0]const u8, err: ZipponError) !void {
@@ -187,5 +194,7 @@ fn expectParsingError(db: DB, source: [:0]const u8, err: ZipponError) !void {
         &db_engine.schema_engine,
     );
 
+    std.debug.print("Running: {s}\n", .{source});
     try std.testing.expectError(err, parser.parse(allocator, source));
+    std.debug.print("\n\n-------------------------------\n\n", .{});
 }

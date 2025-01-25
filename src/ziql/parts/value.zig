@@ -1,5 +1,6 @@
 const std = @import("std");
 const dtype = @import("dtype");
+const s2t = dtype.s2t;
 const UUID = dtype.UUID;
 const Allocator = std.mem.Allocator;
 const Token = @import("../tokenizer.zig").Token;
@@ -12,9 +13,10 @@ const ZipponError = @import("error").ZipponError;
 
 var buff: [1024]u8 = undefined;
 
-var zero_map_buf: [1024 * 4]u8 = undefined;
+var zero_map_buf: [200]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&zero_map_buf);
 var zero_map = std.AutoHashMap(UUID, void).init(fba.allocator());
+var empty_map = std.AutoHashMap(UUID, void).init(fba.allocator());
 
 const Self = @import("../parser.zig");
 
@@ -23,148 +25,324 @@ pub fn initZeroMap() ZipponError!void {
 }
 
 /// To run just after a condition like = or > or >= to get the corresponding ConditionValue that you need to compare
-pub fn parseConditionValue(self: Self, allocator: Allocator, struct_name: []const u8, member_name: []const u8, data_type: dtype.DataType, token: *Token) ZipponError!ConditionValue {
+pub fn parseConditionValue(
+    self: Self,
+    allocator: Allocator,
+    struct_name: []const u8,
+    member_name: []const u8,
+    data_type: dtype.DataType,
+    token: *Token,
+) ZipponError!ConditionValue {
     const start_index = token.loc.start;
-    const expected_tag: ?Token.Tag = switch (data_type) {
-        .int => .int_literal,
-        .float => .float_literal,
-        .str => .string_literal,
-        .self => .uuid_literal,
-        .int_array => .int_literal,
-        .float_array => .float_literal,
-        .str_array => .string_literal,
-        .bool, .bool_array, .link, .link_array, .date, .time, .datetime, .date_array, .time_array, .datetime_array => null, // handle separately
+
+    if (data_type.is_array()) switch (token.tag) {
+        .l_bracket => token.* = self.toker.next(),
+        else => return printError(
+            "Error: expecting [ to start array.",
+            ZipponError.SynthaxError,
+            self.toker.buffer,
+            token.loc.start,
+            token.loc.end,
+        ),
     };
 
-    // Check if the all next tokens are the right one
-    if (expected_tag) |tag| {
-        if (data_type.is_array()) {
-            token.* = try self.checkTokensInArray(tag);
+    switch (data_type) {
+        .self => unreachable,
+
+        .int => if (token.tag != .int_literal) {
+            return printError(
+                "Error: Wrong type. Expected: int.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
         } else {
-            if (token.tag != tag) {
-                const msg = std.fmt.bufPrint(&buff, "Error: Wrong type. Expected: {any}", .{tag}) catch return ZipponError.MemoryError;
-                return printError(
-                    msg,
+            return ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]);
+        },
+
+        .float => if (token.tag != .float_literal) {
+            return printError(
+                "Error: Wrong type. Expected: float.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
+        } else {
+            return ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]);
+        },
+
+        .str => if (token.tag != .string_literal) {
+            return printError(
+                "Error: Wrong type. Expected: string.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
+        } else {
+            return ConditionValue.initStr(self.toker.buffer[start_index..token.loc.end]);
+        },
+
+        .bool => if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
+            return printError(
+                "Error: Wrong type. Expected: bool.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
+        } else {
+            return ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]);
+        },
+
+        .date => if (token.tag != .date_literal and token.tag != .keyword_now) {
+            return printError(
+                "Error: Wrong type. Expected: date.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
+        } else {
+            return ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]);
+        },
+
+        .time => if (token.tag != .time_literal and token.tag != .keyword_now) {
+            return printError(
+                "Error: Wrong type. Expected: time.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
+        } else {
+            return ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]);
+        },
+
+        .datetime => if (token.tag != .date_literal and token.tag != .datetime_literal and token.tag != .keyword_now) {
+            return printError(
+                "Error: Wrong type. Expected: datetime.",
+                ZipponError.SynthaxError,
+                self.toker.buffer,
+                token.loc.start,
+                token.loc.end,
+            );
+        } else {
+            return ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]);
+        },
+
+        .int_array => {
+            var array = std.ArrayList(i32).init(allocator);
+            errdefer array.deinit();
+
+            var first = true;
+            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                if (!first) {
+                    if (token.tag != .comma) return printError(
+                        "Error: Expected comma.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                    token.* = self.toker.next();
+                } else first = false;
+
+                if (token.tag != .int_literal) return printError(
+                    "Error: Wrong type. Expected int.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
+                array.append(s2t.parseInt(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
             }
-        }
-    } else switch (data_type) {
-        .bool => if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
-            return printError(
-                "Error: Expected bool",
-                ZipponError.SynthaxError,
-                self.toker.buffer,
-                token.loc.start,
-                token.loc.end,
-            );
-        },
-        .bool_array => {
-            token.* = self.toker.next();
-            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
-                if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {
-                    return printError(
-                        "Error: Expected bool or ]",
-                        ZipponError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                }
-            }
-        },
-        .date => if (token.tag != .date_literal and token.tag != .keyword_now) {
-            return printError(
-                "Error: Expected date",
-                ZipponError.SynthaxError,
-                self.toker.buffer,
-                token.loc.start,
-                token.loc.end,
-            );
-        },
-        .date_array => {
-            token.* = self.toker.next();
-            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
-                if (token.tag != .date_literal and token.tag != .keyword_now) {
-                    return printError(
-                        "Error: Expected date",
-                        ZipponError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                }
-            }
-        },
-        .time => if (token.tag != .time_literal and token.tag != .keyword_now) {
-            return printError(
-                "Error: Expected time",
-                ZipponError.SynthaxError,
-                self.toker.buffer,
-                token.loc.start,
-                token.loc.end,
-            );
-        },
-        .time_array => {
-            token.* = self.toker.next();
-            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
-                if (token.tag != .time_literal and token.tag != .keyword_now) {
-                    return printError(
-                        "Error: Expected time",
-                        ZipponError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                }
-            }
-        },
-        .datetime => if (token.tag != .datetime_literal and token.tag != .keyword_now) {
-            return printError(
-                "Error: Expected datetime",
-                ZipponError.SynthaxError,
-                self.toker.buffer,
-                token.loc.start,
-                token.loc.end,
-            );
-        },
-        .datetime_array => {
-            token.* = self.toker.next();
-            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
-                if (token.tag != .datetime_literal and token.tag != .keyword_now) {
-                    return printError(
-                        "Error: Expected datetime",
-                        ZipponError.SynthaxError,
-                        self.toker.buffer,
-                        token.loc.start,
-                        token.loc.end,
-                    );
-                }
-            }
-        },
-        .link, .link_array => {},
-        else => unreachable,
-    }
 
-    // And finally create the ConditionValue
-    switch (data_type) {
-        .int => return ConditionValue.initInt(self.toker.buffer[start_index..token.loc.end]),
-        .float => return ConditionValue.initFloat(self.toker.buffer[start_index..token.loc.end]),
-        .str => return ConditionValue.initStr(self.toker.buffer[start_index + 1 .. token.loc.end - 1]),
-        .date => return ConditionValue.initDate(self.toker.buffer[start_index..token.loc.end]),
-        .time => return ConditionValue.initTime(self.toker.buffer[start_index..token.loc.end]),
-        .datetime => return ConditionValue.initDateTime(self.toker.buffer[start_index..token.loc.end]),
-        .bool => return ConditionValue.initBool(self.toker.buffer[start_index..token.loc.end]),
-        .int_array => return try ConditionValue.initArrayInt(allocator, self.toker.buffer[start_index..token.loc.end]),
-        .str_array => return try ConditionValue.initArrayStr(allocator, self.toker.buffer[start_index..token.loc.end]),
-        .bool_array => return try ConditionValue.initArrayBool(allocator, self.toker.buffer[start_index..token.loc.end]),
-        .float_array => return try ConditionValue.initArrayFloat(allocator, self.toker.buffer[start_index..token.loc.end]),
-        .date_array => return try ConditionValue.initArrayDate(allocator, self.toker.buffer[start_index..token.loc.end]),
-        .time_array => return try ConditionValue.initArrayTime(allocator, self.toker.buffer[start_index..token.loc.end]),
-        .datetime_array => return try ConditionValue.initArrayDateTime(allocator, self.toker.buffer[start_index..token.loc.end]),
+            return try ConditionValue.initArrayInt(array.toOwnedSlice() catch return ZipponError.MemoryError);
+        },
+
+        .float_array => {
+            var array = std.ArrayList(f64).init(allocator);
+            errdefer array.deinit();
+
+            var first = true;
+            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                if (!first) {
+                    if (token.tag != .comma) return printError(
+                        "Error: Expected comma.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                    token.* = self.toker.next();
+                } else first = false;
+
+                if (token.tag != .float_literal) return printError(
+                    "Error: Wrong type. Expected float.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+                array.append(s2t.parseFloat(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
+            }
+
+            return try ConditionValue.initArrayFloat(array.toOwnedSlice() catch return ZipponError.MemoryError);
+        },
+
+        .bool_array => {
+            var array = std.ArrayList(bool).init(allocator);
+            errdefer array.deinit();
+
+            var first = true;
+            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                if (!first) {
+                    if (token.tag != .comma) return printError(
+                        "Error: Expected comma.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                    token.* = self.toker.next();
+                } else first = false;
+
+                if (token.tag != .bool_literal_false and token.tag != .bool_literal_true) return printError(
+                    "Error: Wrong type. Expected bool.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+                array.append(s2t.parseBool(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
+            }
+
+            return try ConditionValue.initArrayBool(array.toOwnedSlice() catch return ZipponError.MemoryError);
+        },
+
+        .str_array => {
+            var array = std.ArrayList([]const u8).init(allocator);
+            errdefer array.deinit();
+
+            var first = true;
+            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                if (!first) {
+                    if (token.tag != .comma) return printError(
+                        "Error: Expected comma.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                    token.* = self.toker.next();
+                } else first = false;
+
+                if (token.tag != .string_literal) return printError(
+                    "Error: Wrong type. Expected str.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+                array.append(self.toker.getTokenSlice(token.*)) catch return ZipponError.MemoryError;
+            }
+
+            return try ConditionValue.initArrayStr(array.toOwnedSlice() catch return ZipponError.MemoryError);
+        },
+
+        .date_array => {
+            var array = std.ArrayList(u64).init(allocator);
+            errdefer array.deinit();
+
+            var first = true;
+            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                if (!first) {
+                    if (token.tag != .comma) return printError(
+                        "Error: Expected comma.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                    token.* = self.toker.next();
+                } else first = false;
+
+                if (token.tag != .date_literal and token.tag != .keyword_now) return printError(
+                    "Error: Wrong type. Expected date.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+                array.append(s2t.parseDate(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
+            }
+
+            return try ConditionValue.initArrayUnix(array.toOwnedSlice() catch return ZipponError.MemoryError);
+        },
+
+        .time_array => {
+            var array = std.ArrayList(u64).init(allocator);
+            errdefer array.deinit();
+
+            var first = true;
+            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                if (!first) {
+                    if (token.tag != .comma) return printError(
+                        "Error: Expected comma.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                    token.* = self.toker.next();
+                } else first = false;
+
+                if (token.tag != .time_literal and token.tag != .keyword_now) return printError(
+                    "Error: Wrong type. Expected time.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+                array.append(s2t.parseTime(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
+            }
+
+            return try ConditionValue.initArrayUnix(array.toOwnedSlice() catch return ZipponError.MemoryError);
+        },
+
+        .datetime_array => {
+            var array = std.ArrayList(u64).init(allocator);
+            errdefer array.deinit();
+
+            var first = true;
+            while (token.tag != .r_bracket) : (token.* = self.toker.next()) {
+                if (!first) {
+                    if (token.tag != .comma) return printError(
+                        "Error: Expected comma.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    );
+                    token.* = self.toker.next();
+                } else first = false;
+
+                if (token.tag != .datetime_literal and token.tag != .date_literal and token.tag != .keyword_now) return printError(
+                    "Error: Wrong type. Expected datetime.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                );
+                array.append(s2t.parseDatetime(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
+            }
+
+            return try ConditionValue.initArrayUnix(array.toOwnedSlice() catch return ZipponError.MemoryError);
+        },
+
         .link => switch (token.tag) {
             .keyword_none => {
                 _ = self.toker.next();
@@ -239,12 +417,11 @@ pub fn parseConditionValue(self: Self, allocator: Allocator, struct_name: []cons
                 token.loc.end,
             ),
         },
+
         .link_array => switch (token.tag) {
             .keyword_none => {
-                const map = allocator.create(std.AutoHashMap(UUID, void)) catch return ZipponError.MemoryError;
-                map.* = std.AutoHashMap(UUID, void).init(allocator);
                 _ = self.toker.next();
-                return ConditionValue.initArrayLink(map);
+                return ConditionValue.initArrayLink(&empty_map);
             },
             .l_brace, .l_bracket => {
                 var filter: ?Filter = null;
@@ -292,6 +469,5 @@ pub fn parseConditionValue(self: Self, allocator: Allocator, struct_name: []cons
                 token.loc.end,
             ),
         },
-        .self => unreachable,
     }
 }

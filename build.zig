@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .name = "CLI tokenizer",
-            .test_runner = b.path("test_runner.zig"),
+            .test_runner = b.path("src/test_runner.zig"),
         });
         tests1.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
         const run_tests1 = b.addRunArtifact(tests1);
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .name = "CLI tokenizer",
-            .test_runner = b.path("test_runner.zig"),
+            .test_runner = b.path("src/test_runner.zig"),
         });
         const run_tests2 = b.addRunArtifact(tests2);
 
@@ -53,7 +53,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .name = "ZiQL tokenizer",
-            .test_runner = b.path("test_runner.zig"),
+            .test_runner = b.path("src/test_runner.zig"),
         });
         const run_tests3 = b.addRunArtifact(tests3);
 
@@ -62,18 +62,18 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .name = "Schema tokenizer",
-            .test_runner = b.path("test_runner.zig"),
+            .test_runner = b.path("src/test_runner.zig"),
         });
         tests4.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
         tests4.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
         const run_tests4 = b.addRunArtifact(tests4);
 
         const tests5 = b.addTest(.{
-            .root_source_file = b.path("test.zig"),
+            .root_source_file = b.path("src/test.zig"),
             .target = target,
             .optimize = optimize,
             .name = "ZiQL parser",
-            .test_runner = b.path("test_runner.zig"),
+            .test_runner = b.path("src/test_runner.zig"),
         });
         tests5.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
         tests5.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
@@ -86,7 +86,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .name = "Filter tree",
-            .test_runner = b.path("test_runner.zig"),
+            .test_runner = b.path("src/test_runner.zig"),
         });
         tests6.root_module.addImport("dtype", b.createModule(.{ .root_source_file = b.path("lib/types/out.zig") }));
         tests6.root_module.addImport("config", b.createModule(.{ .root_source_file = b.path("lib/config.zig") }));
@@ -111,7 +111,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .name = "File parsing",
-            .test_runner = b.path("test_runner.zig"),
+            .test_runner = b.path("src/test_runner.zig"),
         });
         const run_tests1 = b.addRunArtifact(tests1);
 
@@ -124,7 +124,7 @@ pub fn build(b: *std.Build) void {
     {
         const benchmark = b.addExecutable(.{
             .name = "benchmark",
-            .root_source_file = b.path("benchmark.zig"),
+            .root_source_file = b.path("src/benchmark.zig"),
             .target = target,
             .optimize = optimize,
         });

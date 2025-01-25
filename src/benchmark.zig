@@ -1,6 +1,6 @@
 const std = @import("std");
 const dtype = @import("dtype");
-const DBEngine = @import("src/cli/core.zig");
+const DBEngine = @import("cli/core.zig");
 const ZipponError = @import("error").ZipponError;
 
 const names = [_][]const u8{ "Alice", "Bob", "Charlie", "Dave", "Eve" };
@@ -8,13 +8,15 @@ const emails = [_][]const u8{ "alice@email.com", "bob@email.com", "charlie@email
 const dates = [_][]const u8{ "2000/01/01", "1954/04/02", "1998/01/21", "1977/12/31" };
 const times = [_][]const u8{ "12:04", "20:45:11", "03:11:13", "03:00:01.0152" };
 const datetimes = [_][]const u8{ "2000/01/01-12:04", "1954/04/02-20:45:11", "1998/01/21-03:11:13", "1977/12/31-03:00:01.0153" };
-const scores = [_]i32{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+const ages = [_][]const u8{ "15", "11", "53", "34", "96", "64" };
+const address = [_][]const u8{ "01 rue Notre Dame", "11 street St Bob", "Route to Heaven bis", "Here", "Not here", "Maybe here" };
 
 pub const std_options = std.Options{
     .log_level = .info,
     .logFn = myLog,
 };
 
+const NUMBER_OF_RUN: usize = 10;
 var date_buffer: [64]u8 = undefined;
 var date_fa = std.heap.FixedBufferAllocator.init(&date_buffer);
 const date_allocator = date_fa.allocator();
@@ -144,19 +146,23 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
                 var writer = array.writer();
 
                 try writer.print(
-                    "ADD User (name = '{s}', email='{s}', orders=none)",
+                    "ADD User (name = '{s}', email='{s}', age={s}, address='{s}')",
                     .{
                         names[rng.uintAtMost(usize, names.len - 1)],
                         emails[rng.uintAtMost(usize, emails.len - 1)],
+                        ages[rng.uintAtMost(usize, ages.len - 1)],
+                        address[rng.uintAtMost(usize, address.len - 1)],
                     },
                 );
 
                 for (0..users_count - 1) |_| {
                     try writer.print(
-                        "('{s}', '{s}', none)",
+                        "('{s}', '{s}', {s}, '{s}')",
                         .{
                             names[rng.uintAtMost(usize, names.len - 1)],
                             emails[rng.uintAtMost(usize, emails.len - 1)],
+                            ages[rng.uintAtMost(usize, ages.len - 1)],
+                            address[rng.uintAtMost(usize, address.len - 1)],
                         },
                     );
                 }
@@ -173,7 +179,7 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
             }
 
             // Order
-            {
+            if (false) {
                 // Linked array not yet implemented and array manipulation not tested
                 const null_term_query_str = try std.fmt.bufPrintZ(
                     &line_buffer, // I dont like 'category = {name='Book'}'. Maybe att a IS keyword ?
@@ -203,6 +209,8 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
 
         // Run query
         {
+            var read_time: f64 = 0;
+            var read_write_time: f64 = 0;
             const queries = [_][]const u8{
                 "GRAB User {}",
                 "GRAB User {name='asd'}",
@@ -212,24 +220,78 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
                 "GRAB Category {}",
                 "GRAB Item {}",
                 "GRAB Order {}",
-                "GRAB Order [from, items, quantity, at] {at > 2024}",
+                "GRAB Order [from, items, quantity, at] {}",
                 "DELETE User {}",
             };
 
             // Run benchmarks
-            for (queries) |query| {
-                const start_time = std.time.nanoTimestamp();
+            for (queries, 0..) |query, j| {
+                var time_buff: [NUMBER_OF_RUN]f64 = undefined;
+                for (0..NUMBER_OF_RUN) |i| {
+                    const start_time = std.time.nanoTimestamp();
 
-                // Execute the query here
-                const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "{s}", .{query});
-                db_engine.runQuery(null_term_query_str);
+                    // Execute the query here
+                    const null_term_query_str = try std.fmt.bufPrintZ(&line_buffer, "{s}", .{query});
+                    db_engine.runQuery(null_term_query_str);
 
-                const end_time = std.time.nanoTimestamp();
-                const duration = @as(f64, @floatFromInt(end_time - start_time)) / 1e6;
+                    const end_time = std.time.nanoTimestamp();
+                    time_buff[i] = @as(f64, @floatFromInt(end_time - start_time)) / 1e6;
+                }
+                std.debug.print(
+                    "Query: \t{s}\nTime: \t{d:>6.2} ± {d:<6.2}ms | Min {d:>8.2}ms | Max {d:>8.2}ms\n\n",
+                    .{ query, mean(time_buff), std_dev(time_buff), min(time_buff), max(time_buff) },
+                );
 
-                std.debug.print("Query: \t\t{s}\nDuration: \t{d:.6} ms\n\n", .{ query, duration });
+                if (j == 0) read_write_time = mean(time_buff);
+                if (j == 1) read_time = mean(time_buff);
             }
+            std.debug.print(
+                "Read: \t{d:.0} Entity/second\t*Include small condition\n",
+                .{@as(f64, @floatFromInt(users_count)) / (read_time / 1000)},
+            );
+            std.debug.print(
+                "Write: \t{d:.0} Entity/second\n",
+                .{@as(f64, @floatFromInt(users_count)) / ((read_write_time - read_time) / 1000)},
+            );
         }
     }
     std.debug.print("=====================================\n\n", .{});
+}
+
+fn min(array: [NUMBER_OF_RUN]f64) f64 {
+    var current_min: f64 = 999999999999;
+    for (array) |value| {
+        if (value < current_min) current_min = value;
+    }
+    return current_min;
+}
+
+fn max(array: [NUMBER_OF_RUN]f64) f64 {
+    var current_max: f64 = 0;
+    for (array) |value| {
+        if (value > current_max) current_max = value;
+    }
+    return current_max;
+}
+
+fn mean(array: [NUMBER_OF_RUN]f64) f64 {
+    var total: f64 = 0;
+    for (array) |value| {
+        total += value;
+    }
+    return total / @as(f64, @floatFromInt(NUMBER_OF_RUN));
+}
+
+fn variance(array: [NUMBER_OF_RUN]f64) f64 {
+    const m = mean(array);
+    var square_diff: f64 = 0;
+    for (array) |value| {
+        square_diff += (value - m) * (value - m);
+    }
+    return square_diff / @as(f64, @floatFromInt(NUMBER_OF_RUN));
+}
+
+fn std_dev(array: [NUMBER_OF_RUN]f64) f64 {
+    const vari = variance(array);
+    return @sqrt(vari);
 }

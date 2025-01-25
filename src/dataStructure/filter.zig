@@ -69,6 +69,18 @@ pub const ConditionValue = union(enum) {
     link: *std.AutoHashMap(UUID, void),
     link_array: *std.AutoHashMap(UUID, void),
 
+    pub fn init(dtype: DataType, value: []const u8) ConditionValue {
+        return switch (dtype) {
+            .int => ConditionValue.initInt(value),
+            .float => ConditionValue.initFloat(value),
+            .bool => ConditionValue.initBool(value),
+            .date => ConditionValue.initDate(value),
+            .time => ConditionValue.initTime(value),
+            .datetime => ConditionValue.initDateTime(value),
+            .str => ConditionValue.initStr(value[1 .. value.len - 1]),
+        };
+    }
+
     pub fn initInt(value: []const u8) ConditionValue {
         return ConditionValue{ .int = s2t.parseInt(value) };
     }
@@ -102,32 +114,24 @@ pub const ConditionValue = union(enum) {
     }
 
     // Array
-    pub fn initArrayInt(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
-        return ConditionValue{ .int_array = s2t.parseArrayInt(allocator, value) catch return ZipponError.ParsingValueError };
+    pub fn initArrayInt(value: []const i32) ZipponError!ConditionValue {
+        return ConditionValue{ .int_array = value };
     }
 
-    pub fn initArrayFloat(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
-        return ConditionValue{ .float_array = s2t.parseArrayFloat(allocator, value) catch return ZipponError.ParsingValueError };
+    pub fn initArrayFloat(value: []const f64) ZipponError!ConditionValue {
+        return ConditionValue{ .float_array = value };
     }
 
-    pub fn initArrayStr(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
-        return ConditionValue{ .str_array = s2t.parseArrayStr(allocator, value) catch return ZipponError.ParsingValueError };
+    pub fn initArrayStr(value: []const []const u8) ZipponError!ConditionValue {
+        return ConditionValue{ .str_array = value };
     }
 
-    pub fn initArrayBool(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
-        return ConditionValue{ .bool_array = s2t.parseArrayBool(allocator, value) catch return ZipponError.ParsingValueError };
+    pub fn initArrayBool(value: []const bool) ZipponError!ConditionValue {
+        return ConditionValue{ .bool_array = value };
     }
 
-    pub fn initArrayDate(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
-        return ConditionValue{ .unix_array = s2t.parseArrayDateUnix(allocator, value) catch return ZipponError.ParsingValueError };
-    }
-
-    pub fn initArrayTime(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
-        return ConditionValue{ .unix_array = s2t.parseArrayTimeUnix(allocator, value) catch return ZipponError.ParsingValueError };
-    }
-
-    pub fn initArrayDateTime(allocator: std.mem.Allocator, value: []const u8) ZipponError!ConditionValue {
-        return ConditionValue{ .unix_array = s2t.parseArrayDatetimeUnix(allocator, value) catch return ZipponError.ParsingValueError };
+    pub fn initArrayUnix(value: []const u64) ZipponError!ConditionValue {
+        return ConditionValue{ .unix_array = value };
     }
 
     pub fn initLink(value: *std.AutoHashMap(UUID, void)) ConditionValue {
@@ -308,13 +312,28 @@ pub const Filter = struct {
                 else => unreachable,
             },
 
+            // TODO: Add stuff to compare array, now condition with value as int, operator as in and to compare as []int should exist
             .in => switch (condition.data_type) {
                 .link => condition.value.link.contains(UUID{ .bytes = row_value.UUID }),
+                .int => in(i32, row_value.Int, condition.value.int_array),
+                .float => in(f64, row_value.Float, condition.value.float_array),
+                .str => inStr(row_value.Str, condition.value.str_array),
+                .bool => in(bool, row_value.Bool, condition.value.bool_array),
+                .date => in(u64, row_value.Unix, condition.value.unix_array),
+                .time => in(u64, row_value.Unix, condition.value.unix_array),
+                .datetime => in(u64, row_value.Unix, condition.value.unix_array),
                 else => unreachable,
             },
 
             .not_in => switch (condition.data_type) {
                 .link => !condition.value.link.contains(UUID{ .bytes = row_value.UUID }),
+                .int => !in(i32, row_value.Int, condition.value.int_array),
+                .float => !in(f64, row_value.Float, condition.value.float_array),
+                .str => !inStr(row_value.Str, condition.value.str_array),
+                .bool => !in(bool, row_value.Bool, condition.value.bool_array),
+                .date => !in(u64, row_value.Unix, condition.value.unix_array),
+                .time => !in(u64, row_value.Unix, condition.value.unix_array),
+                .datetime => !in(u64, row_value.Unix, condition.value.unix_array),
                 else => unreachable,
             },
         };
@@ -342,6 +361,16 @@ pub const Filter = struct {
             }),
             .empty => std.debug.print("Empty", .{}),
         }
+    }
+
+    fn in(comptime T: type, value: T, array: []const T) bool {
+        for (array) |v| if (v == value) return true;
+        return false;
+    }
+
+    fn inStr(value: []const u8, array: []const []const u8) bool {
+        for (array) |v| if (std.mem.eql(u8, v, value)) return true;
+        return false;
     }
 };
 

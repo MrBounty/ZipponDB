@@ -67,7 +67,6 @@ pub usingnamespace @import("parts/newData.zig");
 pub usingnamespace @import("parts/value.zig");
 pub usingnamespace @import("parts/filter.zig");
 pub usingnamespace @import("parts/additionalData.zig");
-pub usingnamespace @import("utils.zig");
 
 toker: *Tokenizer = undefined,
 file_engine: *FileEngine,
