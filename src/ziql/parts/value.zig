@@ -35,7 +35,7 @@ pub fn parseConditionValue(
 ) ZipponError!ConditionValue {
     const start_index = token.loc.start;
 
-    if (data_type.is_array()) switch (token.tag) {
+    if (data_type.is_array() and data_type != .link_array) switch (token.tag) {
         .l_bracket => token.* = self.toker.next(),
         else => return printError(
             "Error: expecting [ to start array.",
@@ -150,14 +150,16 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag != .int_literal) return printError(
+                if (token.tag == .int_literal) array.append(s2t.parseInt(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
+                if (token.tag == .int_literal or token.tag == .comma) continue;
+                if (token.tag == .r_bracket) break;
+                return printError(
                     "Error: Wrong type. Expected int.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
-                array.append(s2t.parseInt(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
             }
 
             return try ConditionValue.initArrayInt(array.toOwnedSlice() catch return ZipponError.MemoryError);
@@ -180,14 +182,16 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag != .float_literal) return printError(
+                if (token.tag == .float_literal) array.append(s2t.parseFloat(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
+                if (token.tag == .float_literal or token.tag == .comma) continue;
+                if (token.tag == .r_bracket) break;
+                return printError(
                     "Error: Wrong type. Expected float.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
-                array.append(s2t.parseFloat(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
             }
 
             return try ConditionValue.initArrayFloat(array.toOwnedSlice() catch return ZipponError.MemoryError);
@@ -210,14 +214,16 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag != .bool_literal_false and token.tag != .bool_literal_true) return printError(
+                if (token.tag == .bool_literal_false or token.tag == .bool_literal_false) array.append(s2t.parseBool(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
+                if (token.tag == .bool_literal_false or token.tag == .bool_literal_false or token.tag == .comma) continue;
+                if (token.tag == .r_bracket) break;
+                return printError(
                     "Error: Wrong type. Expected bool.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
-                array.append(s2t.parseBool(self.toker.getTokenSlice(token.*))) catch return ZipponError.MemoryError;
             }
 
             return try ConditionValue.initArrayBool(array.toOwnedSlice() catch return ZipponError.MemoryError);
@@ -240,14 +246,16 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag != .string_literal) return printError(
+                if (token.tag == .string_literal) array.append(self.toker.getTokenSlice(token.*)) catch return ZipponError.MemoryError;
+                if (token.tag == .string_literal or token.tag == .comma) continue;
+                if (token.tag == .r_bracket) break;
+                return printError(
                     "Error: Wrong type. Expected str.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
-                array.append(self.toker.getTokenSlice(token.*)) catch return ZipponError.MemoryError;
             }
 
             return try ConditionValue.initArrayStr(array.toOwnedSlice() catch return ZipponError.MemoryError);
@@ -270,14 +278,16 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag != .date_literal and token.tag != .keyword_now) return printError(
+                if (token.tag == .date_literal or token.tag == .keyword_now) array.append(s2t.parseDate(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
+                if (token.tag == .date_literal or token.tag == .keyword_now or token.tag == .comma) continue;
+                if (token.tag == .r_bracket) break;
+                return printError(
                     "Error: Wrong type. Expected date.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
-                array.append(s2t.parseDate(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
             }
 
             return try ConditionValue.initArrayUnix(array.toOwnedSlice() catch return ZipponError.MemoryError);
@@ -300,14 +310,16 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag != .time_literal and token.tag != .keyword_now) return printError(
+                if (token.tag == .time_literal or token.tag == .keyword_now) array.append(s2t.parseTime(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
+                if (token.tag == .time_literal or token.tag == .keyword_now or token.tag == .comma) continue;
+                if (token.tag == .r_bracket) break;
+                return printError(
                     "Error: Wrong type. Expected time.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
-                array.append(s2t.parseTime(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
             }
 
             return try ConditionValue.initArrayUnix(array.toOwnedSlice() catch return ZipponError.MemoryError);
@@ -330,14 +342,16 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag != .datetime_literal and token.tag != .date_literal and token.tag != .keyword_now) return printError(
+                if (token.tag == .datetime_literal or token.tag == .date_literal or token.tag == .keyword_now) array.append(s2t.parseDatetime(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
+                if (token.tag == .datetime_literal or token.tag == .date_literal or token.tag == .keyword_now or token.tag == .comma) continue;
+                if (token.tag == .r_bracket) break;
+                return printError(
                     "Error: Wrong type. Expected datetime.",
                     ZipponError.SynthaxError,
                     self.toker.buffer,
                     token.loc.start,
                     token.loc.end,
                 );
-                array.append(s2t.parseDatetime(self.toker.getTokenSlice(token.*)).toUnix()) catch return ZipponError.MemoryError;
             }
 
             return try ConditionValue.initArrayUnix(array.toOwnedSlice() catch return ZipponError.MemoryError);

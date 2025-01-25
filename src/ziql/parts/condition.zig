@@ -71,7 +71,12 @@ pub fn parseCondition(
 
         .expect_operation => {
             condition.operation = try self.parseComparisonOperator(token);
-            if (condition.operation == .in) condition.data_type = switch (condition.data_type) {
+            state = .expect_value;
+        },
+
+        .expect_value => {
+            var data_type = condition.data_type;
+            if (condition.operation == .in) data_type = switch (condition.data_type) {
                 .int => .int_array,
                 .float => .float_array,
                 .str => .str_array,
@@ -79,14 +84,11 @@ pub fn parseCondition(
                 .date => .date_array,
                 .time => .time_array,
                 .datetime => .datetime_array,
-                else => condition.data_type,
+                .link, .link_array => data_type,
+                else => unreachable,
             };
-            log.debug("Condition operation {any}\n", .{condition.operation});
-            state = .expect_value;
-        },
 
-        .expect_value => {
-            condition.value = try self.parseConditionValue(allocator, struct_name, member_name, condition.data_type, &token);
+            condition.value = try self.parseConditionValue(allocator, struct_name, member_name, data_type, &token);
             state = .end;
         },
 
@@ -171,12 +173,12 @@ pub fn checkConditionValidity(
         },
 
         .in => switch (condition.data_type) {
-            .link, .int_array, .float_array, .str_array, .bool_array, .time_array, .date_array, .datetime_array => {},
+            .link, .int, .float, .str, .bool, .time, .date, .datetime => {},
             else => unreachable,
         },
 
         .not_in => switch (condition.data_type) {
-            .link, .int_array, .float_array, .str_array, .bool_array, .time_array, .date_array, .datetime_array => {},
+            .link, .int, .float, .str, .bool, .time, .date, .datetime => {},
             else => unreachable,
         },
     }

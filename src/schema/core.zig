@@ -7,7 +7,7 @@ const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Parser = @import("parser.zig").Parser;
 
 const ZipponError = @import("error").ZipponError;
-const log = std.log.scoped(.schemaEngine);
+const log = std.log.scoped(.schema);
 
 /// Manage everything that is relate to the schema
 /// This include keeping in memory the schema and schema file, and some functions to get like all members of a specific struct.
@@ -23,13 +23,13 @@ struct_array: []SchemaStruct,
 null_terminated: [:0]u8,
 
 pub fn init(parent_allocator: Allocator, path: []const u8, file_engine: *FileEngine) ZipponError!Self {
+    log.debug("SchemaEngine Initializing with path {s}", .{path});
     const arena = parent_allocator.create(std.heap.ArenaAllocator) catch return ZipponError.MemoryError;
+    errdefer arena.deinit();
     arena.* = std.heap.ArenaAllocator.init(parent_allocator);
     const allocator = arena.allocator();
 
     var buffer: [config.BUFFER_SIZE]u8 = undefined;
-
-    log.debug("Trying to init a SchemaEngine with path {s}", .{path});
     const len: usize = try FileEngine.readSchemaFile(path, &buffer);
     const null_terminated = std.fmt.bufPrintZ(&schema_buffer, "{s}", .{buffer[0..len]}) catch return ZipponError.MemoryError;
 
@@ -57,6 +57,7 @@ pub fn init(parent_allocator: Allocator, path: []const u8, file_engine: *FileEng
 }
 
 pub fn deinit(self: *Self) void {
+    log.debug("Deinit SchemaEngine.", .{});
     const parent_allocator = self.arena.child_allocator;
     self.arena.deinit();
     parent_allocator.destroy(self.arena);

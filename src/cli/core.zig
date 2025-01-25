@@ -27,6 +27,7 @@ schema_engine: SchemaEngine = undefined,
 thread_engine: ThreadEngine = undefined,
 
 pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_schema_path: ?[]const u8) Self {
+    log.debug("DatabaseEngine Initializing.", .{});
     var self = Self{ .allocator = allocator };
 
     self.thread_engine = ThreadEngine.init(self.allocator) catch {
@@ -34,12 +35,13 @@ pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_sc
         self.state = .MissingThreadEngine;
         return self;
     };
+    log.debug("ThreadEngine initialized.", .{});
 
     const potential_main_path_or_environment_variable = potential_main_path orelse getEnvVariable(self.allocator, "ZIPPONDB_PATH");
     if (potential_main_path_or_environment_variable) |main_path| {
         setLogPath(main_path);
 
-        log.info("Found ZIPPONDB_PATH: {s}.", .{main_path});
+        log.debug("Found ZIPPONDB_PATH: {s}.", .{main_path});
         self.file_engine = FileEngine.init(self.allocator, main_path, self.thread_engine.thread_pool) catch {
             log.err("Error when init FileEngine", .{});
             self.state = .MissingFileEngine;
@@ -53,10 +55,11 @@ pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_sc
 
         self.state = .MissingSchemaEngine;
     } else {
-        log.info("No ZIPPONDB_PATH found.", .{});
+        log.debug("No ZIPPONDB_PATH found.", .{});
         self.state = .MissingFileEngine;
         return self;
     }
+    log.debug("FileEngine initialized.", .{});
 
     if (self.file_engine.isSchemaFileInDir() and potential_schema_path == null) {
         const schema_path = std.fmt.bufPrint(&path_buffer, "{s}/schema", .{self.file_engine.path_to_ZipponDB_dir}) catch {
@@ -64,7 +67,7 @@ pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_sc
             return self;
         };
 
-        log.info("Schema founded in the database directory.", .{});
+        log.debug("Schema founded in the database directory.", .{});
         self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
             log.err("Error when init SchemaEngine: {any}", .{err});
             self.state = .MissingSchemaEngine;
@@ -80,13 +83,14 @@ pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_sc
 
         self.file_engine.schema_engine = self.schema_engine;
         self.state = .Ok;
+        log.debug("SchemaEngine initialized.", .{});
         return self;
     }
 
-    log.info("Database don't have any schema yet, trying to add one.", .{});
+    if (potential_schema_path == null) log.info("Database don't have any schema yet, trying to add one.", .{});
     const potential_schema_path_or_environment_variable = potential_schema_path orelse getEnvVariable(self.allocator, "ZIPPONDB_SCHEMA");
     if (potential_schema_path_or_environment_variable) |schema_path| {
-        log.info("Found schema path {s}.", .{schema_path});
+        log.debug("Found schema path {s}.", .{schema_path});
         self.schema_engine = SchemaEngine.init(self.allocator, schema_path, &self.file_engine) catch |err| {
             log.err("Error when init SchemaEngine: {any}", .{err});
             self.state = .MissingSchemaEngine;
@@ -105,8 +109,9 @@ pub fn init(allocator: Allocator, potential_main_path: ?[]const u8, potential_sc
         };
 
         self.state = .Ok;
+        log.debug("SchemaEngine initialized.", .{});
     } else {
-        log.info(config.HELP_MESSAGE.no_schema, .{self.file_engine.path_to_ZipponDB_dir});
+        log.debug(config.HELP_MESSAGE.no_schema, .{self.file_engine.path_to_ZipponDB_dir});
     }
 
     return self;

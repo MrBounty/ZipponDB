@@ -27,23 +27,26 @@ test "Clear" {
     try testParsing(db, "DELETE User {}");
 }
 
+// Basic
+// ===============================================================
+
 test "ADD" {
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666 123 331 ], best_friend=none, friends=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
+    try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666, 123, 331 ], best_friend=none, friends=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 33 ], best_friend=none, friends=none, bday=2000/01/04, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Boba', email='boba@email.com', age=20, scores=[ ], best_friend=none, friends=none, bday=2000/06/06, a_time=04:04:54.8741, last_order=2000/01/01-12:45)");
 
-    try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1 ], best_friend={name='Bob'}, friends=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing(db, "ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends={name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
-    try testParsing(db, "ADD User (name = 'Bobibou', email='bob@email.com', age=66, scores=[ 1 ], best_friend={name = 'Boba'}, friends=[1]{name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=-55, scores=[ 1, ], best_friend={name='Bob'}, friends=none, bday=2000/01/01, a_time=12:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing(db, "ADD User (name = 'Bou', email='bob@email.com', age=66, scores=[ 1, ], best_friend={name = 'Boba'}, friends={name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
+    try testParsing(db, "ADD User (name = 'Bobibou', email='bob@email.com', age=66, scores=[ 1, ], best_friend={name = 'Boba'}, friends=[1]{name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
 
     try testParsing(db, "GRAB User {}");
 }
 
 test "ADD batch" {
     const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "ADD User (name = 'ewq', email='ewq@email.com', age=22, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) (name = 'Roger', email='roger@email.com', age=10, scores=[ 1 11 111 123 562345 123451234 34623465234 12341234 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
+    try testParsing(db, "ADD User (name = 'ewq', email='ewq@email.com', age=22, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) (name = 'Roger', email='roger@email.com', age=10, scores=[ 1, 11, 111, 123, 562345, 123451234, 34623465234, 12341234 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'qwe', email='qwe@email.com', age=57, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) ('Rodrigo', 'bob@email.com', 55, [ 1 ], {name = 'qwe'}, none, 2000/01/01, 12:04, 2000/01/01-12:45)");
 
     try testParsing(db, "GRAB User [name, best_friend] {name = 'Rodrigo'}");
@@ -93,6 +96,17 @@ test "Specific query" {
     try testParsing(db, "GRAB User [1]");
 }
 
+// Array manipulation
+// ===============================================================
+
+test "GRAB name IN" {
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobinou']}");
+}
+
+// Single Struct Relationship
+// ===============================================================
+
 test "UPDATE relationship" {
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "UPDATE User [1] {name='Bob'} TO (best_friend = {name='Boba'} )");
@@ -124,11 +138,6 @@ test "GRAB Relationship AdditionalData Filtered" {
     try testParsing(db, "GRAB User [2; name, best_friend] {best_friend !IN {}}");
 }
 
-test "GRAB name IN" {
-    const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "GRAB User {name IN ['Bob' 'Bobinou']}");
-}
-
 test "GRAB Relationship dot" {
     // DO I add this ? I'm not sure about this feature
     const db = DB{ .path = "test1", .schema = "schema/test" };
@@ -139,10 +148,16 @@ test "GRAB Relationship dot" {
     try testParsing(db, "GRAB User [1] {}");
 }
 
+// Cleaning
+// ===============================================================
+
 test "DELETE" {
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "DELETE User {}");
 }
+
+// 3 Struct Relationship
+// ===============================================================
 
 test "3 struct base" {
     const db = DB{ .path = "test2", .schema = "schema/test-3struct" };
@@ -172,7 +187,10 @@ test "3 struct both side" {
 fn testParsing(db: DB, source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
     var db_engine = DBEngine.init(allocator, db.path, db.schema);
-    defer db_engine.deinit();
+    defer {
+        db_engine.deinit();
+        std.debug.print("\n\n-------------------------------\n\n", .{});
+    }
 
     var parser = Parser.init(
         &db_engine.file_engine,
@@ -181,13 +199,15 @@ fn testParsing(db: DB, source: [:0]const u8) !void {
 
     std.debug.print("Running: {s}\n", .{source});
     try parser.parse(allocator, source);
-    std.debug.print("\n\n-------------------------------\n\n", .{});
 }
 
 fn expectParsingError(db: DB, source: [:0]const u8, err: ZipponError) !void {
     const allocator = std.testing.allocator;
     var db_engine = DBEngine.init(allocator, db.path, db.schema);
-    defer db_engine.deinit();
+    defer {
+        db_engine.deinit();
+        std.debug.print("\n\n-------------------------------\n\n", .{});
+    }
 
     var parser = Parser.init(
         &db_engine.file_engine,
@@ -196,5 +216,4 @@ fn expectParsingError(db: DB, source: [:0]const u8, err: ZipponError) !void {
 
     std.debug.print("Running: {s}\n", .{source});
     try std.testing.expectError(err, parser.parse(allocator, source));
-    std.debug.print("\n\n-------------------------------\n\n", .{});
 }

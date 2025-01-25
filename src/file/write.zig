@@ -148,7 +148,6 @@ fn updateEntitiesOneFile(
     dir: std.fs.Dir,
     sync_context: *ThreadSyncContext,
 ) void {
-    log.debug("{any}\n", .{@TypeOf(writer)});
     var data_buffer: [config.BUFFER_SIZE]u8 = undefined;
     var fa = std.heap.FixedBufferAllocator.init(&data_buffer);
     defer fa.reset();

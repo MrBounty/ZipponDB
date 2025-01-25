@@ -26,6 +26,7 @@ thread_pool: *Pool, // same pool as the ThreadEngine
 schema_engine: SchemaEngine = undefined, // This is init after the FileEngine and I attach after. Do I need to init after tho ?
 
 pub fn init(allocator: std.mem.Allocator, path: []const u8, thread_pool: *Pool) ZipponError!Self {
+    log.debug("FileEngine Initializing with path {s}", .{path});
     return Self{
         .allocator = allocator,
         .path_to_ZipponDB_dir = std.fmt.bufPrint(&path_to_ZipponDB_dir_buffer, "{s}", .{path}) catch return ZipponError.MemoryError,

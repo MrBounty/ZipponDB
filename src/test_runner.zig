@@ -16,9 +16,8 @@ pub fn myLog(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    _ = message_level;
     _ = scope;
-    if (true) {
+    if (message_level == .debug) {
         std.debug.print(format, args);
         std.debug.print("\n", .{});
     }

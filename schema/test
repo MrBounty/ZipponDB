@@ -9,3 +9,13 @@ User (
   best_friend: User,
   friends: []User,
 )
+
+ArrayTest (
+  array_int: []int,
+  array_float: []float,
+  array_str: []str,
+  array_bool: []bool,
+  array_date: []date,
+  array_time: []time,
+  array_datetime: []datetime,
+)
