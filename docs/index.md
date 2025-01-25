@@ -1,4 +1,4 @@
-# ZipponDB: A Lightweight Relational Database in Zig
+# ZipponDB: A Lightweight Database in Zig
 
 <style>
 .md-content .md-typeset h1 { display: none; }
@@ -8,7 +8,7 @@
   <a href="/ZipponDB"><img src="images/banner.png" alt="ZipponDB"></a>
 </p>
 <p align="center">
-    <em>Relational Database written in Zig</em>
+    <em>Minimalist Database written in Zig</em>
 </p>
 
 ---
@@ -37,7 +37,7 @@ medium applications that want a quick and simple database.
 <small>* Plan for more platforms like arm, 32 bit system.</small>
 <small>** Plan for optimizations.</small>
 
-### After
+### Planned
 
 * **Interface:** Small package to interact with ZipponDB from different programming language.
 * **Single file:** Like SQLite, ZipponDB's database aim to be a single file.

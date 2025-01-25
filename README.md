@@ -1,20 +1,24 @@
 ![alt text](https://github.com/MrBounty/ZipponDB/blob/main/docs/images/banner.png)
 
-ZipponDB is a database written entirely in Zig from scratch with 0 dependencies.
-
-ZipponDB's goal is to be ACID, light, simple, and high-performance. It aims at small to medium applications that don't need fancy features but a simple and reliable database.
+ZipponDB is a database built from the ground up in Zig, with zero external dependencies. Designed for simplicity, 
+performance, and portability, it's almost usable for small to 
+medium applications that want a quick and simple database.
 
 Key Features:
 
-* **Small:** Binary is small, around 2-3Mb.
+* **Small Binary:** ~300kb.
 * **Fast:** Parse millions of entities in milliseconds.
 * **Relationship:** Build with focus on easy relationship.
 * **Query Language:** Use it's own simple query language.
-* **No dependencies:** Depend on nothing, every line of code running is in the codebase.
+* **No dependencies:** Depend on nothing, every line of code running is in the codebase and written for ZipponDB.
 * **Open-source:** Open-source under MIT licence.
-* **Portable:** Easily compiled and deployed across various platforms.
+* **Portable:** Easily compiled and deployed across various platforms.*
+* **Low memory and safe:** Low memory footprint. (~8Mb / 100k entities)**.
 
 For more informations visit the docs: https://mrbounty.github.io/ZipponDB/
+
+<small>* Plan for more platforms like arm, 32 bit system.</small>
+<small>** Plan for optimizations.</small>
 
 ***Note: ZipponDB is still in Alpha v0.2, see roadmap.***
 
