@@ -20,25 +20,29 @@ jobs:
         with:
           version: 0.13.0
 
+      - name: Test code
+        run: |
+          zig build -Doptimize=ReleaseSmall test
+
       - name: Build release artifacts
         run: |
-          zig build release
+          zig build -Doptimize=ReleaseSmall release
 
-      - name: Create zip files for release artifacts
-        run: |
-          mkdir -p zig-out/release/zips
-          for file in zig-out/release/*; do
-            if [ -f "$file" ] && [[ "$(basename "$file")" != *.pdb ]]; then
-              filename=$(basename "$file")
-              zipname="${filename%.*}"
-              zip -j "zig-out/release/zips/${zipname}.zip" "$file"
-            fi
-          done
-  
+      # The think is 300kb, I dont need to compress it
+      #- name: Create zip files for release artifacts
+      #    run: |
+      #    mkdir -p zig-out/release/zips
+      #    for file in zig-out/release/*; do
+      #      if [ -f "$file" ] && [[ "$(basename "$file")" != *.pdb ]]; then
+      #        filename=$(basename "$file")
+      #        zipname="${filename%.*}"
+      #        zip -j "zig-out/release/zips/${zipname}.zip" "$file"
+      #      fi
+      #    done
 
       - name: Upload release artifacts
         uses: ncipollo/release-action@v1
         with:
           name: "Release ${{ github.ref_name }}"
           body: "Base release. Most ZipponQL features are here but stuffs around is missing."
-          artifacts: zig-out/release/zips/*.zip
+          artifacts: zig-out/release/*
