@@ -2,8 +2,6 @@ const std = @import("std");
 const log = std.log.scoped(.thread);
 const U64 = std.atomic.Value(u64);
 
-// Remove the use waitgroup instead
-
 pub const Self = @This();
 
 processed_struct: U64 = U64.init(0),

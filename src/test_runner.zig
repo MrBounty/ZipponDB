@@ -17,7 +17,7 @@ pub fn myLog(
     args: anytype,
 ) void {
     _ = scope;
-    if (message_level == .debug) {
+    if (message_level != .debug) {
         std.debug.print(format, args);
         std.debug.print("\n", .{});
     }

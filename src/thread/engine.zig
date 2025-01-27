@@ -20,8 +20,8 @@ pub fn init(allocator: std.mem.Allocator) !ThreadEngine {
     };
 
     const cpu_core = if (CPU_CORE == 0) std.Thread.getCpuCount() catch 1 else CPU_CORE;
-    log.debug("  Using {d} cpu core.", .{cpu_core});
-    log.debug("  Using {d}Mb stack size.", .{std.Thread.SpawnConfig.default_stack_size / 1024 / 1024});
+    log.debug("Using {d} cpu core.", .{cpu_core});
+    log.debug("Using {d}Mb stack size.", .{std.Thread.SpawnConfig.default_stack_size / 1024 / 1024});
 
     const thread_pool = try allocator.create(std.Thread.Pool);
     try thread_pool.init(std.Thread.Pool.Options{

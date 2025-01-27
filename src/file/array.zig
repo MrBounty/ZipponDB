@@ -4,7 +4,10 @@ const dtype = @import("dtype");
 const ConditionValue = @import("../dataStructure/filter.zig").ConditionValue;
 const ArrayCondition = @import("../ziql/parts//newData.zig").ArrayCondition;
 
-pub fn updateData(allocator: std.mem.Allocator, condition: ArrayCondition, input: *zid.Data, data: []ConditionValue) !void {
+// This shouldn't be here, to move somewhere, idk yet
+
+/// Update an array based on keyword like append or remove
+pub fn updateData(allocator: std.mem.Allocator, condition: ArrayCondition, input: *zid.Data, data: ConditionValue) !void {
     switch (condition) {
         .append => try append(allocator, input, data),
         .pop => pop(input),
@@ -50,100 +53,93 @@ fn clear(input: *zid.Data) void {
     }
 }
 
-fn allocForAppend(allocator: std.mem.Allocator, input: *zid.Data, data: []ConditionValue) []zid.Data {
-    switch (input.*) {
-        .UUIDArray => {
-            var total: usize = 0;
-            for (data) |d| total += d.link_array.count();
-            return try allocator.alloc(zid.Data, total);
-        },
-        else => return try allocator.alloc(zid.Data, data.len),
-    }
-}
 // I think I could use meta programming here by adding the type as argument
-fn append(allocator: std.mem.Allocator, input: *zid.Data, data: []ConditionValue) !void {
+// TODO: Update the remaining type like int
+fn append(allocator: std.mem.Allocator, input: *zid.Data, data: ConditionValue) !void {
     switch (input.*) {
         .IntArray => {
-            // 1. Make a list of the right type from ConditionValue
-            var array = std.ArrayList(i32).init(allocator);
-            defer array.deinit();
-            for (data) |d| try array.append(d.int);
-
-            // 2. Encode the new array
-            const new_array = try zid.allocEncodArray.Int(allocator, array.items);
-
-            // 3. Add the new array at the end of the old one without the first 4 bytes that are the number of value in the array
             var updated_array = std.ArrayList(u8).init(allocator);
             try updated_array.appendSlice(input.IntArray);
-            try updated_array.appendSlice(new_array[4..]);
 
-            // 4. Update the number of value in the array
-            const new_len = input.size() + data.len;
-            @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
+            switch (data) {
+                .int => |v| {
+                    try updated_array.appendSlice(std.mem.asBytes(&v));
+                    const new_len = input.size() - 8 + @sizeOf(i32);
+                    @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
+                },
+                .int_array => |v| {
+                    const new_array = try zid.allocEncodArray.Int(allocator, v);
+                    try updated_array.appendSlice(new_array[8..]);
 
-            // 5. Update the input
+                    const new_len = input.size() + new_array.len - 16;
+                    @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
+                },
+                else => unreachable,
+            }
+
             input.*.IntArray = try updated_array.toOwnedSlice();
         },
         .FloatArray => {
             var array = std.ArrayList(f64).init(allocator);
             defer array.deinit();
-            for (data) |d| try array.append(d.float);
+            try array.appendSlice(data.float_array);
             const new_array = try zid.allocEncodArray.Float(allocator, array.items);
             var updated_array = std.ArrayList(u8).init(allocator);
             try updated_array.appendSlice(input.FloatArray);
-            try updated_array.appendSlice(new_array[4..]);
-            const new_len = input.size() + data.len;
+            try updated_array.appendSlice(new_array[8..]);
+            const new_len = input.size() + new_array.len - 16;
             @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
             input.*.FloatArray = try updated_array.toOwnedSlice();
         },
         .UnixArray => {
             var array = std.ArrayList(u64).init(allocator);
             defer array.deinit();
-            for (data) |d| try array.append(d.unix);
+            try array.appendSlice(data.unix_array);
             const new_array = try zid.allocEncodArray.Unix(allocator, array.items);
             var updated_array = std.ArrayList(u8).init(allocator);
             try updated_array.appendSlice(input.UnixArray);
-            try updated_array.appendSlice(new_array[4..]);
-            const new_len = input.size() + data.len;
+            try updated_array.appendSlice(new_array[8..]);
+            const new_len = input.size() + new_array.len - 16;
             @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
             input.*.UnixArray = try updated_array.toOwnedSlice();
         },
         .BoolArray => {
             var array = std.ArrayList(bool).init(allocator);
             defer array.deinit();
-            for (data) |d| try array.append(d.bool_);
+            try array.appendSlice(data.bool_array);
             const new_array = try zid.allocEncodArray.Bool(allocator, array.items);
             var updated_array = std.ArrayList(u8).init(allocator);
             try updated_array.appendSlice(input.BoolArray);
-            try updated_array.appendSlice(new_array[4..]);
-            const new_len = input.size() + data.len;
+            try updated_array.appendSlice(new_array[8..]);
+            const new_len = input.size() + new_array.len - 16;
             @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
             input.*.BoolArray = try updated_array.toOwnedSlice();
         },
         .StrArray => {
             var array = std.ArrayList([]const u8).init(allocator);
             defer array.deinit();
-            for (data) |d| try array.append(d.str);
+            try array.appendSlice(data.str_array);
             const new_array = try zid.allocEncodArray.Str(allocator, array.items);
             var updated_array = std.ArrayList(u8).init(allocator);
             try updated_array.appendSlice(input.StrArray);
-            try updated_array.appendSlice(new_array[4..]);
-            const new_len = input.size() + data.len;
+            try updated_array.appendSlice(new_array[8..]);
+            const new_len = input.size() + new_array.len - 16;
             @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
             input.*.StrArray = try updated_array.toOwnedSlice();
         },
-        .UUIDArray => { // If input is a UUID array, that mean all data are also UUIDArray. There should be only one UUIDArray in data as it is use like that "friends APPEND {name = 'Bob'}"
+        .UUIDArray => { // If input is a UUID array, that mean all data are also UUIDArray
             var array = std.ArrayList([16]u8).init(allocator);
             defer array.deinit();
-            for (data) |d| {
-                var iter = d.link_array.keyIterator();
-                while (iter.next()) |uuid| try array.append(uuid.bytes);
-            }
+
+            var iter = data.link_array.keyIterator();
+            while (iter.next()) |uuid| try array.append(uuid.bytes);
             const new_array = try zid.allocEncodArray.UUID(allocator, array.items);
+
             var updated_array = std.ArrayList(u8).init(allocator);
             try updated_array.appendSlice(input.UUIDArray);
-            try updated_array.appendSlice(new_array[4..]);
-            const new_len = input.size() + array.items.len;
+            try updated_array.appendSlice(new_array[8..]);
+
+            const new_len = input.size() + new_array.len - 16;
             @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
             input.*.UUIDArray = try updated_array.toOwnedSlice();
         },
@@ -156,7 +152,7 @@ fn append(allocator: std.mem.Allocator, input: *zid.Data, data: []ConditionValue
 // So I could just memcopy the remaining of the bytes at the current position, so it overwrite the value to remove
 // Like if I want to re;ove 3 in [1 2 3 4 5], it would become [1 2 4 5 5]. Then I dont take the last value when I return.
 // But that mean I keep in memory useless data, so maybe not
-fn remove(allocator: std.mem.Allocator, input: *zid.Data, data: []ConditionValue) !void {
+fn remove(allocator: std.mem.Allocator, input: *zid.Data, data: ConditionValue) !void {
     var iter = try zid.ArrayIterator.init(input.*);
     switch (input.*) {
         .IntArray => {
@@ -199,7 +195,7 @@ fn remove(allocator: std.mem.Allocator, input: *zid.Data, data: []ConditionValue
     }
 }
 
-fn removeat(allocator: std.mem.Allocator, input: *zid.Data, data: []ConditionValue) !void {
+fn removeat(allocator: std.mem.Allocator, input: *zid.Data, data: ConditionValue) !void {
     var iter = try zid.ArrayIterator.init(input.*);
     switch (input.*) {
         .IntArray => {
@@ -257,15 +253,16 @@ fn removeat(allocator: std.mem.Allocator, input: *zid.Data, data: []ConditionVal
     }
 }
 
-// Should just use a map.contain
-fn in(x: zid.Data, y: []ConditionValue) bool {
+// TODO: Use a map.contain for the ConditionValue
+// Specially because I end up iterate over the list for all entity, when I just need to make the map one time for all
+fn in(x: zid.Data, y: ConditionValue) bool {
     switch (x) {
-        .Int => |v| for (y) |z| if (v == z.int) return true,
-        .Float => |v| for (y) |z| if (v == z.float) return true,
-        .Unix => |v| for (y) |z| if (v == z.unix) return true,
-        .Bool => |v| for (y) |z| if (v == z.bool_) return true,
-        .Str => |v| for (y) |z| if (std.mem.eql(u8, z.str, v)) return true,
-        .UUID => |v| for (y) |z| if (z.link_array.contains(dtype.UUID{ .bytes = v })) return true,
+        .Int => |v| for (y.int_array) |z| if (v == z) return true,
+        .Float => |v| for (y.float_array) |z| if (v == z) return true,
+        .Unix => |v| for (y.unix_array) |z| if (v == z) return true,
+        .Bool => |v| for (y.bool_array) |z| if (v == z) return true,
+        .Str => |v| for (y.str_array) |z| if (std.mem.eql(u8, z, v)) return true,
+        .UUID => |v| if (y.link_array.contains(dtype.UUID{ .bytes = v })) return true,
         else => unreachable,
     }
     return false;

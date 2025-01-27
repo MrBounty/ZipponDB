@@ -57,6 +57,7 @@ pub const State = enum {
     expect_comma_OR_end,
     add_member_to_map,
     add_array_to_map,
+    expect_new_array,
 };
 
 pub const Self = @This();

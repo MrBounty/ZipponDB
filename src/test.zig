@@ -30,7 +30,7 @@ test "Clear" {
 // Basic
 // ===============================================================
 
-test "ADD" {
+test "ADD" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 1 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, scores=[ 666, 123, 331 ], best_friend=none, friends=none, bday=2000/11/01, a_time=12:04:54, last_order=2000/01/01-12:45)");
@@ -44,7 +44,7 @@ test "ADD" {
     try testParsing(db, "GRAB User {}");
 }
 
-test "ADD batch" {
+test "ADD batch" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "ADD User (name = 'ewq', email='ewq@email.com', age=22, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) (name = 'Roger', email='roger@email.com', age=10, scores=[ 1, 11, 111, 123, 562345, 123451234, 34623465234, 12341234 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'qwe', email='qwe@email.com', age=57, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) ('Rodrigo', 'bob@email.com', 55, [ 1 ], {name = 'qwe'}, none, 2000/01/01, 12:04, 2000/01/01-12:45)");
@@ -53,26 +53,26 @@ test "ADD batch" {
     try testParsing(db, "GRAB User {}");
 }
 
-test "GRAB filter with string" {
+test "GRAB filter with string" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User {name = 'Bob'}");
     try testParsing(db, "GRAB User {name != 'Brittany Rogers'}");
 }
 
-test "GRAB with additional data" {
+test "GRAB with additional data" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User [1] {age < 18}");
     try testParsing(db, "GRAB User [id, name] {age < 18}");
     try testParsing(db, "GRAB User [100; name, age] {age < 18}");
 }
 
-test "UPDATE" {
+test "UPDATE" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "UPDATE User [1] {name = 'Bob'} TO (email='new@gmail.com')");
     try testParsing(db, "GRAB User {}");
 }
 
-test "GRAB filter with int" {
+test "GRAB filter with int" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User {age = 18}");
     try testParsing(db, "GRAB User {age > -18}");
@@ -82,14 +82,14 @@ test "GRAB filter with int" {
     try testParsing(db, "GRAB User {age != 18}");
 }
 
-test "GRAB filter with date" {
+test "GRAB filter with date" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User {bday > 2000/01/01}");
     try testParsing(db, "GRAB User {a_time < 08:00}");
     try testParsing(db, "GRAB User {last_order > 2000/01/01-12:45}");
 }
 
-test "Specific query" {
+test "Specific query" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User");
     try testParsing(db, "GRAB User {}");
@@ -99,46 +99,56 @@ test "Specific query" {
 // Array manipulation
 // ===============================================================
 
-test "GRAB name IN" {
+test "GRAB name IN" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobinou']}");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+}
+
+test "UPDATE APPEND" { // OK
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores APPEND [69])");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+    try testParsing(db, "UPDATE User {name IN ['Bob']} TO (scores APPEND [69, 123, 123, 11, 22, 44, 51235])");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores APPEND 1)");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
 }
 
 // Single Struct Relationship
 // ===============================================================
 
-test "UPDATE relationship" {
+test "UPDATE relationship" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "UPDATE User [1] {name='Bob'} TO (best_friend = {name='Boba'} )");
     try testParsing(db, "GRAB User {}");
 }
 
-test "GRAB Relationship Filter" {
+test "GRAB Relationship Filter" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User {best_friend IN {name = 'Bob'}}");
     try testParsing(db, "GRAB User {best_friend IN {name = 'Boba'}}");
 }
 
-test "GRAB Relationship AdditionalData" {
+test "GRAB Relationship AdditionalData" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User [name, friends] {}");
     try testParsing(db, "GRAB User [name, best_friend] {}");
 }
 
-test "GRAB Relationship Sub AdditionalData" {
+test "GRAB Relationship Sub AdditionalData" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User [name, friends [name]] {}");
     try testParsing(db, "GRAB User [name, best_friend [name, friends [age]]] {}");
 }
 
-test "GRAB Relationship AdditionalData Filtered" {
+test "GRAB Relationship AdditionalData Filtered" { // FIXME: NOT OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User [2; name, best_friend] {name = 'Bob'}");
     try testParsing(db, "GRAB User [2; name, best_friend] {best_friend IN {}}");
     try testParsing(db, "GRAB User [2; name, best_friend] {best_friend !IN {}}");
 }
 
-test "GRAB Relationship dot" {
+test "GRAB Relationship dot" { // TODO: Make this a reality
     // DO I add this ? I'm not sure about this feature
     const db = DB{ .path = "test1", .schema = "schema/test" };
     // try testParsing(db, "GRAB User.best_friend {}");

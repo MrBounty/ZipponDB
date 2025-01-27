@@ -189,11 +189,10 @@ fn updateEntitiesOneFile(
                         zid.deleteFile(new_path, dir) catch {};
                         return;
                     };
+                    new_data_buff[i] = row[i];
                 },
                 else => {},
             };
-
-            log.debug("{d} {any}\n\n", .{ new_data_buff.len, new_data_buff });
 
             new_writer.write(new_data_buff) catch {
                 zid.deleteFile(new_path, dir) catch {};

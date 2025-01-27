@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("config");
+const DataType = @import("dtype").DataType;
 const Allocator = std.mem.Allocator;
 const ConditionValue = @import("../../dataStructure/filter.zig").ConditionValue;
 const printError = @import("../../utils.zig").printError;
@@ -14,6 +15,10 @@ const Self = @import("../parser.zig");
 // Or maybe just an array, it can be an array of 1 value.
 // Like that I just need do add some switch on the enum to make it work
 
+// I dont really like that ValueOrArray. I like how it work but not how I implemented it.
+// I need to see if I can just make it a bit more simple and readable.
+// Maybe make it's own file ?
+
 pub const ValueOrArray = union(enum) {
     value: ConditionValue,
     array: ArrayUpdate,
@@ -23,7 +28,7 @@ pub const ArrayCondition = enum { append, clear, pop, remove, removeat };
 
 pub const ArrayUpdate = struct {
     condition: ArrayCondition,
-    data: []ConditionValue,
+    data: ConditionValue,
 };
 
 /// Take the tokenizer and return a map of the ADD action.
@@ -97,37 +102,46 @@ pub fn parseNewData(
         },
 
         .expect_equal => switch (token.tag) {
-            // TODO: Implement stuff to manipulate array like APPEND or REMOVE
             .equal => state = .expect_new_value,
-            .keyword_pop => if (for_update) {} else return printError(
+            .keyword_pop => if (for_update) {
+                state = .expect_new_array;
+            } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
             ),
-            .keyword_clear => if (for_update) {} else return printError(
+            .keyword_clear => if (for_update) {
+                state = .expect_new_array;
+            } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
             ),
-            .keyword_append => if (for_update) {} else return printError(
+            .keyword_append => if (for_update) {
+                state = .expect_new_array;
+            } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
             ),
-            .keyword_remove => if (for_update) {} else return printError(
+            .keyword_remove => if (for_update) {
+                state = .expect_new_array;
+            } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
                 self.toker.buffer,
                 token.loc.start,
                 token.loc.end,
             ),
-            .keyword_remove_at => if (for_update) {} else return printError(
+            .keyword_remove_at => if (for_update) {
+                state = .expect_new_array;
+            } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
                 self.toker.buffer,
@@ -150,6 +164,112 @@ pub fn parseNewData(
                 ValueOrArray{ .value = try self.parseConditionValue(allocator, struct_name, member_name, data_type, &token) },
             ) catch return ZipponError.MemoryError;
             if (data_type == .link or data_type == .link_array) {
+                token = self.toker.last_token;
+                keep_next = true;
+            }
+            state = .expect_comma_OR_end;
+        },
+
+        .expect_new_array => { // This is what is call after array manipulation keyword
+            const member_data_type = self.schema_engine.memberName2DataType(struct_name, member_name) catch return ZipponError.StructNotFound;
+            const new_data_type: DataType = switch (token.tag) {
+                .l_bracket => switch (member_data_type) {
+                    .int, .int_array => .int_array,
+                    .float, .float_array => .float_array,
+                    .str, .str_array => .str_array,
+                    .bool, .bool_array => .bool_array,
+                    .date, .date_array => .date_array,
+                    .time, .time_array => .time_array,
+                    .datetime, .datetime_array => .datetime_array,
+                    .link, .link_array => .link_array,
+                    else => unreachable,
+                },
+                .int_literal => switch (member_data_type) {
+                    .int, .int_array => .int,
+                    else => return printError(
+                        "Error, expecting int or int array.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+                .float_literal => switch (member_data_type) {
+                    .float, .float_array => .float,
+                    else => return printError(
+                        "Error, expecting float or float array.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+                .string_literal => switch (member_data_type) {
+                    .str, .str_array => .str,
+                    else => return printError(
+                        "Error, expecting str or str array.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+                .bool_literal_false, .bool_literal_true => switch (member_data_type) {
+                    .bool, .bool_array => .bool,
+                    else => return printError(
+                        "Error, expecting bool or bool array.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+                .date_literal => switch (member_data_type) {
+                    .date, .date_array => .date,
+                    .datetime, .datetime_array => .datetime,
+                    else => return printError(
+                        "Error, expecting date or date array.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+                .time_literal => switch (member_data_type) {
+                    .time, .time_array => .time,
+                    else => return printError(
+                        "Error, expecting time or time array.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+                .datetime_literal => switch (member_data_type) {
+                    .datetime, .datetime_array => .datetime,
+                    else => return printError(
+                        "Error, expecting datetime or datetime array.",
+                        ZipponError.SynthaxError,
+                        self.toker.buffer,
+                        token.loc.start,
+                        token.loc.end,
+                    ),
+                },
+                else => return printError(
+                    "Error, expecting value or array.",
+                    ZipponError.SynthaxError,
+                    self.toker.buffer,
+                    token.loc.start,
+                    token.loc.end,
+                ),
+            };
+            map.put(
+                member_name,
+                // TODO: Get right keyword
+                // TODO: Update ValueOrArray.array to use a single ConditionValue value instead of current array of it
+                ValueOrArray{ .array = .{ .condition = .append, .data = try self.parseConditionValue(allocator, struct_name, member_name, new_data_type, &token) } },
+            ) catch return ZipponError.MemoryError;
+            if (member_data_type == .link or member_data_type == .link_array) {
                 token = self.toker.last_token;
                 keep_next = true;
             }
