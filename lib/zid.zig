@@ -224,13 +224,10 @@ pub const allocEncodArray = struct {
     }
 
     pub fn Int(allocator: std.mem.Allocator, items: []const i32) ![]const u8 {
-        // Create a buffer of the right size
-        var buffer = try allocator.alloc(u8, @sizeOf(u64) + @sizeOf(i32) * items.len);
-
-        // Ge the len use by the array in bytes, array len not included (The first 8 bytes)
         const items_len: u64 = items.len * @sizeOf(i32);
+        var buffer = try allocator.alloc(u8, @sizeOf(u64) + items_len);
 
-        // Write the first 8 bytes as the number of items in the array
+        // Write the first 8 bytes as the number of u8 used to store the array
         @memcpy(buffer[0..@sizeOf(u64)], std.mem.asBytes(&items_len));
 
         // Write all value in the array
@@ -245,8 +242,8 @@ pub const allocEncodArray = struct {
     }
 
     pub fn Float(allocator: std.mem.Allocator, items: []const f64) ![]const u8 {
-        var buffer = try allocator.alloc(u8, @sizeOf(u64) + @sizeOf(f64) * items.len);
         const items_len: u64 = items.len * @sizeOf(f64);
+        var buffer = try allocator.alloc(u8, @sizeOf(u64) + items_len);
         @memcpy(buffer[0..@sizeOf(u64)], std.mem.asBytes(&items_len));
 
         var start: usize = @sizeOf(u64);
@@ -260,8 +257,8 @@ pub const allocEncodArray = struct {
     }
 
     pub fn Bool(allocator: std.mem.Allocator, items: []const bool) ![]const u8 {
-        var buffer = try allocator.alloc(u8, @sizeOf(u64) + @sizeOf(bool) * items.len);
         const items_len: u64 = items.len * @sizeOf(bool);
+        var buffer = try allocator.alloc(u8, @sizeOf(u64) + items_len);
         @memcpy(buffer[0..@sizeOf(u64)], std.mem.asBytes(&items_len));
 
         var start: usize = @sizeOf(u64);
@@ -275,8 +272,8 @@ pub const allocEncodArray = struct {
     }
 
     pub fn UUID(allocator: std.mem.Allocator, items: []const [16]u8) ![]const u8 {
-        var buffer = try allocator.alloc(u8, @sizeOf(u64) + @sizeOf([16]u8) * items.len);
         const items_len: u64 = items.len * @sizeOf([16]u8);
+        var buffer = try allocator.alloc(u8, @sizeOf(u64) + items_len);
         @memcpy(buffer[0..@sizeOf(u64)], std.mem.asBytes(&items_len));
 
         var start: usize = @sizeOf(u64);
@@ -290,8 +287,8 @@ pub const allocEncodArray = struct {
     }
 
     pub fn Unix(allocator: std.mem.Allocator, items: []const u64) ![]const u8 {
-        var buffer = try allocator.alloc(u8, @sizeOf(u64) + @sizeOf(u64) * items.len);
         const items_len: u64 = items.len * @sizeOf(u64);
+        var buffer = try allocator.alloc(u8, @sizeOf(u64) + items_len);
         @memcpy(buffer[0..@sizeOf(u64)], std.mem.asBytes(&items_len));
 
         var start: usize = @sizeOf(u64);
@@ -533,7 +530,8 @@ pub const DataWriter = struct {
     }
 
     pub fn write(self: *DataWriter, data: []const Data) !void {
-        for (data) |d| try d.write(self.writer.writer());
+        const writer = self.writer.writer();
+        for (data) |d| try d.write(writer);
     }
 
     pub fn flush(self: *DataWriter) !void {
