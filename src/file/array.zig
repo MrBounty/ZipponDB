@@ -17,25 +17,37 @@ pub fn updateData(allocator: std.mem.Allocator, condition: ArrayCondition, input
     }
 }
 
+// This does not work, I think because I cant access the value at the pointer and so not update it.
+// Maybe if I return instead ?
+fn popInline(input: *zid.Data) void {
+    inline for (comptime std.meta.fields(zid.Data)) |field| {
+        if (comptime std.mem.endsWith(u8, field.name, "Array")) {
+            if (@field(input, field.name).len > 8) { // If array is not empty, only 8 bytes mean that there is just the size of the array that's encode, meaning a u64 of 8 bytes
+                @field(input, field.name) = @field(input, field.name)[0 .. @field(input, field.name).len - input.size()];
+            }
+        }
+    }
+}
+
 fn pop(input: *zid.Data) void {
     switch (input.*) {
-        .IntArray => |v| if (v.len > 4) {
-            input.*.IntArray = v[0 .. v.len - input.size()];
+        .IntArray => |v| if (v.len > 8) {
+            input.*.IntArray = v[0 .. v.len - @sizeOf(i32)];
         },
-        .FloatArray => |v| if (v.len > 4) {
-            input.*.FloatArray = v[0 .. v.len - input.size()];
+        .FloatArray => |v| if (v.len > 8) {
+            input.*.FloatArray = v[0 .. v.len - @sizeOf(f64)];
         },
-        .UnixArray => |v| if (v.len > 4) {
-            input.*.UnixArray = v[0 .. v.len - input.size()];
+        .UnixArray => |v| if (v.len > 8) {
+            input.*.UnixArray = v[0 .. v.len - @sizeOf(u64)];
         },
-        .UUIDArray => |v| if (v.len > 4) {
-            input.*.UUIDArray = v[0 .. v.len - input.size()];
+        .UUIDArray => |v| if (v.len > 8) {
+            input.*.UUIDArray = v[0 .. v.len - @sizeOf([16]u8)];
         },
-        .BoolArray => |v| if (v.len > 4) {
-            input.*.BoolArray = v[0 .. v.len - input.size()];
+        .BoolArray => |v| if (v.len > 8) {
+            input.*.BoolArray = v[0 .. v.len - @sizeOf(bool)];
         },
-        .StrArray => |v| if (v.len > 4) {
-            input.*.StrArray = v[0 .. v.len - input.size()];
+        .StrArray => |v| if (v.len > 8) {
+            input.*.StrArray = v[0 .. v.len - @sizeOf(f64)]; // FIXME: Obviously the size of is wrong
         },
         else => unreachable,
     }
@@ -54,95 +66,86 @@ fn clear(input: *zid.Data) void {
 }
 
 // I think I could use meta programming here by adding the type as argument
-// TODO: Update the remaining type like int
 fn append(allocator: std.mem.Allocator, input: *zid.Data, data: ConditionValue) !void {
+    var updated_array = std.ArrayList(u8).init(allocator);
+    errdefer updated_array.deinit();
+
     switch (input.*) {
-        .IntArray => {
-            var updated_array = std.ArrayList(u8).init(allocator);
-            try updated_array.appendSlice(input.IntArray);
+        .IntArray,
+        .FloatArray,
+        .UnixArray,
+        .BoolArray,
+        .StrArray,
+        .UUIDArray,
+        => |v| try updated_array.appendSlice(v),
+        else => unreachable,
+    }
 
-            switch (data) {
-                .int => |v| {
-                    try updated_array.appendSlice(std.mem.asBytes(&v));
-                    const new_len = input.size() - 8 + @sizeOf(i32);
-                    @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
-                },
-                .int_array => |v| {
-                    const new_array = try zid.allocEncodArray.Int(allocator, v);
-                    try updated_array.appendSlice(new_array[8..]);
-
-                    const new_len = input.size() + new_array.len - 16;
-                    @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
-                },
-                else => unreachable,
-            }
-
-            input.*.IntArray = try updated_array.toOwnedSlice();
+    var new_len: usize = 0;
+    switch (data) {
+        .int => |v| {
+            try updated_array.appendSlice(std.mem.asBytes(&v));
+            new_len = input.size() - 8 + @sizeOf(i32);
         },
-        .FloatArray => {
-            var array = std.ArrayList(f64).init(allocator);
-            defer array.deinit();
-            try array.appendSlice(data.float_array);
-            const new_array = try zid.allocEncodArray.Float(allocator, array.items);
-            var updated_array = std.ArrayList(u8).init(allocator);
-            try updated_array.appendSlice(input.FloatArray);
+        .float => |v| {
+            try updated_array.appendSlice(std.mem.asBytes(&v));
+            new_len = input.size() - 8 + @sizeOf(f64);
+        },
+        .unix => |v| {
+            try updated_array.appendSlice(std.mem.asBytes(&v));
+            new_len = input.size() - 8 + @sizeOf(u64);
+        },
+        .bool_ => |v| {
+            try updated_array.appendSlice(std.mem.asBytes(&v));
+            new_len = input.size() - 8 + @sizeOf(bool);
+        },
+        .str => |v| {
+            try updated_array.appendSlice(std.mem.asBytes(&v.len));
+            try updated_array.appendSlice(v);
+            new_len = input.size() + v.len - 8;
+        },
+        .int_array => |v| {
+            const new_array = try zid.allocEncodArray.Int(allocator, v);
+            defer allocator.free(new_array);
             try updated_array.appendSlice(new_array[8..]);
-            const new_len = input.size() + new_array.len - 16;
-            @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
-            input.*.FloatArray = try updated_array.toOwnedSlice();
+            new_len = input.size() + new_array.len - 16;
         },
-        .UnixArray => {
-            var array = std.ArrayList(u64).init(allocator);
-            defer array.deinit();
-            try array.appendSlice(data.unix_array);
-            const new_array = try zid.allocEncodArray.Unix(allocator, array.items);
-            var updated_array = std.ArrayList(u8).init(allocator);
-            try updated_array.appendSlice(input.UnixArray);
+        .float_array => |v| {
+            const new_array = try zid.allocEncodArray.Float(allocator, v);
+            defer allocator.free(new_array);
             try updated_array.appendSlice(new_array[8..]);
-            const new_len = input.size() + new_array.len - 16;
-            @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
-            input.*.UnixArray = try updated_array.toOwnedSlice();
+            new_len = input.size() + new_array.len - 16;
         },
-        .BoolArray => {
-            var array = std.ArrayList(bool).init(allocator);
-            defer array.deinit();
-            try array.appendSlice(data.bool_array);
-            const new_array = try zid.allocEncodArray.Bool(allocator, array.items);
-            var updated_array = std.ArrayList(u8).init(allocator);
-            try updated_array.appendSlice(input.BoolArray);
+        .bool_array => |v| {
+            const new_array = try zid.allocEncodArray.Bool(allocator, v);
+            defer allocator.free(new_array);
             try updated_array.appendSlice(new_array[8..]);
-            const new_len = input.size() + new_array.len - 16;
-            @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
-            input.*.BoolArray = try updated_array.toOwnedSlice();
+            new_len = input.size() + new_array.len - 16;
         },
-        .StrArray => {
-            var array = std.ArrayList([]const u8).init(allocator);
-            defer array.deinit();
-            try array.appendSlice(data.str_array);
-            const new_array = try zid.allocEncodArray.Str(allocator, array.items);
-            var updated_array = std.ArrayList(u8).init(allocator);
-            try updated_array.appendSlice(input.StrArray);
+        .str_array => |v| {
+            const new_array = try zid.allocEncodArray.Str(allocator, v);
+            defer allocator.free(new_array);
             try updated_array.appendSlice(new_array[8..]);
-            const new_len = input.size() + new_array.len - 16;
-            @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
-            input.*.StrArray = try updated_array.toOwnedSlice();
+            new_len = input.size() + new_array.len - 16;
         },
-        .UUIDArray => { // If input is a UUID array, that mean all data are also UUIDArray
-            var array = std.ArrayList([16]u8).init(allocator);
-            defer array.deinit();
+        .unix_array => |v| {
+            const new_array = try zid.allocEncodArray.Unix(allocator, v);
+            defer allocator.free(new_array);
+            try updated_array.appendSlice(new_array[8..]);
+            new_len = input.size() + new_array.len - 16;
+        },
+        else => unreachable,
+    }
 
-            var iter = data.link_array.keyIterator();
-            while (iter.next()) |uuid| try array.append(uuid.bytes);
-            const new_array = try zid.allocEncodArray.UUID(allocator, array.items);
+    @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
 
-            var updated_array = std.ArrayList(u8).init(allocator);
-            try updated_array.appendSlice(input.UUIDArray);
-            try updated_array.appendSlice(new_array[8..]);
-
-            const new_len = input.size() + new_array.len - 16;
-            @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len));
-            input.*.UUIDArray = try updated_array.toOwnedSlice();
-        },
+    switch (input.*) {
+        .IntArray => input.*.IntArray = try updated_array.toOwnedSlice(),
+        .FloatArray => input.*.FloatArray = try updated_array.toOwnedSlice(),
+        .UnixArray => input.*.UnixArray = try updated_array.toOwnedSlice(),
+        .UUIDArray => input.*.UUIDArray = try updated_array.toOwnedSlice(),
+        .BoolArray => input.*.BoolArray = try updated_array.toOwnedSlice(),
+        .StrArray => input.*.StrArray = try updated_array.toOwnedSlice(),
         else => unreachable,
     }
 }
