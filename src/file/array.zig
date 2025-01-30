@@ -171,11 +171,6 @@ fn append(allocator: std.mem.Allocator, input: *zid.Data, data: ConditionValue) 
     }
 }
 
-// TODO: Change the array for a map to speed up thing
-// And also I dont really need to realoc anything, only append need because here it can only go lower
-// So I could just memcopy the remaining of the bytes at the current position, so it overwrite the value to remove
-// Like if I want to re;ove 3 in [1 2 3 4 5], it would become [1 2 4 5 5]. Then I dont take the last value when I return.
-// But that mean I keep in memory useless data, so maybe not
 fn remove(allocator: std.mem.Allocator, input: *zid.Data, data: ConditionValue) !void {
     var iter = try zid.ArrayIterator.init(input.*);
     switch (input.*) {

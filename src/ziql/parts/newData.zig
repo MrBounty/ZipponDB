@@ -49,6 +49,8 @@ pub fn parseNewData(
     var state: Self.State = .expect_member_OR_value;
     var i: usize = 0;
 
+    var array_condition_buf: ArrayCondition = undefined;
+
     while (state != .end) : ({
         token = if (!keep_next) self.toker.next() else token;
         keep_next = false;
@@ -131,6 +133,7 @@ pub fn parseNewData(
             ),
             .keyword_append => if (for_update) {
                 state = .expect_new_array;
+                array_condition_buf = .append;
             } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
@@ -140,6 +143,7 @@ pub fn parseNewData(
             ),
             .keyword_remove => if (for_update) {
                 state = .expect_new_array;
+                array_condition_buf = .remove;
             } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
@@ -149,6 +153,7 @@ pub fn parseNewData(
             ),
             .keyword_remove_at => if (for_update) {
                 state = .expect_new_array;
+                array_condition_buf = .removeat;
             } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
@@ -273,7 +278,10 @@ pub fn parseNewData(
             };
             map.put(
                 member_name,
-                ValueOrArray{ .array = .{ .condition = .append, .data = try self.parseConditionValue(allocator, struct_name, member_name, new_data_type, &token) } },
+                ValueOrArray{ .array = .{
+                    .condition = array_condition_buf,
+                    .data = try self.parseConditionValue(allocator, struct_name, member_name, new_data_type, &token),
+                } },
             ) catch return ZipponError.MemoryError;
             if (member_data_type == .link or member_data_type == .link_array) {
                 token = self.toker.last_token;
