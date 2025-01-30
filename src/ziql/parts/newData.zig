@@ -119,7 +119,7 @@ pub fn parseNewData(
             .keyword_clear => if (for_update) {
                 map.put(
                     member_name,
-                    ValueOrArray{ .array = .{ .condition = .pop, .data = null } },
+                    ValueOrArray{ .array = .{ .condition = .clear, .data = null } },
                 ) catch return ZipponError.MemoryError;
                 state = .expect_comma_OR_end;
             } else return printError(

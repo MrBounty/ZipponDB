@@ -68,17 +68,20 @@ fn pop(allocator: std.mem.Allocator, input: *zid.Data) !void {
     }
 }
 
-fn clear(allocator: std.mem.Allocator, input: *zid.Data) void {
+fn clear(allocator: std.mem.Allocator, input: *zid.Data) !void {
     var updated_array = std.ArrayList(u8).init(allocator);
     errdefer updated_array.deinit();
 
+    const new_len: u64 = 0;
+    try updated_array.appendSlice(std.mem.asBytes(&new_len));
+
     switch (input.*) {
-        .IntArray => input.*.IntArray = zid.allocEncodArray.Empty(),
-        .FloatArray => input.*.FloatArray = zid.allocEncodArray.Empty(),
-        .UnixArray => input.*.UnixArray = zid.allocEncodArray.Empty(),
-        .UUIDArray => input.*.UUIDArray = zid.allocEncodArray.Empty(),
-        .BoolArray => input.*.BoolArray = zid.allocEncodArray.Empty(),
-        .StrArray => input.*.StrArray = zid.allocEncodArray.Empty(),
+        .IntArray => input.*.IntArray = try updated_array.toOwnedSlice(),
+        .FloatArray => input.*.FloatArray = try updated_array.toOwnedSlice(),
+        .UnixArray => input.*.UnixArray = try updated_array.toOwnedSlice(),
+        .UUIDArray => input.*.UUIDArray = try updated_array.toOwnedSlice(),
+        .BoolArray => input.*.BoolArray = try updated_array.toOwnedSlice(),
+        .StrArray => input.*.StrArray = try updated_array.toOwnedSlice(),
         else => unreachable,
     }
 }
