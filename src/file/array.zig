@@ -8,7 +8,6 @@ const ArrayCondition = @import("../ziql/parts//newData.zig").ArrayCondition;
 
 /// Update an array based on keyword like append or remove
 pub fn updateData(allocator: std.mem.Allocator, condition: ArrayCondition, input: *zid.Data, data: ?ConditionValue) !void {
-    std.debug.print("HERE {any}\n", .{condition});
     try switch (condition) {
         .append => append(allocator, input, data.?),
         .pop => pop(allocator, input),
@@ -50,6 +49,7 @@ fn pop(allocator: std.mem.Allocator, input: *zid.Data) !void {
         },
         else => unreachable,
     } else {
+        try updated_array.appendNTimes(' ', 8);
         new_len = 0;
     }
 
