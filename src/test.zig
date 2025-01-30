@@ -114,9 +114,13 @@ test "UPDATE APPEND" { // OK
     try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
 }
 
-// FIXME: Look like it never call updateData, to investigate
 test "UPDATE POP" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores POP)");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores POP)");
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores POP)");
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores POP)");
     try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores POP)");
     try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
 }
@@ -125,6 +129,19 @@ test "UPDATE CLEAR" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores CLEAR)");
     try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+}
+
+test "UPDATE REMOVE" { // OK
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "UPDATE User {name = 'Bob'} TO (scores APPEND [69, 123, 123, 11, 22, 44, 51235])");
+    try testParsing(db, "UPDATE User {name = 'Bob'} TO (scores REMOVE [11, 44])");
+    try testParsing(db, "GRAB User {name = 'Bob'}");
+}
+
+test "UPDATE REMOVEAT" { // OK
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "UPDATE User {name = 'Bob'} TO (scores REMOVEAT [1, 4, 5000])");
+    try testParsing(db, "GRAB User {name = 'Bob'}");
 }
 
 // Single Struct Relationship
