@@ -100,7 +100,6 @@ pub fn updateEntities(
     // Otherwise it need to be update. For that 2 scenarios:
     // - Update all entities with a const .fix
     // - Update entities base on themself .vari
-    // FIXME: I'm not sure that id is in the array, need to check, also need to check to prevent updating it
     for (sstruct.members) |member| {
         if (map.get(member)) |voa| {
             switch (voa) {
