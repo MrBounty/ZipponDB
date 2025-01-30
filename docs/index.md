@@ -26,16 +26,13 @@ medium applications that want a quick and simple database.
 ## Key Features
 
 * **Small Binary:** ~300kb.
-* **Fast:** Parse millions of entities in milliseconds.
+* **Fast:** Parse millions of entities in milliseconds.*
 * **Relationship:** Build with focus on easy relationship.
-* **Query Language:** Use it's own simple query language.
+* **Query Language:** Use it's own stupid query language.
 * **No dependencies:** Depend on nothing, every line of code running is in the codebase and written for ZipponDB.
 * **Open-source:** Open-source under MIT licence.
-* **Portable:** Easily compiled and deployed across various platforms.*
-* **Low memory and safe:** Low memory footprint. (~8Mb / 100k entities)**.
 
-<small>* Plan for more platforms like arm, 32 bit system.</small>
-<small>** Plan for optimizations.</small>
+<small>* Check <a href="/Benchmark">benchmark</a>.</small>
 
 ### Planned
 
