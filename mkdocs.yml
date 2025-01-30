@@ -49,8 +49,8 @@ extra_css:
 
 nav:
   - Home: index.md
+  - Quickstart: Quickstart.md
   - Learn:
-    - Quickstart: Quickstart.md
     - Schema: Schema.md
     - ZipponQL: 
       - Intro: ziql/intro.md
