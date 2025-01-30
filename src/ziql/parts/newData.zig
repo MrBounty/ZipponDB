@@ -28,7 +28,7 @@ pub const ArrayCondition = enum { append, clear, pop, remove, removeat };
 
 pub const ArrayUpdate = struct {
     condition: ArrayCondition,
-    data: ConditionValue,
+    data: ?ConditionValue,
 };
 
 /// Take the tokenizer and return a map of the ADD action.
@@ -104,7 +104,11 @@ pub fn parseNewData(
         .expect_equal => switch (token.tag) {
             .equal => state = .expect_new_value,
             .keyword_pop => if (for_update) {
-                state = .expect_new_array;
+                map.put(
+                    member_name,
+                    ValueOrArray{ .array = .{ .condition = .pop, .data = null } },
+                ) catch return ZipponError.MemoryError;
+                state = .expect_comma_OR_end;
             } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
@@ -113,7 +117,11 @@ pub fn parseNewData(
                 token.loc.end,
             ),
             .keyword_clear => if (for_update) {
-                state = .expect_new_array;
+                map.put(
+                    member_name,
+                    ValueOrArray{ .array = .{ .condition = .pop, .data = null } },
+                ) catch return ZipponError.MemoryError;
+                state = .expect_comma_OR_end;
             } else return printError(
                 "Error: Can only manipulate array with UPDATE.",
                 ZipponError.SynthaxError,
@@ -265,8 +273,6 @@ pub fn parseNewData(
             };
             map.put(
                 member_name,
-                // TODO: Get right keyword
-                // TODO: Update ValueOrArray.array to use a single ConditionValue value instead of current array of it
                 ValueOrArray{ .array = .{ .condition = .append, .data = try self.parseConditionValue(allocator, struct_name, member_name, new_data_type, &token) } },
             ) catch return ZipponError.MemoryError;
             if (member_data_type == .link or member_data_type == .link_array) {

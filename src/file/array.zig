@@ -7,14 +7,15 @@ const ArrayCondition = @import("../ziql/parts//newData.zig").ArrayCondition;
 // This shouldn't be here, to move somewhere, idk yet
 
 /// Update an array based on keyword like append or remove
-pub fn updateData(allocator: std.mem.Allocator, condition: ArrayCondition, input: *zid.Data, data: ConditionValue) !void {
-    switch (condition) {
-        .append => try append(allocator, input, data),
-        .pop => pop(input),
-        .clear => clear(input),
-        .remove => try remove(allocator, input, data),
-        .removeat => try removeat(allocator, input, data),
-    }
+pub fn updateData(allocator: std.mem.Allocator, condition: ArrayCondition, input: *zid.Data, data: ?ConditionValue) !void {
+    std.debug.print("HERE {any}\n", .{condition});
+    try switch (condition) {
+        .append => append(allocator, input, data.?),
+        .pop => pop(allocator, input),
+        .clear => clear(allocator, input),
+        .remove => remove(allocator, input, data.?),
+        .removeat => removeat(allocator, input, data.?),
+    };
 }
 
 // This does not work, I think because I cant access the value at the pointer and so not update it.
@@ -23,37 +24,54 @@ fn popInline(input: *zid.Data) void {
     inline for (comptime std.meta.fields(zid.Data)) |field| {
         if (comptime std.mem.endsWith(u8, field.name, "Array")) {
             if (@field(input, field.name).len > 8) { // If array is not empty, only 8 bytes mean that there is just the size of the array that's encode, meaning a u64 of 8 bytes
-                @field(input, field.name) = @field(input, field.name)[0 .. @field(input, field.name).len - input.size()];
+                @field(input.*, field.name) = @field(input, field.name)[0 .. @field(input, field.name).len - input.size()];
             }
         }
     }
 }
 
-fn pop(input: *zid.Data) void {
+fn pop(allocator: std.mem.Allocator, input: *zid.Data) !void {
+    var updated_array = std.ArrayList(u8).init(allocator);
+    errdefer updated_array.deinit();
+
+    var new_len: ?u64 = null;
+    if (input.size() > 8) switch (input.*) {
+        .IntArray => |v| try updated_array.appendSlice(v[0 .. v.len - @sizeOf(i32)]),
+        .FloatArray => |v| try updated_array.appendSlice(v[0 .. v.len - @sizeOf(f64)]),
+        .UnixArray => |v| try updated_array.appendSlice(v[0 .. v.len - @sizeOf(u64)]),
+        .UUIDArray => |v| try updated_array.appendSlice(v[0 .. v.len - @sizeOf([16]u8)]),
+        .BoolArray => |v| try updated_array.appendSlice(v[0 .. v.len - @sizeOf(bool)]),
+        .StrArray => |v| {
+            var iter = try zid.ArrayIterator.init(input.*);
+            var last_str: []const u8 = undefined;
+            while (iter.next()) |item| last_str = item.Str;
+            try updated_array.appendSlice(v[0 .. v.len - last_str.len - 8]);
+            new_len = input.size() - 16 - last_str.len;
+        },
+        else => unreachable,
+    } else {
+        new_len = 0;
+    }
+
+    new_len = new_len orelse updated_array.items.len - 8;
+
+    @memcpy(updated_array.items[0..@sizeOf(u64)], std.mem.asBytes(&new_len.?));
+
     switch (input.*) {
-        .IntArray => |v| if (v.len > 8) {
-            input.*.IntArray = v[0 .. v.len - @sizeOf(i32)];
-        },
-        .FloatArray => |v| if (v.len > 8) {
-            input.*.FloatArray = v[0 .. v.len - @sizeOf(f64)];
-        },
-        .UnixArray => |v| if (v.len > 8) {
-            input.*.UnixArray = v[0 .. v.len - @sizeOf(u64)];
-        },
-        .UUIDArray => |v| if (v.len > 8) {
-            input.*.UUIDArray = v[0 .. v.len - @sizeOf([16]u8)];
-        },
-        .BoolArray => |v| if (v.len > 8) {
-            input.*.BoolArray = v[0 .. v.len - @sizeOf(bool)];
-        },
-        .StrArray => |v| if (v.len > 8) {
-            input.*.StrArray = v[0 .. v.len - @sizeOf(f64)]; // FIXME: Obviously the size of is wrong
-        },
+        .IntArray => input.*.IntArray = try updated_array.toOwnedSlice(),
+        .FloatArray => input.*.FloatArray = try updated_array.toOwnedSlice(),
+        .UnixArray => input.*.UnixArray = try updated_array.toOwnedSlice(),
+        .UUIDArray => input.*.UUIDArray = try updated_array.toOwnedSlice(),
+        .BoolArray => input.*.BoolArray = try updated_array.toOwnedSlice(),
+        .StrArray => input.*.StrArray = try updated_array.toOwnedSlice(),
         else => unreachable,
     }
 }
 
-fn clear(input: *zid.Data) void {
+fn clear(allocator: std.mem.Allocator, input: *zid.Data) void {
+    var updated_array = std.ArrayList(u8).init(allocator);
+    errdefer updated_array.deinit();
+
     switch (input.*) {
         .IntArray => input.*.IntArray = zid.allocEncodArray.Empty(),
         .FloatArray => input.*.FloatArray = zid.allocEncodArray.Empty(),

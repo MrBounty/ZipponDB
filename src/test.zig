@@ -114,6 +114,19 @@ test "UPDATE APPEND" { // OK
     try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
 }
 
+// FIXME: Look like it never call updateData, to investigate
+test "UPDATE POP" { // OK
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores POP)");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+}
+
+test "UPDATE CLEAR" { // OK
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "UPDATE User {name IN ['Bob', 'Bobibou']} TO (scores CLEAR)");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+}
+
 // Single Struct Relationship
 // ===============================================================
 
