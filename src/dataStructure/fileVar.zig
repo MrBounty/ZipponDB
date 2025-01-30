@@ -29,3 +29,11 @@ pub fn fileVar(comptime T: type) type {
         }
     };
 }
+
+// I also need some kind of file arena to store data. Those arena would act like files
+// In SQLite, this is call page I think. Each can either hold data of a unique struct or multiple variable.
+
+pub const fileBlock = struct {
+    position: usize,
+    size: usize,
+};
