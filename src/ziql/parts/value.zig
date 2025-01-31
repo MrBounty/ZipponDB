@@ -82,7 +82,7 @@ pub fn parseConditionValue(
                 token.loc.end,
             );
         } else {
-            return ConditionValue.initStr(self.toker.buffer[start_index..token.loc.end]);
+            return ConditionValue.initStr(self.toker.buffer[start_index + 1 .. token.loc.end - 1]); // Removing ''
         },
 
         .bool => if (token.tag != .bool_literal_true and token.tag != .bool_literal_false) {

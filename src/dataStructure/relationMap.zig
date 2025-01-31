@@ -45,7 +45,7 @@ pub fn populate(self: *RelationMap, input: []const u8) ZipponError!void {
 
         const member_end = if (input[pattern_start - 4] == '[') pattern_start - 6 else pattern_start - 5; // This should be ": {<|"
         var member_start = member_end - 1;
-        while (input[member_start] != ' ') : (member_start -= 1) {}
+        while (input[member_start] != ' ' and input[member_start] != '[' and input[member_start] != '{') : (member_start -= 1) {}
         member_start += 1;
 
         if (!std.mem.eql(u8, input[member_start..member_end], self.member_name)) continue;
