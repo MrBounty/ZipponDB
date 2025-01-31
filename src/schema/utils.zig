@@ -13,14 +13,27 @@ const JsonString = RelationMap.JsonString;
 
 const ZipponError = @import("error").ZipponError;
 
+var empty_map_buf: [20]u8 = undefined;
+var fa = std.heap.FixedBufferAllocator.init(&empty_map_buf);
+const empty_map_allocator = fa.allocator();
+
+const empty_int: [0]i32 = .{};
+const empty_float: [0]f64 = .{};
+const empty_unix: [0]u64 = .{};
+const empty_bool: [0]bool = .{};
+const empty_str: [0][]const u8 = .{};
+const zero_link = std.AutoHashMap(UUID, void).init(empty_map_allocator);
+const empty_link = std.AutoHashMap(UUID, void).init(empty_map_allocator);
+
 // I need to redo how SchemaStruct work because it is a mess
 // I mean I use wayyyyyyyyyyyyyyyyyyyyyyy too much structName2SchemaStruct or stuff like that
 // I mean that not good to always for loop and compare when a map would work
 
 pub fn memberName2DataType(self: *Self, struct_name: []const u8, member_name: []const u8) ZipponError!DataType {
-    for (try self.structName2structMembers(struct_name), 0..) |mn, i| {
-        const dtypes = try self.structName2DataType(struct_name);
-        if (std.mem.eql(u8, mn, member_name)) return dtypes[i];
+    const sstruct = try self.structName2SchemaStruct(struct_name);
+
+    for (sstruct.members, 0..) |mn, i| {
+        if (std.mem.eql(u8, mn, member_name)) return sstruct.types[i];
     }
 
     return ZipponError.MemberNotFound;
@@ -47,7 +60,7 @@ pub fn structName2structMembers(self: Self, struct_name: []const u8) ZipponError
     return self.struct_array[i].members;
 }
 
-// TODO: This is the first one I want to change to use a map
+// Return the SchemaStruct based on it's name
 pub fn structName2SchemaStruct(self: Self, struct_name: []const u8) ZipponError!SchemaStruct {
     var i: usize = 0;
 
@@ -58,20 +71,6 @@ pub fn structName2SchemaStruct(self: Self, struct_name: []const u8) ZipponError!
     }
 
     return self.struct_array[i];
-}
-
-pub fn structName2DataType(self: Self, struct_name: []const u8) ZipponError![]const DataType {
-    var i: u16 = 0;
-
-    while (i < self.struct_array.len) : (i += 1) {
-        if (std.mem.eql(u8, self.struct_array[i].name, struct_name)) break;
-    }
-
-    if (i == self.struct_array.len and !std.mem.eql(u8, self.struct_array[i].name, struct_name)) {
-        return ZipponError.StructNotFound;
-    }
-
-    return self.struct_array[i].types;
 }
 
 /// Chech if the name of a struct is in the current schema
@@ -98,23 +97,43 @@ pub fn linkedStructName(self: Self, struct_name: []const u8, member_name: []cons
     return sstruct;
 }
 
-pub fn checkIfAllMemberInMap(
+/// Use with NewData to check if all member are in the map, otherwise write the missing one to be send with the error
+/// Also if array and link are missing, to make them empty instead
+pub fn checkIfAllMemberInMapAndAddEmptyMissingArray(
     self: Self,
     struct_name: []const u8,
     map: *std.StringHashMap(ValueOrArray),
-    error_message_buffer: *std.ArrayList(u8),
+    writer: std.ArrayList(u8).Writer,
 ) ZipponError!bool {
-    const all_struct_member = try self.structName2structMembers(struct_name);
+    const sstruct = try self.structName2SchemaStruct(struct_name);
     var count: u16 = 0;
 
-    const writer = error_message_buffer.writer();
-
-    for (all_struct_member) |mn| {
+    for (sstruct.members, sstruct.types) |mn, dt| {
         if (std.mem.eql(u8, mn, "id")) continue;
-        if (map.contains(mn)) count += 1 else writer.print(" {s},", .{mn}) catch return ZipponError.WriteError;
+        if (map.contains(mn)) count += 1 else {
+            if (dt.is_array() or dt == .link) {
+                map.put(
+                    mn,
+                    switch (dt) {
+                        .int_array => ValueOrArray{ .value = try ConditionValue.initArrayInt(&empty_int) },
+                        .float_array => ValueOrArray{ .value = try ConditionValue.initArrayFloat(&empty_float) },
+                        .str_array => ValueOrArray{ .value = try ConditionValue.initArrayStr(&empty_str) },
+                        .bool_array => ValueOrArray{ .value = try ConditionValue.initArrayBool(&empty_bool) },
+                        .date_array => ValueOrArray{ .value = try ConditionValue.initArrayUnix(&empty_unix) },
+                        .time_array => ValueOrArray{ .value = try ConditionValue.initArrayUnix(&empty_unix) },
+                        .datetime_array => ValueOrArray{ .value = try ConditionValue.initArrayUnix(&empty_unix) },
+                        .link_array => ValueOrArray{ .value = ConditionValue.initArrayLink(&empty_link) },
+                        .link => ValueOrArray{ .value = ConditionValue.initLink(&zero_link) },
+                        else => unreachable,
+                    },
+                ) catch return ZipponError.MemoryError;
+                count += 1;
+            }
+            writer.print(" {s},", .{mn}) catch return ZipponError.WriteError;
+        }
     }
 
-    return ((count == all_struct_member.len - 1) and (count == map.count()));
+    return ((count == sstruct.members.len - 1) and (count == map.count()));
 }
 
 pub fn isUUIDExist(self: Self, struct_name: []const u8, uuid: UUID) bool {

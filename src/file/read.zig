@@ -366,7 +366,7 @@ pub fn parseEntitiesRelationMap(
                 dir,
                 sstruct.zid_schema,
                 relation_map.additional_data,
-                try self.schema_engine.structName2DataType(struct_name),
+                sstruct.types,
                 &sync_context,
             },
         );

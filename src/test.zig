@@ -89,11 +89,21 @@ test "GRAB filter with date" { // OK
     try testParsing(db, "GRAB User {last_order > 2000/01/01-12:45}");
 }
 
-test "Specific query" { // OK
+// FIXME: GRAB User [1] return nothing
+test "Specific query" { // NOT OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User");
     try testParsing(db, "GRAB User {}");
     try testParsing(db, "GRAB User [1]");
+    try testParsing(db, "GRAB User [*, friends]");
+}
+
+test "Specific query ADD" { // OK
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    try testParsing(db, "ADD User (name = 'Bob1', email='bob@email.com', age=55, best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
+    try testParsing(db, "ADD User (name = 'Bob2', email='bob@email.com', age=55, best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
+    try testParsing(db, "ADD User (name = 'Bob3', email='bob@email.com', age=55, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
+    try testParsing(db, "GRAB User {name IN ['Bob1', 'Bob2', 'Bob3']}");
 }
 
 // Array manipulation
@@ -186,14 +196,6 @@ test "GRAB Relationship dot" { // TODO: Make this a reality
     // try testParsing(db, "GRAB User.best_friend.posts {}");
     // try testParsing(db, "GRAB User.best_friend.posts.comments {}");
     try testParsing(db, "GRAB User [1] {}");
-}
-
-// Cleaning
-// ===============================================================
-
-test "DELETE" {
-    const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "DELETE User {}");
 }
 
 // 3 Struct Relationship

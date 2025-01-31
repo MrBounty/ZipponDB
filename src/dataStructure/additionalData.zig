@@ -20,10 +20,10 @@ pub fn init(allocator: Allocator) AdditionalData {
     };
 }
 
-pub fn populateWithEverythingExceptLink(self: *AdditionalData, members: [][]const u8, dtypes: []DataType) !void {
+pub fn populateWithEverythingExceptLink(self: *AdditionalData, members: [][]const u8, dtypes: []DataType) ZipponError!void {
     for (members, dtypes, 0..) |member, dt, i| {
         if (dt == .link or dt == .link_array) continue;
-        try self.childrens.append(AdditionalDataMember.init(self.allocator, member, i));
+        self.childrens.append(AdditionalDataMember.init(self.allocator, member, i)) catch return ZipponError.MemoryError;
     }
 }
 

@@ -85,6 +85,12 @@ pub fn parseAdditionalData(
 
                 state = .expect_comma_OR_r_bracket_OR_l_bracket;
             },
+            .star => {
+                const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
+                try additional_data.populateWithEverythingExceptLink(sstruct.members, sstruct.types);
+                last_member = undefined;
+                state = .expect_comma_OR_r_bracket_OR_l_bracket;
+            },
             else => return printError(
                 "Error: Expected a member name.",
                 ZipponError.SynthaxError,

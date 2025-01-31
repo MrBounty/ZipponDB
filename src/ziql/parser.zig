@@ -353,7 +353,11 @@ pub fn parse(self: *Self, parent_allocator: Allocator, buffer: [:0]const u8) Zip
                 const error_message_buffer_writer = error_message_buffer.writer();
                 error_message_buffer_writer.writeAll("Error missing: ") catch return ZipponError.WriteError;
 
-                if (!(self.schema_engine.checkIfAllMemberInMap(struct_name, &data_map, &error_message_buffer) catch {
+                if (!(self.schema_engine.checkIfAllMemberInMapAndAddEmptyMissingArray(
+                    struct_name,
+                    &data_map,
+                    error_message_buffer.writer(),
+                ) catch {
                     return ZipponError.StructNotFound;
                 })) {
                     _ = error_message_buffer.pop();

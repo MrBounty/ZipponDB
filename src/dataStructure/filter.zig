@@ -66,8 +66,8 @@ pub const ConditionValue = union(enum) {
     float_array: []const f64,
     bool_array: []const bool,
     unix_array: []const u64,
-    link: *std.AutoHashMap(UUID, void),
-    link_array: *std.AutoHashMap(UUID, void),
+    link: *const std.AutoHashMap(UUID, void),
+    link_array: *const std.AutoHashMap(UUID, void),
 
     pub fn init(dtype: DataType, value: []const u8) ConditionValue {
         return switch (dtype) {
@@ -134,11 +134,11 @@ pub const ConditionValue = union(enum) {
         return ConditionValue{ .unix_array = value };
     }
 
-    pub fn initLink(value: *std.AutoHashMap(UUID, void)) ConditionValue {
+    pub fn initLink(value: *const std.AutoHashMap(UUID, void)) ConditionValue {
         return ConditionValue{ .link = value };
     }
 
-    pub fn initArrayLink(value: *std.AutoHashMap(UUID, void)) ConditionValue {
+    pub fn initArrayLink(value: *const std.AutoHashMap(UUID, void)) ConditionValue {
         return ConditionValue{ .link_array = value };
     }
 };

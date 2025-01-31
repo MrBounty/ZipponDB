@@ -76,6 +76,7 @@ pub const Token = struct {
         uuid_literal,
         identifier,
         equal,
+        star, // *
         bang, // !
         pipe, // |
         l_paren, // (
@@ -170,6 +171,11 @@ pub const Tokenizer = struct {
                     },
                     '=' => {
                         state = .equal;
+                    },
+                    '*' => {
+                        result.tag = .star;
+                        self.index += 1;
+                        break;
                     },
                     '!' => {
                         state = .bang;
