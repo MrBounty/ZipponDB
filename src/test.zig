@@ -42,12 +42,23 @@ test "ADD" { // OK
     try testParsing(db, "ADD User (name = 'Bobibou', email='bob@email.com', age=66, scores=[ 1, ], best_friend={name = 'Boba'}, friends=[1]{name = 'Bob'}, bday=2000/01/01, a_time=02:04:54.8741, last_order=2000/01/01-12:45)");
 
     try testParsing(db, "GRAB User {}");
+    try testParsing(db, "GRAB User [best_friend] {}");
 }
 
 test "ADD batch" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "ADD User (name = 'ewq', email='ewq@email.com', age=22, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) (name = 'Roger', email='roger@email.com', age=10, scores=[ 1, 11, 111, 123, 562345, 123451234, 34623465234, 12341234 ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing(db, "ADD User (name = 'qwe', email='qwe@email.com', age=57, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45) ('Rodrigo', 'bob@email.com', 55, [ 1 ], {name = 'qwe'}, none, 2000/01/01, 12:04, 2000/01/01-12:45)");
+
+    // Note that because I flush only once per ADD query, here the first Rodrigo get a relation because ewq is in the files when parsing
+    // But qwe is not yet !
+    try testParsing(
+        db,
+        \\ADD User
+        \\(name = 'qwe', email='qwe@email.com', age=57, scores=[ ], best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)
+        \\('Rodrigo', 'bob@email.com', 55, [ 1 ], {name = 'qwe'}, none, 2000/01/01, 12:04, 2000/01/01-12:45)
+        \\('Rodrigo', 'bob@email.com', 55, [ 1 ], {name = 'ewq'}, none, 2000/01/01, 12:04, 2000/01/01-12:45)
+        ,
+    );
 
     try testParsing(db, "GRAB User [name, best_friend] {name = 'Rodrigo'}");
     try testParsing(db, "GRAB User {}");
@@ -61,7 +72,7 @@ test "GRAB filter with string" { // OK
 
 test "GRAB with additional data" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "GRAB User [1] {age < 18}");
+    try testParsing(db, "GRAB User [1] {age < 18}"); // FIXME: Return nothing
     try testParsing(db, "GRAB User [id, name] {age < 18}");
     try testParsing(db, "GRAB User [100; name, age] {age < 18}");
 }
@@ -94,7 +105,7 @@ test "Specific query" { // NOT OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User");
     try testParsing(db, "GRAB User {}");
-    try testParsing(db, "GRAB User [1]");
+    try testParsing(db, "GRAB User [1]"); // FIXME: Return nothing
     try testParsing(db, "GRAB User [*, friends]");
 }
 
@@ -103,7 +114,7 @@ test "Specific query ADD" { // OK
     try testParsing(db, "ADD User (name = 'Bob1', email='bob@email.com', age=55, best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Bob2', email='bob@email.com', age=55, best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Bob3', email='bob@email.com', age=55, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing(db, "GRAB User {name IN ['Bob1', 'Bob2', 'Bob3']}");
+    try testParsing(db, "GRAB User {name IN ['Bob1', 'Bob2', 'Bob3']}"); // FIXME: Return nothing
 }
 
 // Array manipulation
@@ -111,7 +122,7 @@ test "Specific query ADD" { // OK
 
 test "GRAB name IN" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}"); // FIXME: Return nothing
 }
 
 test "UPDATE APPEND" { // OK
@@ -177,7 +188,7 @@ test "GRAB Relationship AdditionalData" { // OK
 
 test "GRAB Relationship Sub AdditionalData" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "GRAB User [name, friends [name]] {}");
+    try testParsing(db, "GRAB User [*, friends [name]] {}");
     try testParsing(db, "GRAB User [name, best_friend [name, friends [age]]] {}");
 }
 

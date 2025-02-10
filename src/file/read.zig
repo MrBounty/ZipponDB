@@ -143,17 +143,7 @@ pub fn populateVoidUUIDMap(
 
     // Combine results
     for (thread_writer_list) |list| {
-        for (list.items) |uuid| _ = map.getOrPut(uuid) catch return ZipponError.MemoryError;
-    }
-
-    if (additional_data.limit == 0) return;
-
-    if (map.count() > additional_data.limit) {
-        log.err("Found {d} entity in populateVoidUUIDMap but max is: {d}", .{ map.count(), additional_data.limit });
-        var iter = map.iterator();
-        while (iter.next()) |entry| {
-            log.debug("{s}", .{UUID.format_bytes(entry.key_ptr.bytes)});
-        }
+        for (list.items) |uuid| map.put(uuid, {}) catch return ZipponError.MemoryError;
     }
 }
 
@@ -252,6 +242,7 @@ pub fn parseEntities(
 
     // Now I need to do the relation stuff, meaning parsing new files to get the relationship value
     // Without relationship to return, this function is basically finish here
+    //
 
     // Here I take the JSON string and I parse it to find all {<||>} and add them to the relation map with an empty JsonString
     for (relation_maps) |*relation_map| try relation_map.populate(buff.items);
