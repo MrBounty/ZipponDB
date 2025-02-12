@@ -9,6 +9,8 @@ const DateTime = dtype.DateTime;
 const UUID = dtype.UUID;
 
 // TODO: Move this outside of FileEngine and make it faster
+// And add some features like
+//  - Option to pretty print (add \n and \t)
 
 const ZipponError = @import("error").ZipponError;
 

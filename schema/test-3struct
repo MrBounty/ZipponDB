@@ -4,8 +4,6 @@ User (
   email: str,
   bday: date,
   friends: []User,
-  posts: []Post,
-  comments: []Comment,
 )
 
 Post (

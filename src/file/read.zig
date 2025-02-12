@@ -242,7 +242,6 @@ pub fn parseEntities(
 
     // Now I need to do the relation stuff, meaning parsing new files to get the relationship value
     // Without relationship to return, this function is basically finish here
-    //
 
     // Here I take the JSON string and I parse it to find all {<||>} and add them to the relation map with an empty JsonString
     for (relation_maps) |*relation_map| try relation_map.populate(buff.items);

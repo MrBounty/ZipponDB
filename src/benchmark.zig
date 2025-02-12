@@ -183,7 +183,7 @@ pub fn benchmark(allocator: std.mem.Allocator) !void {
                 // Linked array not yet implemented and array manipulation not tested
                 const null_term_query_str = try std.fmt.bufPrintZ(
                     &line_buffer, // I dont like 'category = {name='Book'}'. Maybe att a IS keyword ?
-                    \\ADD Order (from={{}}, at=NOW, items={{name IN ['Food1', 'Food2']}}, quantity=[5 22])
+                    \\ADD Order (from={{}}, at=NOW, items={{name IN ['Food1', 'Food2']}}, quantity=[5, 22])
                 ,
                     .{},
                 );

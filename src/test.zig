@@ -113,7 +113,7 @@ test "Specific query ADD" { // OK - Test if array and relationship are empty by 
     try testParsing(db, "ADD User (name = 'Bob1', email='bob@email.com', age=55, best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Bob2', email='bob@email.com', age=55, best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Bob3', email='bob@email.com', age=55, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
-    try testParsing(db, "GRAB User {name IN ['Bob1', 'Bob2', 'Bob3']}"); // FIXME: Return nothing
+    try testParsing(db, "GRAB User {name IN ['Bob1', 'Bob2', 'Bob3']}");
 }
 
 // Array manipulation
@@ -121,7 +121,7 @@ test "Specific query ADD" { // OK - Test if array and relationship are empty by 
 
 test "GRAB name IN" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}"); // FIXME: Return nothing
+    try testParsing(db, "GRAB User {name IN ['Bob', 'Bobibou']}");
 }
 
 test "UPDATE APPEND" { // OK
@@ -170,7 +170,7 @@ test "UPDATE REMOVEAT" { // OK
 test "UPDATE relationship" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "UPDATE User [1] {name='Bob'} TO (best_friend = {name='Boba'} )");
-    try testParsing(db, "GRAB User {}");
+    try testParsing(db, "GRAB User [1; name, best_friend] {}");
 }
 
 test "GRAB Relationship Filter" { // OK
@@ -215,25 +215,15 @@ test "3 struct base" {
     const db = DB{ .path = "test2", .schema = "schema/test-3struct" };
     try testParsing(db, "DELETE User {}");
     try testParsing(db, "DELETE Post {}");
-    try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, friends=none, posts=none, comments=none, bday=2000/01/01)");
-    try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={}, comments=none)");
-    try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={}, comments=none)");
-    try testParsing(db, "GRAB Post [id, text, at, from [id, name]] {}");
-}
-
-test "3 struct both side" {
-    const db = DB{ .path = "test2", .schema = "schema/test-3struct" };
-    try testParsing(db, "DELETE User {}");
-    try testParsing(db, "DELETE Post {}");
-    try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, friends=none, posts=none, comments=none, bday=2000/01/01)");
-    try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from=none, comments=none)");
-    //try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={}, comments=none) -> new_post -> UPDATE User {} TO (posts APPEND new_post)");
-    // try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={} APPEND TO posts, comments=none)"); Maybe I can use that to be like the above query
-    // ADD Post (text = 'Hello every body', at=NOW, from={} TO last_post, comments=none) And this for a single link
-    // try testParsing(db, "ADD Post (text = 'Hello every body', at=NOW, from={} APPEND TO [posts, last_post], comments=none)"); Can be an array to add it to multiple list
-    // last_post is replaced instead of append
-    try testParsing(db, "GRAB Post [id, text, at, from [id, name]] {}");
-    try testParsing(db, "GRAB User [id, name] {}");
+    try testParsing(db, "ADD User (name = 'Bob', email='bob@email.com', age=55, bday=2000/01/01)");
+    try testParsing(db, "ADD User (name = 'Roger', email='roger@email.com', age=22, bday=2000/01/01)");
+    try testParsing(db, "ADD Post (text = 'Hello everybody', at=NOW, from={name = 'Bob'})");
+    try testParsing(db, "ADD Post (text = 'Look at this thing !', at=NOW, from={name = 'Bob'})");
+    try testParsing(db, "ADD Post (text = 'I love animals.', at=NOW, from={name = 'Roger'})");
+    try testParsing(db, "ADD Comment (text = 'Hey man !', at=NOW, from={name = 'Roger'}, of={text = 'Hello everybody'})");
+    try testParsing(db, "ADD Comment (text = 'Me too :)', at=NOW, from={name = 'Bob'}, of={text = 'I love animals.'})");
+    try testParsing(db, "GRAB Post [text, at, from [name]] {}");
+    try testParsing(db, "GRAB Comment [text, at, from [name], of [id]] {}");
 }
 
 fn testParsing(db: DB, source: [:0]const u8) !void {
