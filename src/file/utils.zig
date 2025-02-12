@@ -164,7 +164,11 @@ pub fn allFileIndex(self: Self, allocator: Allocator, struct_name: []const u8) Z
     var iter = dir.iterate();
     while (iter.next() catch return ZipponError.DirIterError) |entry| {
         if (entry.kind != .file) continue;
-        if (std.mem.eql(u8, entry.name[0..(entry.name.len - 4)], ".new")) continue; // TODO: Delete the file, shouldn't be here
+        if (std.mem.eql(u8, entry.name[0..(entry.name.len - 4)], ".new")) {
+            dir.deleteFile(entry.name) catch return ZipponError.DeleteFileError;
+            continue;
+        }
+
         const index = std.fmt.parseInt(usize, entry.name[0..(entry.name.len - 4)], 10) catch return ZipponError.InvalidFileIndex;
         array.append(index) catch return ZipponError.MemoryError;
     }
