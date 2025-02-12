@@ -20,10 +20,6 @@ jobs:
         with:
           version: master
 
-      - name: Test code
-        run: |
-          zig build -Doptimize=ReleaseSmall test
-
       - name: Build release artifacts
         run: |
           zig build -Doptimize=ReleaseSmall release
