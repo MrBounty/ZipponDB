@@ -26,7 +26,7 @@ medium applications that want a quick and simple database.
 * **No dependencies:** Depend on nothing, every line of code running is in the codebase and written for ZipponDB.
 * **Open-source:** Open-source under MIT licence.
 
-<small>* Check <a href="/Benchmark">benchmark</a>.</small>
+<small>* Check <a href="https://mrbounty.github.io/ZipponDB/Benchmark/">benchmark</a>.</small>
 
 # Declare a schema
 

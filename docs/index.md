@@ -1,4 +1,4 @@
-# ZipponDB: A Lightweight Database in Zig
+# ZipponDB: A Minimalist Lightweight General Purpose Database in Zig
 
 <style>
 .md-content .md-typeset h1 { display: none; }
@@ -8,7 +8,7 @@
   <a href="/ZipponDB"><img src="images/banner.png" alt="ZipponDB"></a>
 </p>
 <p align="center">
-    <em>Minimalist Database written in Zig</em>
+    <em>Minimalist Lightweight General Purpose Database written in Zig</em>
 </p>
 
 ---
@@ -40,6 +40,7 @@ medium applications that want a quick and simple database.
 * **Single file:** Like SQLite, ZipponDB's database aim to be a single file.
 * **Schema migration:** Update dynamically database schema.
 * **Custom index:** Speed up query with custom indexing.
+* **Better QL:** Improving ZiQL and adding features.
 * **Safety and Performance:** Improve general safty and performance.
 
 <small>More info in the Roadmap.</small>
