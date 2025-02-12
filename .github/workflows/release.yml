@@ -18,7 +18,7 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v1
         with:
-          version: master
+          version: 0.14.0-dev.1510+fb0028a0d
 
       - name: Build release artifacts
         run: |
