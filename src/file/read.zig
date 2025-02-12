@@ -271,6 +271,7 @@ fn parseEntitiesOneFile(
     const allocator = fa.allocator();
 
     var buffered_writer = std.io.bufferedWriter(writer);
+    defer buffered_writer.flush() catch {};
 
     const path = std.fmt.bufPrint(&path_buffer, "{d}.zid", .{file_index}) catch return;
     var iter = zid.DataIterator.init(allocator, path, dir, zid_schema) catch return;
@@ -288,7 +289,6 @@ fn parseEntitiesOneFile(
 
         if (sync_context.incrementAndCheckStructLimit()) return;
     }
-    buffered_writer.flush() catch return;
 }
 
 // Receive a map of UUID -> empty JsonString
