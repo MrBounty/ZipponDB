@@ -40,6 +40,7 @@ pub fn populate(self: *RelationMap, input: []const u8) ZipponError!void {
     while (std.mem.indexOf(u8, input[start..], "{<|")) |pos| {
         const pattern_start = start + pos + 3;
         const pattern_end = pattern_start + 16;
+        defer start = pattern_end + 3;
 
         const member_end = if (input[pattern_start - 4] == '[') pattern_start - 6 else pattern_start - 5; // This should be ": {<|"
         var member_start = member_end - 1;
@@ -56,7 +57,6 @@ pub fn populate(self: *RelationMap, input: []const u8) ZipponError!void {
         @memcpy(uuid_bytes[0..], input[pattern_start..pattern_end]);
 
         self.map.put(uuid_bytes, JsonString{}) catch return ZipponError.MemoryError;
-        start = pattern_end + 3;
     }
 }
 
