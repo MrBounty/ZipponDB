@@ -72,7 +72,7 @@ test "GRAB filter with string" { // OK
 
 test "GRAB with additional data" { // OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
-    try testParsing(db, "GRAB User [1] {age < 18}"); // FIXME: Return nothing
+    try testParsing(db, "GRAB User [1] {age < 18}");
     try testParsing(db, "GRAB User [id, name] {age < 18}");
     try testParsing(db, "GRAB User [100; name, age] {age < 18}");
 }
@@ -100,16 +100,15 @@ test "GRAB filter with date" { // OK
     try testParsing(db, "GRAB User {last_order > 2000/01/01-12:45}");
 }
 
-// FIXME: GRAB User [1] return nothing
 test "Specific query" { // NOT OK
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "GRAB User");
     try testParsing(db, "GRAB User {}");
-    try testParsing(db, "GRAB User [1]"); // FIXME: Return nothing
+    try testParsing(db, "GRAB User [1]");
     try testParsing(db, "GRAB User [*, friends]");
 }
 
-test "Specific query ADD" { // OK
+test "Specific query ADD" { // OK - Test if array and relationship are empty by default if not specify
     const db = DB{ .path = "test1", .schema = "schema/test" };
     try testParsing(db, "ADD User (name = 'Bob1', email='bob@email.com', age=55, best_friend=none, friends=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");
     try testParsing(db, "ADD User (name = 'Bob2', email='bob@email.com', age=55, best_friend=none, bday=2000/01/01, a_time=12:04, last_order=2000/01/01-12:45)");

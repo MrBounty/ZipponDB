@@ -268,7 +268,7 @@ pub fn deleteEntities(
     writer.writeByte(']') catch return ZipponError.WriteError;
 
     //  FIXME: Stop doing that and just remove UUID from the map itself instead of reparsing everything at the end
-    //  It's just that I can't do it in deleteEntitiesOneFile itself
+    //  It's just that I can't do it in deleteEntitiesOneFile itself because of multi thread that update the map at same time
     sstruct.uuid_file_index.map.clearRetainingCapacity();
     _ = sstruct.uuid_file_index.reset();
     try self.populateFileIndexUUIDMap(sstruct, sstruct.uuid_file_index);

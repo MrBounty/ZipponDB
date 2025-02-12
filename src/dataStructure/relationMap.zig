@@ -16,8 +16,6 @@
 // Then for each RelationMap, I parse the files again this time to update the first JSON that now have {<||>}
 // With a sub additionalData. If there is an additional data relation, I recurcive.
 // So I need an option in parseEntity to either write the first JSON or update the existing one
-//
-// FIXME: I think if 2 different struct have the same member name it can cause issue but maybe not tho
 
 const std = @import("std");
 const AdditionalData = @import("additionalData.zig").AdditionalData;

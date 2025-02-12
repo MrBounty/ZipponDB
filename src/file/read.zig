@@ -190,9 +190,6 @@ pub fn parseEntities(
     var safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
     const allocator = safe_allocator.allocator();
 
-    var buff = std.ArrayList(u8).init(entry_allocator);
-    const writer = buff.writer();
-
     const sstruct = try self.schema_engine.structName2SchemaStruct(struct_name);
     const to_parse = try self.allFileIndex(allocator, struct_name);
 
@@ -235,6 +232,9 @@ pub fn parseEntities(
     wg.wait();
 
     // Append all writer to each other
+    var buff = std.ArrayList(u8).init(entry_allocator);
+    const writer = buff.writer();
+
     writer.writeByte('[') catch return ZipponError.WriteError;
     for (thread_writer_list) |list| writer.writeAll(list.items) catch return ZipponError.WriteError;
     writer.writeByte(']') catch return ZipponError.WriteError;

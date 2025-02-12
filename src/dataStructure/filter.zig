@@ -312,8 +312,6 @@ pub const Filter = struct {
                 else => unreachable,
             },
 
-            // TODO: Also be able to it for array to array. Like names in ['something']
-            // And it is true if at least one value are shared between array.
             .in => switch (condition.data_type) {
                 .link => condition.value.link.contains(UUID{ .bytes = row_value.UUID }),
                 .int => in(i32, row_value.Int, condition.value.int_array),
