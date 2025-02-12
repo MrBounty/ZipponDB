@@ -246,7 +246,9 @@ pub fn parseConditionValue(
                     token.* = self.toker.next();
                 } else first = false;
 
-                if (token.tag == .string_literal) array.append(self.toker.getTokenSlice(token.*)) catch return ZipponError.MemoryError;
+                if (token.tag == .string_literal) array.append(
+                    self.toker.getTokenSlice(token.*)[1 .. (token.loc.end - token.loc.start) - 1],
+                ) catch return ZipponError.MemoryError;
                 if (token.tag == .string_literal or token.tag == .comma) continue;
                 if (token.tag == .r_bracket) break;
                 return printError(
