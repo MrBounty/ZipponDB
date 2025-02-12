@@ -17,17 +17,17 @@
 - [X] Date
 - [X] Logs
 - [X] Query multi threading
-- [ ] Arrays manipulation
-- [ ] Ordering
+- [X] Arrays manipulation
 
 #### v0.3 - QoL 
 - [X] Docs website
+- [ ] Ordering
 - [ ] Dot operator
+- [ ] Linked query  
 - [ ] Schema migration   
-- [~] Dump/Bump data  
+- [ ] Dump/Bump data  
 - [ ] Recovery
 - [ ] Better CLI
-- [ ] Linked query  
 
 #### v0.4 - Usability  
 - [ ] Single file
