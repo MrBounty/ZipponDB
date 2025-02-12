@@ -198,13 +198,20 @@ test "GRAB Relationship AdditionalData Filtered" { // FIXME: NOT OK
     try testParsing(db, "GRAB User [2; name, best_friend] {best_friend !IN {}}");
 }
 
-test "GRAB Relationship dot" { // TODO: Make this a reality
-    // DO I add this ? I'm not sure about this feature
+test "GRAB Relationship dot" { // TODO: Make this a reality, but need to think a bit more about it
     const db = DB{ .path = "test1", .schema = "schema/test" };
     // try testParsing(db, "GRAB User.best_friend {}");
     // try testParsing(db, "GRAB User.best_friend.best_friend {}");
     // try testParsing(db, "GRAB User.best_friend.posts {}");
     // try testParsing(db, "GRAB User.best_friend.posts.comments {}");
+    try testParsing(db, "GRAB User [1] {}");
+}
+
+test "GRAB Ordering" { // TODO: Make this a reality
+    const db = DB{ .path = "test1", .schema = "schema/test" };
+    // try testParsing(db, "GRAB User {} |age|");
+    // try testParsing(db, "GRAB User {} |name|");
+    // try testParsing(db, "GRAB User {} |name, age|");
     try testParsing(db, "GRAB User [1] {}");
 }
 
